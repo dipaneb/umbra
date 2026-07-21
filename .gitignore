@@ -1,0 +1,21 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Rust
+/target/
+**/target/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+pnpm-debug.log*
+
+# Claude Code local overrides / runtime state (never committed)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
