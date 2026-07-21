@@ -1,0 +1,247 @@
+---
+name: 'Umbra'
+type: architecture-spine
+purpose: build-substrate
+altitude: feature
+paradigm: 'functional core, thin shell'
+scope: 'Umbra v1 app architecture (MVP + P2 + P3 seed) — full system'
+status: final
+created: '2026-07-20'
+updated: '2026-07-20'
+binds: [FR1-FR35, NFR1-NFR7, INV-1-INV-4]
+sources:
+  - _bmad-output/planning-artifacts/prds/prd-Umbra-2026-07-19/prd.md
+  - _bmad-output/planning-artifacts/epics.md
+  - _bmad-output/implementation-artifacts/1-1-first-launch-scaffolded-app-opens.md
+companions:
+  - _bmad-output/planning-artifacts/architecture/architecture-Umbra-2026-07-20/ARCHITECTURE.md
+---
+
+# Architecture Spine — Umbra
+
+> Reconstructed 2026-07-20 after the original spine (authored 2026-07-19) was destroyed in a data-loss incident — an unforced `create-tauri-app --force` run emptied the repo root before scaffolding. No pre-incident git history survives. This spine is rebuilt from the PRD, `epics.md` (which had already absorbed the original spine's decisions into its story acceptance criteria), and the one surviving story file — all three cited as `sources` above. `AD` numbering is preserved from those citations; no `AD` was renumbered or reused. A Reviewer Gate (3 reconciliation checks + a rubric walker + version-verification and adversarial-divergence lenses, all independent parallel passes) ran before this spine closed; version corrections (Pinia, Vue Router) and structural clarifications (`ToolError.position` encoding, epoch-timestamp units, drop-declaration schema, CI convention completeness) came out of that gate. Every Stack table version below is confirmed against the crates.io/npm registry APIs directly (not a search-engine snippet, which proved unreliable once — see the memlog for the `oar-ocr` correction-of-a-correction). See the memlog for the full trail.
+
+## Design Paradigm
+
+**Functional core, thin shell** (Bernhardt pattern), mapped to three layers:
+
+- **Functional core — `crates/umbra-core`.** Pure transformations only: no I/O, no Tauri dependency, no platform branches. Every tool's logic (JSON, Base64, hash, JWT, cron, OCR, PDF, image) lives here as testable functions/traits returning machine values.
+- **Thin shell — `src-tauri`.** The only place that touches the OS: files, clipboard, drops, window, updater, notarization surface. Exposes core via async commands; owns nothing that could instead be a pure function.
+- **Presentation shell — `src` (Vue).** Renders core's machine values (epoch timestamps, structured errors) into locale-aware, human-facing UI. Owns Pinia stores for state that must cross tool boundaries.
+
+```mermaid
+graph LR
+  core["umbra-core (functional core)"]
+  shell["src-tauri (thin shell)"]
+  ui["src / Vue (presentation shell)"]
+  shell -->|"depends on"| core
+  ui -->|"invoke (IPC)"| shell
+  core -.->|"zero deps on"| shell
+  core -.->|"zero deps on"| ui
+```
+
+## Invariants & Rules
+
+### AD-1 — Functional core owns every transformation
+
+- **Binds:** all tool logic (`umbra-core`)
+- **Prevents:** business logic leaking into `src-tauri` or Vue, where it cannot be unit-tested once or reused across platforms
+- **Rule:** every transformation is a pure function in `umbra-core`. Presentation formatting — locale/timezone rendering, case toggles for display — is view-owned, never computed in core. Core returns machine values (epoch integers, raw structured data); the view renders them for humans. `[ADOPTED]`
+
+### AD-2 — Core is dependency-clean
+
+- **Binds:** `umbra-core` crate
+- **Prevents:** a macOS-only dependency or platform branch silently breaking the NFR3 cross-platform-clean promise
+- **Rule:** `umbra-core` imports no `tauri`/`tauri-*` crate and contains zero `#[cfg(target_os)]` branches. CI enforces this on every PR (AD-11). `[ADOPTED]`
+
+### AD-3 — One error shape for every command
+
+- **Binds:** every Tauri command
+- **Prevents:** each tool inventing its own error shape, forcing the view to string-match messages to render them
+- **Rule:** a single `ToolError` struct — `{ code: <stable kebab-case string>, message: String, position: Option<Position>, context: Option<String> }` — defined once in `umbra-core`, is the only error type every command returns as `Result<T, ToolError>`. `Position` is an internally-tagged enum (`#[serde(tag = "kind")]`) with two variants, `LineCol { line: u32, column: u32 }` and `ByteOffset(u64)` — not a pseudo-union type. Commands are named `<tool>_<verb>`. The view renders errors from `ToolError`'s structure only — never by parsing `message` text. `[ADOPTED]`
+
+### AD-4 — Heavy work stays off the UI thread and off the launch path
+
+- **Binds:** any tool operation
+- **Prevents:** the UI freezing on large inputs, or a heavy first-use cost landing on cold launch
+- **Rule:** work that can exceed ~100ms CPU runs async on the Rust blocking thread pool. Large result sets render through virtualized views. Heavy resources (the OCR session) initialize lazily on first use, never at launch. `[ADOPTED]`
+
+### AD-5 — One Tool Registry is the only source of tool metadata
+
+- **Binds:** sidebar, command palette, routing
+- **Prevents:** tool metadata (name, alias, icon, route) drifting across three separately maintained lists
+- **Rule:** one Tool Registry entry — `{ id, name, aliases, route, icon, drop declarations, shortcut declarations }` — is the single source that generates the sidebar, the palette index, and the route table. Nothing else enumerates tools. `[ADOPTED]`
+
+### AD-6 — Tools are islands
+
+- **Binds:** cross-tool state
+- **Prevents:** tools coupling to each other, making any single tool impossible to add, remove, or reason about independently
+- **Rule:** no tool reads another tool's state. Cross-cutting state lives only in the Pinia stores `settings` and `registry`. `[ADOPTED]`
+
+### AD-7 — Zero network surface except the updater
+
+- **Binds:** the whole app, per PRD INV-1 and INV-2
+- **Prevents:** an untracked network call breaking the local-only promise that is the product's entire identity
+- **Rule:** zero network surface except `tauri-plugin-updater`. No dependency whose purpose is network I/O exists anywhere in the tree. Webview capabilities grant no network scope. OCR models ship bundled as app resources with `oar-ocr`'s auto-download explicitly disabled. The updater carve-out is disclosed in both README and in-app (never just one). `[ADOPTED]`
+
+### AD-8 — OCR (and future local inference) sits behind a core-owned trait
+
+- **Binds:** OCR (Epic 4), the second AI feature (Epic 6)
+- **Prevents:** an inference library leaking through the whole call stack instead of sitting behind a swappable seam
+- **Rule:** `umbra-core` owns an OCR-shaped trait — image bytes in, recognized text + confidence out, honest empty/failure states. `oar-ocr` is the v1 adapter behind it. Commands and UI depend on the trait only, never on the adapter crate directly. `[ADOPTED]`
+
+### AD-9 — NL→cron never ships an unverified guess
+
+- **Binds:** the natural-language↔cron tool (Epic 3)
+- **Prevents:** a confident-sounding but wrong cron expression reaching the user (the PRD's explicit AI-honesty bar, FR21)
+- **Rule:** every NL→cron result round-trips through the cron→English direction before display; only a consistent round-trip is shown. The canonical phrase corpus (must-convert + must-honestly-fail sets) runs as an automated test in `umbra-core`; a corpus regression fails the build. `[ADOPTED]`
+
+### AD-10 — One persistence mechanism, one writer
+
+- **Binds:** all persisted state
+- **Prevents:** two writers racing on `settings.json`, or persistence sprawling into an undiscoverable set of files
+- **Rule:** the only persistence mechanism is `tauri-plugin-store` writing one `settings.json`. The frontend `settings` Pinia store is its single writer — Rust-side code never writes it. Keys are namespaced `shell.*` / `<tool-id>.*`. The Settings pane enumerates every persisted key with a one-action clear (PRD INV-3). Window geometry is captured frontend-side on debounced move/resize. `[ADOPTED]`
+
+### AD-11 — CI proves cross-platform cleanliness on every PR
+
+- **Binds:** CI
+- **Prevents:** a macOS-only dependency merging unnoticed because the only CI runner is macOS
+- **Rule:** `cargo check` + clippy run on `ubuntu-latest` and `windows-latest` as required status checks on every PR. One runner additionally runs `cargo fmt --check`, `cargo test --workspace`, `pnpm lint` (eslint), and `pnpm test` (Vitest) — the full NFR6 gate, not clippy alone. `ort-sys` ONNX Runtime binaries are cached in CI from Epic 4 onward. `[ADOPTED]`
+
+### AD-12 — Releases are tag-driven, signed, and secret-safe
+
+- **Binds:** releases (Epic 5)
+- **Prevents:** an unsigned or hand-built artifact circulating, or a signing secret leaking into the repo
+- **Rule:** releases are tag-driven via `tauri-action`: build → sign (Developer ID) → notarize (Apple) → GitHub Release including `latest.json`. The update confirmation dialog is app-built UI, not the plugin's default. All secrets live only in GitHub Actions secrets. The updater private key is backed up offline in two places before the first release ships. The NFR1 network-monitor tour result is recorded in every release PR. `[ADOPTED]`
+
+### AD-13 — Localization ships as one unit or not at all
+
+- **Binds:** any future UI language addition
+- **Prevents:** a half-localized privacy tool — UI in French, OCR and NL→cron still silently English-only
+- **Rule:** any release adding a UI language adds that language to the OCR models and the cron grammar + corpus in the same release, or the release does not ship. `[ADOPTED]`
+
+### AD-14 — The shell owns OS I/O edges exactly once
+
+- **Binds:** drops, clipboard, keyboard shortcuts
+- **Prevents:** every tool wiring its own document-level listener, with shortcuts and drop handling colliding across tools
+- **Rule:** window-level Tauri-native drops dispatch to the active tool's registry-declared handler — a pure `{ accepted mime types, handler command name }` declaration the shell's single generic dispatcher invokes; tools never receive live drop-event callbacks directly (this closes the same seam AD-5's registry entry opens). One clipboard service wraps the Tauri clipboard plugin — `navigator.clipboard` is forbidden. Pasted images are dispatched to that same registry-declared handler directly via the AD-15 raw-IPC-body exception (not the path-based drop mechanism, since clipboard images have no filesystem path). `⌘K` is one capture-phase handler at app scope. Tools register no document-level listeners of their own. `[ADOPTED]`
+
+### AD-15 — Files cross IPC as paths; core never touches the filesystem
+
+- **Binds:** file I/O
+- **Prevents:** raw bytes bloating the JSON IPC bridge, or core reaching into the filesystem directly and breaking AD-2
+- **Rule:** files cross the IPC bridge as absolute paths. `src-tauri` owns all file reads/writes through one shared save-dialog-plus-write helper. `umbra-core` never touches the filesystem. Byte arrays above ~64KB never ride the JSON IPC bridge — the one sanctioned exception is clipboard-pasted image bytes via the raw IPC body. `[ADOPTED]`
+
+### AD-16 — Slow commands are request-ID'd and latest-wins
+
+- **Binds:** slow command invocations
+- **Prevents:** a stale result from a superseded request overwriting a newer one
+- **Rule:** one shared frontend invoke helper wraps slow commands with a request ID and latest-wins supersession; results for unmounted views are discarded on arrival. The OCR session sits behind a `OnceCell` so racing first-use initializations share one init. v1 ships no progress events and no cancellation. `[ADOPTED]`
+
+## Consistency Conventions
+
+| Concern | Convention |
+| --- | --- |
+| Naming (commands, errors) | Commands: `<tool>_<verb>` (AD-3). `ToolError.code`: stable kebab-case enum string. |
+| Data & formats | `ToolError { code, message, position: Option<Position>, context }` is the only error shape (AD-3). Core returns machine values — epoch timestamps are always unix seconds as `i64`, never milliseconds, across every tool (JWT `exp`/`iat`/`nbf`, cron next-run times); locale/timezone/case formatting is view-owned (AD-1). |
+| State & cross-cutting | Cross-tool state only in Pinia `settings`/`registry` stores (AD-6); `settings` store is the sole writer of `settings.json` (AD-10); shell owns clipboard/drop/shortcuts (AD-14). |
+| Code quality | No `unwrap`/`expect` in command paths; clippy `-D warnings`; `cargo fmt --check`; eslint; TypeScript `strict`. |
+| Testing | `umbra-core` unit tests (`cargo test -p umbra-core`, including the AD-9 corpus) + `src-tauri` command integration tests + Vitest. No e2e suite in v1 (NFR6). |
+| Commits & releases | Conventional Commits from the first commit (enables a generated `CHANGELOG.md` later, FR32). |
+| Dependency hygiene | Every dependency's license checked for compatibility with bundling into an All-Rights-Reserved app — permissive fine, copyleft/GPL needs explicit review. |
+| Accessibility | Labels, visible focus states, WCAG AA contrast (4.5:1 text) checked at PR review from v1 (NFR5). |
+
+## Stack
+
+<!-- Verified 2026-07-20 against crates.io/npm; two corrections vs. the original 2026-07-19 spine are flagged. Code owns exact lockfile pins. -->
+
+| Name | Version |
+| --- | --- |
+| Rust | stable, edition 2024 (MSRV ≥1.77.2 per `tauri` crate) |
+| Tauri (Rust crate `tauri`) | 2.11.5 — verified 2026-07-20, unchanged from original spine |
+| `tauri-plugin-store` | 2.4.x (JS `@tauri-apps/plugin-store` 2.4.4, npm registry API 2026-07-20) |
+| `tauri-plugin-updater` | 2.x (JS `@tauri-apps/plugin-updater` 2.10.1 verified) |
+| `tauri-plugin-dialog` | 2.x (2.7.2 observed 2026-07-20) |
+| `tauri-plugin-clipboard-manager` | 2.x (2.3.2 observed 2026-07-20) |
+| Vue | 3.x (3.5.40 observed 2026-07-20) |
+| Vue Router | 5.x (5.2.0 observed 2026-07-20 — corrected; draft had guessed 4.x unverified) |
+| Pinia | 4.x (4.0.2 observed 2026-07-20 — corrected; draft had guessed 2.x unverified) |
+| `oar-ocr` (Rust crate, PaddleOCR mobile det+rec English ONNX via `ort`, bundled) | 0.8.x (0.8.0 confirmed via crates.io API 2026-07-20, published 2026-07-08). The original spine's 0.8.x pin was correct — an earlier reconstruction pass "corrected" this to 0.2.x based on a stale search snippet; that correction was itself wrong and has been reverted. Pre-1.0: re-verify exact API at Epic 4 start regardless, since minors can still break. |
+| `croner` (Rust crate — not the same-named JS package) | 3.x — verified 2026-07-20, unchanged. The JS npm package `croner` is unrelated and at 10.x; do not confuse the two when reviewing dependencies. |
+| Package manager | pnpm 11.x (11.15.1 observed 2026-07-20; pure ESM, requires Node.js 22+) |
+| Scaffold tool | `create-tauri-app` — latest stable at scaffold time (4.6.2 confirmed via direct npm registry query 2026-07-20, no fixed pin by design) |
+| CI / Release | GitHub Actions + `tauri-action` (macOS build/sign/notarize runner; ubuntu + windows check-only matrix, AD-11/AD-12) |
+
+## Structural Seed
+
+```text
+<repo-root>/
+  _bmad/, _bmad-output/, docs/        # BMad planning artifacts (unchanged by the app)
+  src/                                # Vue 3 app — presentation shell
+    tools/<tool-id>/                  # per-tool views; islands per AD-6                         [ASSUMPTION: naming pattern inferred]
+    shell/                            # sidebar, palette, drop/clipboard/shortcut dispatch (AD-14)  [ASSUMPTION]
+    stores/                           # Pinia: settings.ts, registry.ts (AD-6, AD-10)             [ASSUMPTION]
+  src-tauri/                          # thin shell — all OS I/O
+    tauri.conf.json
+    capabilities/                     # audited for zero network scope (AD-7)
+    src/commands/                     # one module per tool area, async fns -> Result<T, ToolError>
+    resources/models/                 # bundled OCR ONNX models (AD-7, AD-8)
+  crates/
+    umbra-core/                       # functional core — zero Tauri deps, zero #[cfg(target_os)]
+      src/error.rs                    # ToolError (AD-3)
+      src/json.rs                     # Epic 1
+      src/base64.rs, hash.rs, jwt.rs, uuid.rs  # Epic 2
+      src/cron.rs                     # Epic 3 (AD-9)
+      src/ocr.rs                      # Epic 4 — OCR trait (AD-8)                                 [ASSUMPTION: module name]
+      src/pdf.rs, image.rs            # Epic 6                                                    [ASSUMPTION: module names]
+      src/lib.rs
+  Cargo.toml                          # workspace root: [src-tauri, crates/umbra-core]
+  .github/
+    workflows/ci.yml                  # AD-11
+    dependabot.yml
+  LICENSE                             # All Rights Reserved (NFR7)
+```
+
+```mermaid
+flowchart TB
+  subgraph Shell["src-tauri (thin shell)"]
+    cmds["commands/*"]
+    fs["file read/write helper (AD-15)"]
+    clip["clipboard service (AD-14)"]
+    drop["window drop dispatch (AD-14)"]
+    upd["tauri-plugin-updater (AD-7, AD-12)"]
+  end
+  subgraph Core["umbra-core (functional core)"]
+    err["ToolError (AD-3)"]
+    tools["json / base64 / hash / jwt / cron / ocr / pdf / image"]
+    ocrtrait["OCR trait (AD-8)"]
+  end
+  subgraph UI["src (Vue, presentation shell)"]
+    registry["Tool Registry (AD-5)"]
+    stores["Pinia: settings, registry (AD-6, AD-10)"]
+    views["tool views (islands, AD-6)"]
+  end
+  views -->|invoke, request-ID + latest-wins, AD-16| cmds
+  cmds --> tools
+  cmds --> fs
+  cmds --> clip
+  tools --> err
+  ocrtrait -.->|adapter: oar-ocr| tools
+  views --> registry
+  views --> stores
+```
+
+## Deferred
+
+- **Styling/component framework.** No UX design contract exists (confirmed 2026-07-20). Plain scoped CSS until a UX phase happens.
+- **Exact OCR ONNX model files.** Chosen and documented at Epic 4 Story 4.1.
+- **JSON tree IPC transfer strategy.** Defaults to one payload + virtualized DOM. A lazy per-node fetch fallback is introduced only as an explicit spine amendment if profiling shows FR9 cannot be met — never as a silent switch.
+- **FR29 — second AI feature choice** (regex-explain vs. OCR→structured). Deferred to Epic 6 Story 6.3, decided from evidence gathered in Epics 3–4.
+- **Landing page stack/hosting.** Decided at Epic 5 Story 5.4, outside this app spine's boundary.
+- **Windows/Linux packaging.** Deferred to P3 grooming; AD-11's CI matrix keeps the code check-ready meanwhile.
+- **NFR1 automation.** Stays a manual per-release checklist procedure in v1 (AD-12, Epic 5 Story 5.3).
+- **Deployment/environment topology.** Not a separate dimension to decide: there is no server-side component. The full envelope is the tag-driven GitHub Actions pipeline (AD-12) publishing to GitHub Releases — no further infra/provider strategy applies.
+- **`ToolError.code` cross-tool namespacing.** No enforced prefix convention yet (e.g. `tool-id/reason`). Revisit if two tools are observed picking colliding codes; low risk at current tool count.
+- **`settings.json` schema migration across releases.** AD-10 fixes the writer and namespacing but not a migration story for old keys as FR35's weekly/fortnightly P3 cadence adds new ones over many releases. Revisit before Epic 2 ships beyond the Epic 1 baseline keys.
+- **AD-8's OCR trait shape vs. a structured second AI feature.** If Epic 6 Story 6.3 (FR29) chooses OCR→structured over regex-explain, that story's decision record must state whether it extends or forks the flat text+confidence trait — not decided here since the FR29 choice itself is already deferred to that story.
+- **Keyboard-operable alternative to Bucket drag-and-drop (NFR5).** No mechanism specified yet (e.g. a keyboard-triggered file picker). Carried forward under the styling/UX-phase deferral above, not a new gap — but named explicitly so it is not silently dropped when that phase starts.
