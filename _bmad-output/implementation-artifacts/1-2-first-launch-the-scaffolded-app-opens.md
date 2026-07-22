@@ -44,9 +44,9 @@ so that there is a real, runnable application to build every tool into.
   - [x] Inspect `src-tauri/Cargo.toml` and root `package.json`/`pnpm-lock.yaml` (or `Cargo.lock`) — confirm no dependency whose stated purpose is network I/O (HTTP clients, fetch polyfills, analytics SDKs, etc.) was pulled in by the scaffold; the default Tauri 2 scaffold should not include any, but verify rather than assume
   - [x] Inspect `src-tauri/capabilities/*.json` (or `tauri.conf.json`'s inlined capabilities, depending on scaffold layout) — confirm no capability grants any network permission/scope; the default scaffold capability set should be limited to window/core permissions only
   - [x] Record the audit result in this story's Dev Agent Record (what was checked, what was found) — this is the first of many AD-7 audits; future stories that add real network-adjacent plugins (`tauri-plugin-updater` in Epic 5) will need to re-run and document this same check
-- [ ] Task 5: Commit the scaffold
-  - [ ] Stage and commit as a single Conventional Commit, e.g. `feat(scaffold): add Tauri + Vue app scaffold via create-tauri-app`
-  - [ ] Push via a PR (branch protection from Story 1.1 requires it — direct push to `main` will be rejected)
+- [x] Task 5: Commit the scaffold
+  - [x] Stage and commit as a single Conventional Commit, e.g. `feat(scaffold): add Tauri + Vue app scaffold via create-tauri-app` (commit `50a3733` on branch `feat/story-1-2-scaffold-app`)
+  - [x] Push via a PR (branch protection from Story 1.1 requires it — direct push to `main` will be rejected) — [PR #2](https://github.com/dipaneb/umbra/pull/2), open pending merge
 
 ### Review Findings
 
@@ -110,6 +110,7 @@ so that there is a real, runnable application to build every tool into.
 
 - 2026-07-22: Story drafted from epics.md Story 1.2, with the scratch-scaffold safety procedure derived from the CLAUDE.md incident report and a live `--help` check of `create-tauri-app` 4.6.2.
 - 2026-07-22: Implemented all 4 tasks. Scaffolded into scratch dir, merged into repo root, corrected window title and Rust edition, verified dev/release workflows and cold-launch timing, audited network surface. All ACs satisfied. Story moved to review. Left uncommitted at user's request pending `code-review`.
+- 2026-07-22: Code review complete (`bmad-code-review`) — 1 decision (webview CSP, set to an explicit policy) + 4 patches (index.html title, Cargo.toml MSRV, pnpm-workspace.yaml comment, Debug Log scope clarification) resolved; 3 pre-existing issues deferred to `deferred-work.md`. Re-verified dev/release builds still work after the CSP and MSRV changes. Task 5 completed: committed (`50a3733` on `feat/story-1-2-scaffold-app`) and opened [PR #2](https://github.com/dipaneb/umbra/pull/2). Story remains `review` pending merge.
 
 ## Dev Agent Record
 
