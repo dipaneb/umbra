@@ -1,0 +1,5 @@
+# esbuild (Vite's bundler dependency) ships a native postinstall script that
+# downloads its platform binary; pnpm 11's supply-chain gate blocks postinstall
+# scripts by default, so it must be explicitly approved here.
+allowBuilds:
+  esbuild: true

@@ -13,8 +13,20 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+logs
+*.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
+
+# Visual Studio
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Claude Code local overrides / runtime state (never committed)
 .claude/settings.local.json
