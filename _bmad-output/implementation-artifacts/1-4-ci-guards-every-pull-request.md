@@ -4,7 +4,7 @@ baseline_commit: 51d890f
 
 # Story 1.4: CI guards every pull request
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -23,13 +23,13 @@ so that no change merges without formatting, linting, tests, and a successful bu
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Preflight (AC: all)
-  - [ ] Confirm the working tree is clean (`git status`) before starting, per `CLAUDE.md`'s standing rule
-  - [ ] Live-verify current branch protection: `gh api repos/dipaneb/umbra/branches/main/protection` — as of this story's drafting (2026-07-23) it has `required_pull_request_reviews`, `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`, and **no `required_status_checks` block at all** (no checks are required yet — that's this story's job, Task 6)
+- [x] Task 1: Preflight (AC: all)
+  - [x] Confirm the working tree is clean (`git status`) before starting, per `CLAUDE.md`'s standing rule
+  - [x] Live-verify current branch protection: `gh api repos/dipaneb/umbra/branches/main/protection` — as of this story's drafting (2026-07-23) it has `required_pull_request_reviews`, `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`, and **no `required_status_checks` block at all** (no checks are required yet — that's this story's job, Task 6)
 
-- [ ] Task 2: Add ESLint flat config for the Vue + TypeScript frontend (AC: 1)
-  - [ ] `pnpm add -D eslint eslint-plugin-vue typescript-eslint globals` — no version pins; this repo's convention is "code owns exact pins at lockfile time" (spine Stack table)
-  - [ ] Create `eslint.config.js` at repo root (flat config — this project's `package.json` already has `"type": "module"`, so no `.mjs` extension needed). Per `eslint-plugin-vue`'s current flat-config docs (verified via Context7, 2026-07-23):
+- [x] Task 2: Add ESLint flat config for the Vue + TypeScript frontend (AC: 1)
+  - [x] `pnpm add -D eslint eslint-plugin-vue typescript-eslint globals` — no version pins; this repo's convention is "code owns exact pins at lockfile time" (spine Stack table)
+  - [x] Create `eslint.config.js` at repo root (flat config — this project's `package.json` already has `"type": "module"`, so no `.mjs` extension needed). Per `eslint-plugin-vue`'s current flat-config docs (verified via Context7, 2026-07-23):
     ```js
     import js from '@eslint/js'
     import eslintPluginVue from 'eslint-plugin-vue'
@@ -48,29 +48,29 @@ so that no change merges without formatting, linting, tests, and a successful bu
       },
     )
     ```
-  - [ ] Use `ts.configs.recommended` (non-type-checked), **not** `recommendedTypeChecked` — the type-checked variant needs `parserOptions.project` wired to `tsconfig.json` and a slower type-aware lint pass; nothing in this story's ACs asks for type-aware lint rules, and `pnpm build`'s `vue-tsc --noEmit` step already catches real type errors. Keep the lint step fast and separate from type-checking. (Deliberate scope choice — record in Dev Notes if changed.)
-  - [ ] Add `"lint": "eslint . --max-warnings 0"` to `package.json`'s `scripts` — `--max-warnings 0` makes ESLint warnings fail the check, matching clippy's `-D warnings` zero-tolerance (this story's own premise: "quality bar needs teeth")
-  - [ ] Run `pnpm lint` locally against the existing scaffold files (`src/App.vue`, `src/main.ts`) — fix anything flagged (untouched since Story 1.2, never linted before) before moving on
+  - [x] Use `ts.configs.recommended` (non-type-checked), **not** `recommendedTypeChecked` — the type-checked variant needs `parserOptions.project` wired to `tsconfig.json` and a slower type-aware lint pass; nothing in this story's ACs asks for type-aware lint rules, and `pnpm build`'s `vue-tsc --noEmit` step already catches real type errors. Keep the lint step fast and separate from type-checking. (Deliberate scope choice — record in Dev Notes if changed.)
+  - [x] Add `"lint": "eslint . --max-warnings 0"` to `package.json`'s `scripts` — `--max-warnings 0` makes ESLint warnings fail the check, matching clippy's `-D warnings` zero-tolerance (this story's own premise: "quality bar needs teeth")
+  - [x] Run `pnpm lint` locally against the existing scaffold files (`src/App.vue`, `src/main.ts`) — fix anything flagged (untouched since Story 1.2, never linted before) before moving on
 
-- [ ] Task 3: Add a working Vitest command (AC: 1)
-  - [ ] `pnpm add -D vitest`
-  - [ ] Add a `test` block to the existing `vite.config.ts` (Vitest auto-reads `vite.config.ts` when present — no separate `vitest.config.ts` needed) with `/// <reference types="vitest/config" />` at the top of the file and `test: { passWithNoTests: true }` in the config object
-  - [ ] **Why `passWithNoTests: true`:** Vitest's default (`passWithNoTests: false`, confirmed via Context7 2026-07-23) fails the run with no test files, and none exist yet — no Vue component has been built (that starts Story 1.5). Setting this now avoids inventing a placeholder test with no real assertion just to satisfy CI. Whichever story adds the first real component test (1.5+) should reconsider removing this flag.
-  - [ ] Add `"test": "vitest run"` to `package.json`'s `scripts` (non-watch, single run — correct for CI; a local-dev `"test:watch": "vitest"` script is optional and not required by any AC)
-  - [ ] Run `pnpm test` locally — confirm it exits 0 with "no test files found, passing" rather than erroring
+- [x] Task 3: Add a working Vitest command (AC: 1)
+  - [x] `pnpm add -D vitest`
+  - [x] Add a `test` block to the existing `vite.config.ts` (Vitest auto-reads `vite.config.ts` when present — no separate `vitest.config.ts` needed) with `/// <reference types="vitest/config" />` at the top of the file and `test: { passWithNoTests: true }` in the config object
+  - [x] **Why `passWithNoTests: true`:** Vitest's default (`passWithNoTests: false`, confirmed via Context7 2026-07-23) fails the run with no test files, and none exist yet — no Vue component has been built (that starts Story 1.5). Setting this now avoids inventing a placeholder test with no real assertion just to satisfy CI. Whichever story adds the first real component test (1.5+) should reconsider removing this flag.
+  - [x] Add `"test": "vitest run"` to `package.json`'s `scripts` (non-watch, single run — correct for CI; a local-dev `"test:watch": "vitest"` script is optional and not required by any AC)
+  - [x] Run `pnpm test` locally — confirm it exits 0 with "no test files found, passing" rather than erroring
 
-- [ ] Task 4: Re-verify the Rust-side commands still pass (AC: 1)
-  - [ ] `cargo fmt --check` — should be clean (no custom `rustfmt.toml` needed; no AC calls for one)
-  - [ ] `cargo clippy --workspace --all-targets -- -D warnings` — Story 1.3 verified this clean on 2026-07-23; re-run now in case anything drifted
-  - [ ] `cargo test --workspace` — must still show `umbra-core`'s 3 passing serialization tests from Story 1.3
-  - [ ] `cargo check --workspace` — clean
-  - [ ] No new Rust config is needed for these four — they already work locally; this task only re-confirms before wiring them into CI
+- [x] Task 4: Re-verify the Rust-side commands still pass (AC: 1)
+  - [x] `cargo fmt --check` — should be clean (no custom `rustfmt.toml` needed; no AC calls for one)
+  - [x] `cargo clippy --workspace --all-targets -- -D warnings` — Story 1.3 verified this clean on 2026-07-23; re-run now in case anything drifted
+  - [x] `cargo test --workspace` — must still show `umbra-core`'s 3 passing serialization tests from Story 1.3
+  - [x] `cargo check --workspace` — clean
+  - [x] No new Rust config is needed for these four — they already work locally; this task only re-confirms before wiring them into CI
 
-- [ ] Task 5: Author `.github/workflows/ci.yml` (AC: 1, 2, 3, 4)
-  - [ ] Path matches the architecture spine's Structural Seed exactly: `.github/workflows/ci.yml` — sits alongside the existing `.github/dependabot.yml`
-  - [ ] `name: CI`; trigger `on: pull_request` only — this story's ACs are all phrased "given any pull request"; a `push`-to-`main` trigger isn't required by any AC and branch protection already forbids direct pushes to `main` (Story 1.1), so there's nothing a push-trigger would catch that the PR trigger doesn't. Deliberate minimal scope — extend later if wanted, don't add it speculatively now.
-  - [ ] One job, `ci`, matrixed across **three** runners: `strategy.matrix.os: [ubuntu-latest, windows-latest, macos-latest]`, `runs-on: ${{ matrix.os }}`. This is a deliberate superset of AC3's literal "both ubuntu and windows" — see "Which runner gets the full gate" in Dev Notes for why macOS was added as a third leg rather than kept off.
-  - [ ] Step order matters — `rust-cache` keys its cache on the active `rustc` version, so it must run *after* the toolchain is installed. Steps split by whether the check compiles/executes code (and can therefore differ per OS via `#[cfg(target_os)]`, since `src-tauri` — unlike `umbra-core` — is allowed platform-specific code) or only reads source text (and structurally cannot differ per OS):
+- [x] Task 5: Author `.github/workflows/ci.yml` (AC: 1, 2, 3, 4)
+  - [x] Path matches the architecture spine's Structural Seed exactly: `.github/workflows/ci.yml` — sits alongside the existing `.github/dependabot.yml`
+  - [x] `name: CI`; trigger `on: pull_request` only — this story's ACs are all phrased "given any pull request"; a `push`-to-`main` trigger isn't required by any AC and branch protection already forbids direct pushes to `main` (Story 1.1), so there's nothing a push-trigger would catch that the PR trigger doesn't. Deliberate minimal scope — extend later if wanted, don't add it speculatively now.
+  - [x] One job, `ci`, matrixed across **three** runners: `strategy.matrix.os: [ubuntu-latest, windows-latest, macos-latest]`, `runs-on: ${{ matrix.os }}`. This is a deliberate superset of AC3's literal "both ubuntu and windows" — see "Which runner gets the full gate" in Dev Notes for why macOS was added as a third leg rather than kept off.
+  - [x] Step order matters — `rust-cache` keys its cache on the active `rustc` version, so it must run *after* the toolchain is installed. Steps split by whether the check compiles/executes code (and can therefore differ per OS via `#[cfg(target_os)]`, since `src-tauri` — unlike `umbra-core` — is allowed platform-specific code) or only reads source text (and structurally cannot differ per OS):
     1. `actions/checkout@v4`
     2. `dtolnay/rust-toolchain@stable` with `components: clippy, rustfmt` (installing `rustfmt` on all three legs even though only one runs `cargo fmt --check` is a harmless simplification — avoids a per-OS component list for negligible cost)
     3. `Swatinem/rust-cache@v2` — this is the AC3 caching mechanism. **Note:** `ort-sys`/ONNX binaries don't exist in the dependency tree yet (that lands in Epic 4 with `oar-ocr`); this step is wired now so caching is already in place and takes effect automatically the moment that dependency is added — it is inert, not broken, until then.
@@ -86,23 +86,23 @@ so that no change merges without formatting, linting, tests, and a successful bu
        - `pnpm lint`
        - `pnpm test`
        - `pnpm build` — deliberately on Linux, not macOS: Linux's case-sensitive filesystem catches an import-path casing bug (`import './Foo.vue'` against a file actually named `foo.vue`) that macOS's and Windows's default case-insensitive filesystems silently tolerate
-  - [ ] Add `"packageManager": "pnpm@11.15.1"` to `package.json` (matches the spine's verified pnpm pin) — `pnpm/action-setup@v4` autodetects the version from this field via corepack, and local installs of pnpm stay pinned to the same version CI uses
+  - [x] Add `"packageManager": "pnpm@11.15.1"` to `package.json` (matches the spine's verified pnpm pin) — `pnpm/action-setup@v4` autodetects the version from this field via corepack, and local installs of pnpm stay pinned to the same version CI uses
 
-- [ ] Task 6: Make the new checks required, without touching Story 1.1's existing protections (AC: 4)
-  - [ ] Open a real PR first and let the workflow run once — read the **exact** check names from the PR's Checks tab. Expect `CI / ci (ubuntu-latest)`, `CI / ci (windows-latest)`, and `CI / ci (macos-latest)` given `name: CI` and job id `ci`, but GitHub's context-string generation for matrix jobs can be subtly finicky — confirm all three literal strings rather than assuming.
-  - [ ] **Do not** `PUT` the full `.../branches/main/protection` endpoint with a minimal payload — Task 1's live-verified state shows Story 1.1 already set `required_pull_request_reviews`, `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`; a full `PUT` requires resending every field or it silently clobbers those. Use the scoped sub-resource instead: `PATCH /repos/dipaneb/umbra/branches/main/protection/required_status_checks` with the two confirmed check-name strings and `strict: true`.
-  - [ ] This is a live change to shared GitHub repo settings, not a file in the repo — confirm with the user before applying it, same standing caution as any action affecting shared/hard-to-reverse state.
-  - [ ] After applying, verify: open (or reuse) a PR, confirm the merge button shows the two checks as required and pending/passing.
+- [x] Task 6: Make the new checks required, without touching Story 1.1's existing protections (AC: 4)
+  - [x] Open a real PR first and let the workflow run once — read the **exact** check names from the PR's Checks tab. Expect `CI / ci (ubuntu-latest)`, `CI / ci (windows-latest)`, and `CI / ci (macos-latest)` given `name: CI` and job id `ci`, but GitHub's context-string generation for matrix jobs can be subtly finicky — confirm all three literal strings rather than assuming.
+  - [x] **Do not** `PUT` the full `.../branches/main/protection` endpoint with a minimal payload — Task 1's live-verified state shows Story 1.1 already set `required_pull_request_reviews`, `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`; a full `PUT` requires resending every field or it silently clobbers those. **Deviation (see Dev Notes):** the scoped sub-resource `PATCH .../required_status_checks` 404'd ("Required status checks not enabled") because that endpoint only updates an existing config, it cannot create one from scratch, and none existed. Fell back to the full `PUT /branches/main/protection` instead, with every currently-live field resent explicitly (confirmed with the user before applying).
+  - [x] This is a live change to shared GitHub repo settings, not a file in the repo — confirm with the user before applying it, same standing caution as any action affecting shared/hard-to-reverse state.
+  - [x] After applying, verify: open (or reuse) a PR, confirm the merge button shows the **three** checks (not two — see Dev Notes on the two-vs-three-runner leftover text) as required and pending/passing.
 
-- [ ] Task 7: Prove the gate actually blocks — and prove the 3-OS split is real, not decorative (AC: 4)
-  - [ ] On a scratch commit, introduce one deliberate failure that trips clippy's `-D warnings` (e.g. an unused variable) — push to a throwaway PR and confirm the merge button reports the check as failing and merging is blocked
-  - [ ] Additionally, if practical, wrap that same deliberate mistake in a `#[cfg(target_os = "windows")]` block inside `src-tauri` — confirm the ubuntu and macos legs stay green while only the windows leg fails. This is the concrete proof that running check/clippy/test on all three OSes is load-bearing (an OS-gated bug is genuinely invisible to the other two legs), not just cautious-sounding
-  - [ ] Discard the scratch branch/PR; this is a one-time proof, not a permanent fixture
+- [x] Task 7: Prove the gate actually blocks — and prove the 3-OS split is real, not decorative (AC: 4)
+  - [x] On a scratch commit, introduce one deliberate failure that trips clippy's `-D warnings` (e.g. an unused variable) — push to a throwaway PR and confirm the merge button reports the check as failing and merging is blocked
+  - [x] Additionally, if practical, wrap that same deliberate mistake in a `#[cfg(target_os = "windows")]` block inside `src-tauri` — confirm the ubuntu and macos legs stay green while only the windows leg fails. This is the concrete proof that running check/clippy/test on all three OSes is load-bearing (an OS-gated bug is genuinely invisible to the other two legs), not just cautious-sounding
+  - [x] Discard the scratch branch/PR; this is a one-time proof, not a permanent fixture
 
-- [ ] Task 8: Commit and open a PR
-  - [ ] Branch: `feat/story-1-4-ci-guards-every-pr` (repo convention: `feat/story-1-N-<slug>` regardless of Conventional Commit type — matches Stories 1.2/1.3's branch names)
-  - [ ] Commit as a Conventional Commit with the `ci` type (first use of this type in the repo; fits better than `feat` for CI-config-only changes): e.g. `ci(workflow): add CI pipeline gating lint, test, and build on every PR`
-  - [ ] Push via a PR against `main` (branch protection requires it)
+- [x] Task 8: Commit and open a PR
+  - [x] Branch: `feat/story-1-4-ci-guards-every-pr` (repo convention: `feat/story-1-N-<slug>` regardless of Conventional Commit type — matches Stories 1.2/1.3's branch names)
+  - [x] Commit as a Conventional Commit with the `ci` type (first use of this type in the repo; fits better than `feat` for CI-config-only changes): e.g. `ci(workflow): add CI pipeline gating lint, test, and build on every PR`
+  - [x] Push via a PR against `main` (branch protection requires it)
 
 ## Dev Notes
 
@@ -179,13 +179,43 @@ This is the final design in Tasks 5–7 below: three runners for compile/execute
 - 2026-07-23: Story drafted from epics.md Story 1.4, with the ESLint/Vitest scaffolding gap (neither existed in the repo yet, despite the AC assuming both), the ubuntu-vs-macOS "full gate" doc discrepancy, and the branch-protection sub-resource-endpoint caution flagged as critical implementation guidance not present verbatim in the source architecture docs.
 - 2026-07-23: The ubuntu-vs-macOS discrepancy was resolved with the user rather than left as a flagged ambiguity — matrix changed from two runners (ubuntu, windows) to three (ubuntu, windows, macos), full gate moved to the macOS leg to match `ARCHITECTURE.md`'s literal wording. An initial cost-based argument for staying at two runners was raised and then corrected: macOS runner cost multipliers only apply to private repos, and Umbra is public (live-verified), so cost was never a valid factor. Tasks 5–6 and the affected Dev Notes updated accordingly.
 - 2026-07-23: Second pass on the same decision, prompted by the user questioning whether every check needs all three runners. Split checks by compile/execute (`cargo check`, clippy, `cargo test` — need all three OSes, since `#[cfg(target_os)]`-gated code in `src-tauri` only compiles/runs on its own platform) vs. text-only (`cargo fmt --check`, eslint, Vitest — identical result on every OS, run once). Moved `cargo test` off the macOS-only bucket entirely (it had been bundled with the text-only checks, which would have missed an OS-gated test regression on ubuntu/windows). Moved the one-time `pnpm build` check from macOS to ubuntu specifically, since Linux's case-sensitive filesystem catches import-casing bugs macOS/Windows hide. Both architecture docs (`ARCHITECTURE-SPINE.md` AD-11, `ARCHITECTURE.md`) amended to match. Tasks 5 and 7, Dev Notes, and Testing Requirements updated accordingly.
+- 2026-07-24: Implemented. Two real gaps found and fixed beyond the story's draft (see Completion Notes): `@eslint/js` was missing from Task 2's install list; the ubuntu leg needed Tauri's Linux system deps (`apt-get install libwebkit2gtk-4.1-dev` etc.) and `strategy.fail-fast: false`, neither of which the story anticipated. Task 6's scoped `PATCH` sub-resource 404'd because `required_status_checks` didn't exist yet to update; fell back to a full `PUT` with every existing field resent, confirmed with the user first. PR #5 opened (`feat/story-1-4-ci-guards-every-pr` → `main`), all three CI legs green, branch protection applied, Task 7's blocking proof completed and scratch branch discarded. Status → review.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- PR #5: https://github.com/dipaneb/umbra/pull/5 (main implementation)
+- CI run (initial, ubuntu `glib-sys` build failure): https://github.com/dipaneb/umbra/actions/runs/30047444180
+- CI run (after Linux system-deps fix, all green): https://github.com/dipaneb/umbra/actions/runs/30047640588
+- PR #6 (Task 7 proof, closed + branch deleted after verification): windows leg failed (clippy `unused_variables`/`dead_code`), ubuntu+macos legs passed, merge blocked — https://github.com/dipaneb/umbra/actions/runs/30050141500
 
 ### Completion Notes List
 
+- **Task 2 gap:** the story's ESLint install command (`eslint eslint-plugin-vue typescript-eslint globals`) omits `@eslint/js`, which the story's own flat-config snippet imports (`import js from '@eslint/js'`). Added it as a devDependency; without it `eslint.config.js` cannot resolve `js.configs.recommended`.
+- **Task 2 pre-existing lint debt:** `pnpm lint` against the untouched Story-1.2 scaffold flagged 18 `eslint-plugin-vue` formatting warnings in `App.vue` (auto-fixed via `eslint --fix`, purely mechanical — multi-line attributes, no self-closing on void elements) and 3 `@typescript-eslint` errors on `src/vite-env.d.ts`'s `DefineComponent<{}, {}, any>` shim. That shim is Vue's own official `create-vue` boilerplate for typing `.vue` module imports — rewriting the type was out of scope and riskier than the alternative, so added a targeted `eslint.config.js` override disabling `@typescript-eslint/no-empty-object-type` and `@typescript-eslint/no-explicit-any` for that one generated file only.
+- **Task 4 pre-existing fmt debt:** `cargo fmt --check` found drift in `crates/umbra-core/src/error.rs` left over from Story 1.3 (never run through `cargo fmt --check` before this story wired it into CI). Ran `cargo fmt` to fix — mechanical formatting only, no logic change.
+- **Task 5 gap — real CI failure, not anticipated by the story:** first CI run failed on all three legs in ~30–50s (too fast to be a real compile error). Root cause: `glib-sys`'s build script failed on `ubuntu-latest` because Tauri's GTK/WebKit bindings need system libraries (`libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`, `patchelf`, `xdg-utils`) that aren't preinstalled on the default runner. Windows/macOS were merely cancelled by the matrix's default `fail-fast: true`, not independently failing. Fixed by adding an Ubuntu-only `apt-get install` step (matching Tauri's own official GitHub Actions release-workflow example, confirmed via Context7) and setting `strategy.fail-fast: false` — the latter also turned out to be load-bearing for Task 7's proof, since `fail-fast: true` would have cancelled the ubuntu/macos legs the instant the windows leg failed, defeating the demonstration that the OS split is real. Re-ran: all three legs green (macos 2m6s, ubuntu 3m20s, windows 5m44s).
+- **Task 6 deviation — the scoped `PATCH` doesn't work when starting from zero:** `PATCH .../required_status_checks` 404'd with "Required status checks not enabled." That endpoint only updates an *existing* `required_status_checks` config; since Task 1 confirmed none existed, there was nothing to patch. Fell back to the full `PUT /branches/main/protection`, built by resending every field from Task 1's live-verified GET response (`required_pull_request_reviews` with `required_approving_review_count: 0`, `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`, `restrictions: null`, all other flags `false`) plus the new `required_status_checks: {strict: true, contexts: [...]}`. Confirmed the pivot with the user (via AskUserQuestion) before applying, since it's a materially different, higher-blast-radius mechanism than the one originally approved. Applied successfully; verified via `gh api` response that every pre-existing field is unchanged.
+- **Task 6 also caught a two-vs-three-runner leftover in the story text itself:** Task 6's own instructions said "the two confirmed check-name strings," a holdover from an earlier two-runner draft — the design (and this story's own Dev Notes) settled on three runners, all required. Applied all three (`CI / ci (ubuntu-latest)`, `CI / ci (windows-latest)`, `CI / ci (macos-latest)`).
+- **Task 7 proof, exactly as designed:** scratch branch off the feature branch (needed so `ci.yml` existed in the PR's head ref — a scratch branch off `main` wouldn't have triggered the workflow at all, since `main` doesn't have the file until this PR merges), one `#[cfg(target_os = "windows")]`-gated function with an unused variable in `src-tauri/src/lib.rs`. Result: windows leg failed (`unused_variables` + `dead_code`, both `-D warnings`), ubuntu and macos legs passed clean (the gated code doesn't even exist in their compiled output), PR merge state was `BLOCKED`. Concrete proof of both AC4 (gate is real, not advisory) and that the three-OS matrix is load-bearing. Scratch PR closed and branch deleted immediately after.
+- Story-drafting artifacts (sprint-status.yaml, the two amended architecture docs, this story file) were committed separately as the first commit on the feature branch (`docs(story-1.4): ...`), since `main` is branch-protected and these predated the CI implementation work itself.
+- No new Rust unit tests or Vitest component tests were added, per the story's own Testing Requirements — there's no new tool logic and no Vue component exists yet to test.
+
 ### File List
+
+- `.github/workflows/ci.yml` (new)
+- `eslint.config.js` (new)
+- `package.json` (modified — `lint`/`test` scripts, `packageManager` field, new devDependencies: `@eslint/js`, `eslint`, `eslint-plugin-vue`, `globals`, `typescript-eslint`, `vitest`)
+- `pnpm-lock.yaml` (modified)
+- `vite.config.ts` (modified — `test` block, `passWithNoTests: true`)
+- `src/App.vue` (modified — eslint auto-fix, formatting only)
+- `crates/umbra-core/src/error.rs` (modified — `cargo fmt` fix, formatting only)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — story 1.4 status)
+- `_bmad-output/planning-artifacts/architecture/architecture-Umbra-2026-07-20/ARCHITECTURE-SPINE.md` (modified — AD-11 three-runner amendment, drafted prior to implementation)
+- `_bmad-output/planning-artifacts/architecture/architecture-Umbra-2026-07-20/ARCHITECTURE.md` (modified — AD-11 prose amendment, drafted prior to implementation)
+- `_bmad-output/implementation-artifacts/1-4-ci-guards-every-pull-request.md` (this file)
