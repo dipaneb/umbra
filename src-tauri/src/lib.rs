@@ -4,6 +4,13 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+// SCRATCH: Story 1.4 Task 7 proof-of-blocking commit — deliberate clippy
+// failure gated to windows only, to be discarded before this PR is closed.
+#[cfg(target_os = "windows")]
+fn windows_only_clippy_trap() {
+    let unused_variable = 42;
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
