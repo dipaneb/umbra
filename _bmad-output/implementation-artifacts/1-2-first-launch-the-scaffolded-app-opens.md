@@ -4,7 +4,7 @@ baseline_commit: b08f76c91cdfb45af9711605e53d6552aa0085cd
 
 # Story 1.2: First launch — the scaffolded app opens
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -111,6 +111,7 @@ so that there is a real, runnable application to build every tool into.
 - 2026-07-22: Story drafted from epics.md Story 1.2, with the scratch-scaffold safety procedure derived from the CLAUDE.md incident report and a live `--help` check of `create-tauri-app` 4.6.2.
 - 2026-07-22: Implemented all 4 tasks. Scaffolded into scratch dir, merged into repo root, corrected window title and Rust edition, verified dev/release workflows and cold-launch timing, audited network surface. All ACs satisfied. Story moved to review. Left uncommitted at user's request pending `code-review`.
 - 2026-07-22: Code review complete (`bmad-code-review`) — 1 decision (webview CSP, set to an explicit policy) + 4 patches (index.html title, Cargo.toml MSRV, pnpm-workspace.yaml comment, Debug Log scope clarification) resolved; 3 pre-existing issues deferred to `deferred-work.md`. Re-verified dev/release builds still work after the CSP and MSRV changes. Task 5 completed: committed (`50a3733` on `feat/story-1-2-scaffold-app`) and opened [PR #2](https://github.com/dipaneb/umbra/pull/2). Story remains `review` pending merge.
+- 2026-07-22: PR #2 squash-merged into `main` (`7db53b6`). Story complete.
 
 ## Dev Agent Record
 
