@@ -38,7 +38,10 @@ mod tests {
         let error = ToolError {
             code: "json-syntax".to_string(),
             message: "unexpected token".to_string(),
-            position: Some(Position::LineCol { line: 3, column: 12 }),
+            position: Some(Position::LineCol {
+                line: 3,
+                column: 12,
+            }),
             context: Some("while parsing object".to_string()),
         };
 

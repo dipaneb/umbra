@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  ci:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo check
+        run: cargo check --workspace
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - if: runner.os == 'Linux'
+        uses: pnpm/action-setup@v4
+
+      - if: runner.os == 'Linux'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - if: runner.os == 'Linux'
+        name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - if: runner.os == 'Linux'
+        name: cargo fmt --check
+        run: cargo fmt --check
+
+      - if: runner.os == 'Linux'
+        name: pnpm lint
+        run: pnpm lint
+
+      - if: runner.os == 'Linux'
+        name: pnpm test
+        run: pnpm test
+
+      - if: runner.os == 'Linux'
+        name: pnpm build
+        run: pnpm build
