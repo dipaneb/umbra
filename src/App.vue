@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppSidebar from "./shell/AppSidebar.vue";
+import CommandPalette from "./shell/CommandPalette.vue";
 </script>
 
 <template>
@@ -8,6 +9,7 @@ import AppSidebar from "./shell/AppSidebar.vue";
     <main class="main-pane">
       <RouterView />
     </main>
+    <CommandPalette />
   </div>
 </template>
 
