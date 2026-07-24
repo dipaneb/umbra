@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type Router } from "vue-router";
 import type { Pinia } from "pinia";
 import { useRegistryStore } from "../stores/registry";
+import EmptyState from "../shell/EmptyState.vue";
 
 export function createAppRouter(pinia: Pinia): Router {
   const registry = useRegistryStore(pinia);
@@ -11,7 +12,7 @@ export function createAppRouter(pinia: Pinia): Router {
       {
         path: "/",
         name: "home",
-        component: { template: "<p>Select a tool from the sidebar.</p>" },
+        component: EmptyState,
       },
       ...registry.routes,
     ],

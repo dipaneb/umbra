@@ -4,7 +4,7 @@ baseline_commit: 960a774
 
 # Story 1.5: Navigate tools via the sidebar
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -82,6 +82,19 @@ so that I can open any tool in the main pane at any time.
   - [x] Conventional Commit, `feat` type: e.g. `feat(shell): add sidebar navigation via tool registry`.
   - [x] Push via a PR against `main` (branch protection requires it, verified Story 1.1; enforced by required status checks since Story 1.4).
 
+### Review Findings
+
+- [x] [Review][Patch] Root route (`/`) fails to render in production — object-literal component uses a `template:` string but Vue's runtime-only bundler build (the default `vue` package export Vite resolves to) ships no template compiler; the built bundle contains the literal string but zero compiler functions, confirmed by building and grepping `dist/assets/index-*.js`. Vitest doesn't catch this because it resolves `vue`'s Node export condition to the full compiler-included build, so the same code renders under test and fails to render in the shipped app — this is the first screen every user sees before selecting a tool. Fixed: replaced with a real `src/shell/EmptyState.vue` SFC (compiled ahead-of-time by `@vitejs/plugin-vue`, sidestepping the runtime-compiler requirement entirely), chosen over an inline render function since this view is expected to grow (pinned favorites, animation). Added a regression test asserting `/` resolves to `EmptyState`. [src/router/index.ts:14]
+- [x] [Review][Patch] Dev Agent Record overclaims AC1/AC4 verification — Completion Notes state "All 4 ACs verified via the automated test suite," but `AppSidebar.spec.ts` never asserts the `:focus-visible` CSS rule or light-mode color rendering, and the same notes admit the manual browser check that would have covered these was never completed. Fixed: rescoped the claim to what the automated suite actually covers, and recorded that light-mode rendering and keyboard focus/navigation were confirmed via a manual browser session (2026-07-24). [_bmad-output/implementation-artifacts/1-5-navigate-tools-via-the-sidebar.md:156]
+- [x] [Review][Patch] Debug Log References / Testing Requirements understate test count — said "2 tests," but a later Change Log entry added a third router test; count was never updated. Fixed: corrected to the actual current count (4 tests, after the Patch 1 regression test was added). [_bmad-output/implementation-artifacts/1-5-navigate-tools-via-the-sidebar.md:147]
+- [x] [Review][Defer] No catch-all/404 route for unmatched paths — renders a blank `RouterView` with no feedback; currently unreachable (no address bar or deep-linking exists yet), revisit once Story 1.6's palette or future deep-linking lands. [src/router/index.ts:10-17] — deferred, pre-existing
+- [x] [Review][Defer] No uniqueness guard on registry `id`/route values — router hardcodes a reserved `"home"` route name a future tool entry could collide with; not reachable with today's single-entry registry. [src/stores/registry.ts:16] — deferred, pre-existing
+- [x] [Review][Defer] No visual indicator of the currently active tool in the sidebar (no `.router-link-active` styling) — real usability gap, but not required by any of this story's ACs. [src/shell/AppSidebar.vue:34-46] — deferred, pre-existing
+- [x] [Review][Defer] `registry.tools` exposed as a plain mutable `ref`, not wrapped in `readonly()` — nothing in this diff mutates it externally, but the AD-5 "single source of truth" comment isn't structurally enforced. [src/stores/registry.ts:16] — deferred, pre-existing
+- [x] [Review][Defer] `createWebHistory()`'s hard-reload-404 risk is documented only in this story's Dev Notes prose, not as an in-code comment — already an explicitly accepted risk per the spec, optional hygiene to point future readers here. [src/router/index.ts:9] — deferred, pre-existing
+- [x] [Review][Defer] Inconsistent Pinia access pattern — `router/index.ts` takes an explicit `pinia` instance to dodge an ordering hazard, while `AppSidebar.vue` uses the ambient `useRegistryStore()`; both work today only because component `setup()` always runs after `app.use(pinia)`. [src/router/index.ts:6 vs src/shell/AppSidebar.vue:4] — deferred, pre-existing
+- [x] [Review][Defer] No error handling for a dynamic tool-component import failure (no `router.onError`) — low reachability since all assets are bundled locally in this desktop app rather than fetched over a network. [src/router/index.ts] — deferred, pre-existing
+
 ## Dev Notes
 
 ### Architecture compliance for this story
@@ -144,7 +157,7 @@ Claude Sonnet 5 (claude-sonnet-5)
 
 ### Debug Log References
 
-- `pnpm test` — 2 test files, 2 tests, all passing.
+- `pnpm test` — 2 test files, 4 tests, all passing.
 - `pnpm lint` — clean, zero warnings (`--max-warnings 0`).
 - `pnpm build` (`vue-tsc --noEmit && vite build`) — type-checks clean; production build emits `JsonView` as its own lazy-loaded chunk (`dist/assets/JsonView-*.js`), confirming the registry → router → view wiring code-splits correctly end-to-end.
 
@@ -153,8 +166,8 @@ Claude Sonnet 5 (claude-sonnet-5)
 - **Deviation from the story's literal `main.ts` snippet, with justification:** the story's Task 1 pseudocode (`const pinia = createPinia(); createApp(App).use(pinia).use(router).mount(...)`) implies importing a ready-built `router` object into `main.ts`. Because ES modules evaluate all static imports before any code in the importing file runs, a plain `import router from "./router"` would execute `router/index.ts` — and any `useRegistryStore()` call inside it — *before* `main.ts`'s own `createPinia()` line ever runs, throwing Pinia's "no active Pinia" error. This is documented explicitly in Pinia's own docs (verified via Context7, `/vuejs/pinia`, "Accessing stores outside of setup"), which show this exact failure mode and its fix: pass the `pinia` instance explicitly into the store getter instead of relying on the ambient "active pinia". Implemented as `src/router/index.ts` exporting `createAppRouter(pinia: Pinia): Router`, called from `main.ts` as `const router = createAppRouter(pinia)` right after `const pinia = createPinia()` — functionally identical to the story's intent, just restructured to be import-order-safe.
 - **Added `jsdom` + `test.environment: "jsdom"`, not called out in the story's task list:** Task 7 requires mounting real Vue components (`AppSidebar.spec.ts`) and exercising `createWebHistory()` in the router test, both of which need real DOM/`window.history` APIs. Vitest defaults to a `node` environment with no DOM; this was a necessary prerequisite for Task 7's own explicit requirements, verified against Vitest's current docs (Context7, `/vitest-dev/vitest`).
 - Router test resolves `/tools/json` via an actual `router.push()` + `router.isReady()` (not `router.resolve()`), because Vue Router only replaces a route's lazy-loader with the resolved component during real navigation guards (`extractComponentsGuards`), confirmed via Context7 (`/vuejs/router`) — `router.resolve()` alone would leave `components.default` as the still-unresolved loader function.
-- All 4 ACs verified via the automated test suite: AC1/AC4 by `AppSidebar.spec.ts` (registry-driven `<a>` links, one per tool, labeled with the tool name); AC2/AC3 by `router/index.spec.ts` (registry entry → generated route → resolved `JsonView` component, with no second file enumerating tools).
-- **UI verification limitation:** per project convention, started the Vite dev server (`pnpm dev`, confirmed serving `200` at `localhost:1420`) intending to visually confirm sidebar navigation in a browser. The Chrome browser-automation extension did not respond after two attempts (likely a pending permission prompt), so a live visual check was not completed this session. Correctness rests on the automated test suite (real router + real Pinia, real `<a>` elements) and a clean production build rather than a manual browser pass.
+- AC2/AC3 verified via the automated test suite: `router/index.spec.ts` confirms the registry entry resolves to a route rendering `JsonView`, with no second file enumerating tools. AC4's keyboard-operability (real `<a>` elements, one per tool, labeled with the tool name) is verified by `AppSidebar.spec.ts`. AC4's visible-focus-state and keyboard-only navigation, and AC1's light-mode-first rendering, are not asserted by any automated test but were manually verified in a browser session (2026-07-24, post-review) — both work as implemented.
+- **UI verification limitation (resolved post-review):** the dev server was started (`pnpm dev`, confirmed serving `200` at `localhost:1420`) intending to visually confirm sidebar navigation in a browser, but the Chrome browser-automation extension did not respond during the original implementation session, so a live visual check wasn't completed at that time. A manual browser pass was completed afterward (2026-07-24), confirming light-mode rendering and keyboard-only focus/navigation both work correctly.
 
 ### File List
 
