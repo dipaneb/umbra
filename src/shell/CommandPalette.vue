@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useRegistryStore } from "../stores/registry";
 import { searchTools } from "./paletteSearch";
@@ -17,6 +17,10 @@ const inputRef = ref<HTMLInputElement | null>(null);
 let previouslyFocused: HTMLElement | null = null;
 
 const results = computed(() => searchTools(registry.tools, query.value));
+
+watch(results, () => {
+  activeIndex.value = 0;
+});
 
 const activeOptionId = computed(() =>
   results.value[activeIndex.value]
@@ -44,10 +48,10 @@ function moveActive(delta: number) {
     (activeIndex.value + delta + results.value.length) % results.value.length;
 }
 
-function selectActive() {
+async function selectActive() {
   const tool = results.value[activeIndex.value];
   if (tool) {
-    router.push({ name: tool.id });
+    await router.push({ name: tool.id });
     close();
   }
 }
@@ -73,6 +77,8 @@ function onKeydown(event: KeyboardEvent) {
   } else if (event.key === "Enter") {
     event.preventDefault();
     selectActive();
+  } else if (event.key === "Tab") {
+    event.preventDefault();
   }
 }
 
@@ -97,8 +103,8 @@ onUnmounted(() => {
         aria-label="Search tools"
         placeholder="Search tools by name or alias…"
         role="combobox"
-        aria-expanded="true"
-        :aria-controls="listboxId"
+        :aria-expanded="results.length > 0"
+        :aria-controls="results.length > 0 ? listboxId : undefined"
         :aria-activedescendant="activeOptionId"
       >
       <ul

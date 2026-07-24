@@ -9,6 +9,7 @@ export default ts.config(
   ...ts.configs.recommended,
   ...eslintPluginVue.configs['flat/recommended'],
   {
+    files: ['src/**'],
     languageOptions: {
       globals: globals.browser,
     },

@@ -110,4 +110,63 @@ describe("CommandPalette", () => {
 
     expect(wrapper.find("input").attributes("aria-label")).toBeTruthy();
   });
+
+  it("opens on Ctrl+K as well as Cmd+K, for cross-platform support (AC1, NFR3)", async () => {
+    const { wrapper } = await setup();
+
+    dispatch({ key: "k", ctrlKey: true });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".palette-overlay").exists()).toBe(true);
+  });
+
+  it("wraps active index in both directions with ArrowUp and ArrowDown (AC4)", async () => {
+    const { wrapper } = await setup();
+
+    dispatch({ key: "k", metaKey: true });
+    await wrapper.vm.$nextTick();
+
+    // Default empty query lists both registry entries (JSON, then Base64).
+    // ArrowUp from index 0 should wrap to the last item, not go negative.
+    dispatch({ key: "ArrowUp" });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("li.active").text()).toContain("Base64");
+
+    // ArrowDown from the last item should wrap back to the first.
+    dispatch({ key: "ArrowDown" });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("li.active").text()).toContain("JSON");
+  });
+
+  it("resets the active index when a narrowing query invalidates it (AC2, AC4)", async () => {
+    const { wrapper } = await setup();
+
+    dispatch({ key: "k", metaKey: true });
+    await wrapper.vm.$nextTick();
+
+    dispatch({ key: "ArrowDown" });
+    await wrapper.vm.$nextTick();
+
+    const input = wrapper.find("input");
+    await input.setValue("base");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find("li.active").attributes("aria-selected")).toBe("true");
+
+    dispatch({ key: "Enter" });
+    await flushPromises();
+
+    expect(wrapper.find(".palette-overlay").exists()).toBe(false);
+  });
+
+  it("removes the window keydown listener on unmount (AD-14)", async () => {
+    await setup();
+    wrapper?.unmount();
+    wrapper = undefined;
+
+    dispatch({ key: "k", metaKey: true });
+    await flushPromises();
+
+    expect(document.querySelector(".palette-overlay")).toBeNull();
+  });
 });
