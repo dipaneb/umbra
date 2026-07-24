@@ -7,7 +7,7 @@ paradigm: 'functional core, thin shell'
 scope: 'Umbra v1 app architecture (MVP + P2 + P3 seed) — full system'
 status: final
 created: '2026-07-20'
-updated: '2026-07-20'
+updated: '2026-07-23'
 binds: [FR1-FR35, NFR1-NFR7, INV-1-INV-4]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-Umbra-2026-07-19/prd.md
@@ -105,8 +105,8 @@ graph LR
 ### AD-11 — CI proves cross-platform cleanliness on every PR
 
 - **Binds:** CI
-- **Prevents:** a macOS-only dependency merging unnoticed because the only CI runner is macOS
-- **Rule:** `cargo check` + clippy run on `ubuntu-latest` and `windows-latest` as required status checks on every PR. One runner additionally runs `cargo fmt --check`, `cargo test --workspace`, `pnpm lint` (eslint), and `pnpm test` (Vitest) — the full NFR6 gate, not clippy alone. `ort-sys` ONNX Runtime binaries are cached in CI from Epic 4 onward. `[ADOPTED]`
+- **Prevents:** a platform-specific dependency or regression merging unnoticed because CI only proves the codebase against one operating system. This must not depend on which platform any given contributor happens to develop on — that is not guaranteed to stay constant over the project's lifetime.
+- **Rule:** checks split by whether they compile/execute code (and can therefore differ per OS via `#[cfg(target_os)]`) or only read source text (and structurally cannot). `cargo check`, clippy, and `cargo test --workspace` run on `ubuntu-latest`, `windows-latest`, and `macos-latest` — all three, as required status checks — because `src-tauri` (unlike `umbra-core`) is allowed OS-specific code, and only the compiling/executing checks can catch a regression gated to one platform. `cargo fmt --check`, `pnpm lint` (eslint), and `pnpm test` (Vitest) run once, on `ubuntu-latest` only — they check source text, not compiled behavior, so the result is identical on every OS and running them three times catches nothing extra. `pnpm build` (the production `vite build`) also runs once on `ubuntu-latest`, not macOS — Linux's case-sensitive filesystem catches import-path casing bugs that macOS's and Windows's default case-insensitive filesystems silently tolerate. `ort-sys` ONNX Runtime binaries are cached in CI from Epic 4 onward. `[ADOPTED]` *(Amended 2026-07-23, Story 1.4 — two revisions: first two-runner → three-runner, then split by compile-vs-text-only rather than bundling the full gate onto one OS. See that story's Dev Notes.)*
 
 ### AD-12 — Releases are tag-driven, signed, and secret-safe
 
@@ -170,7 +170,7 @@ graph LR
 | `croner` (Rust crate — not the same-named JS package) | 3.x — verified 2026-07-20, unchanged. The JS npm package `croner` is unrelated and at 10.x; do not confuse the two when reviewing dependencies. |
 | Package manager | pnpm 11.x (11.15.1 observed 2026-07-20; pure ESM, requires Node.js 22+) |
 | Scaffold tool | `create-tauri-app` — latest stable at scaffold time (4.6.2 confirmed via direct npm registry query 2026-07-20, no fixed pin by design) |
-| CI / Release | GitHub Actions + `tauri-action` (macOS build/sign/notarize runner; ubuntu + windows check-only matrix, AD-11/AD-12) |
+| CI / Release | GitHub Actions + `tauri-action` (macOS build/sign/notarize runner at release; ubuntu + windows + macOS check/clippy/test matrix on every PR, text-only checks once on ubuntu, AD-11/AD-12) |
 
 ## Structural Seed
 

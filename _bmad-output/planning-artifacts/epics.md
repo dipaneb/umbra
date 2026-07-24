@@ -311,7 +311,7 @@ So that no change merges without formatting, linting, tests, and a successful bu
 
 **Given** the cross-platform gate,
 **When** CI runs,
-**Then** `cargo check` + clippy run on both ubuntu and windows runners as required checks (AD-11, NFR3),
+**Then** `cargo check`, clippy, and `cargo test` run on ubuntu, windows, and macos runners as required checks (AD-11, NFR3),
 **And** the `ort-sys` ONNX Runtime binaries are cached so the matrix stays fast (AD-11).
 
 **Given** any of these checks fails,

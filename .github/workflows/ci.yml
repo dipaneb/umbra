@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Not using awalsh128/cache-apt-pkgs-action here (tried in an earlier commit, reverted):
+      # it bootstraps a second unpinned third-party tool (apt-fast, fetched via `curl | bash`
+      # from ilikenwf/apt-fast) on every cache miss, and a partial failure permanently poisons
+      # its GitHub Actions cache key with zero packages restored on every future run (cache
+      # keys are immutable once saved) — exactly what broke this job. Plain apt-get is what
+      # Tauri's own official CI docs use for this same step; boring but reliable.
+      - if: runner.os == 'Linux'
+        name: install Tauri Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - uses: dtolnay/rust-toolchain@3a8b2ad3ea1212417907ff0e1b3d0c4e121bef40 # 1.94.0
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: cargo check
+        run: cargo check --workspace
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - if: runner.os == 'Linux'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - if: runner.os == 'Linux'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - if: runner.os == 'Linux'
+        name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - if: runner.os == 'Linux'
+        name: cargo fmt --check
+        run: cargo fmt --check
+
+      - if: runner.os == 'Linux'
+        name: pnpm lint
+        run: pnpm lint
+
+      - if: runner.os == 'Linux'
+        name: pnpm test
+        run: pnpm test
+
+      - if: runner.os == 'Linux'
+        name: pnpm build
+        run: pnpm build

@@ -10,7 +10,7 @@ Umbra is a single desktop app, not a client/server system — there is no backen
 
 The answer is a **functional core, thin shell** split, borrowed from Gary Bernhardt's pattern:
 
-- **`crates/umbra-core`** — the functional core. Every tool's actual logic (parsing JSON, decoding a JWT, generating a UUID, running OCR) is a pure Rust function or a narrow trait, with zero I/O and zero platform dependency. It is trivially unit-testable and — because it never imports Tauri — automatically stays portable to Windows and Linux, which the PRD (NFR3) wants but can't test daily on a single-Mac setup.
+- **`crates/umbra-core`** — the functional core. Every tool's actual logic (parsing JSON, decoding a JWT, generating a UUID, running OCR) is a pure Rust function or a narrow trait, with zero I/O and zero platform dependency. It is trivially unit-testable and — because it never imports Tauri — automatically stays portable to Windows and Linux, which the PRD (NFR3) wants and which CI proves directly on every PR (AD-11) rather than relying on whichever platform a given contributor happens to develop on day to day.
 - **`src-tauri`** — the thin shell. The only place allowed to touch the outside world: reading a dropped file, writing a saved file, talking to the clipboard, checking for updates. It exposes core's functions to the frontend as async commands and does essentially no business logic of its own.
 - **`src`** (Vue 3) — the presentation shell. Renders whatever core computed, in a human's timezone and locale. Owns the small amount of state that genuinely needs to live across tools (settings, the tool registry) in two Pinia stores, nothing more.
 
@@ -29,10 +29,12 @@ Why this matters in practice: when Story 2.3 (UUID generation) and Story 4.1 (OC
 
 ## Cross-platform by construction
 
-NFR3 says macOS is primary but the codebase must stay "cross-platform-clean" — no macOS-only dependency in any core path — because Windows/Linux builds are a stated P3 goal and there's no second machine to catch a regression by hand. Two mechanisms enforce this rather than relying on discipline:
+NFR3 says macOS is primary but the codebase must stay "cross-platform-clean" — no macOS-only dependency in any core path — because Windows/Linux builds are a stated P3 goal, and the project cannot assume its own development platform stays constant over its lifetime (today it's built on macOS; that could change, or a future contributor could join on Linux or Windows). Two mechanisms enforce this rather than relying on discipline or on whoever happens to be developing at the time:
 
 1. **AD-2**: `umbra-core` may not import Tauri and may not contain a single `#[cfg(target_os)]` branch. This is the crate where an accidental macOS-only call (say, a Vision-framework OCR shortcut) would most tempt someone — and it's exactly the crate that's forbidden from having one.
-2. **AD-11**: every PR runs `cargo check` + clippy on `ubuntu-latest` and `windows-latest` as *required* status checks, alongside the full macOS-based test suite. A PR literally cannot merge if it silently broke Linux or Windows compilation — this is why the PRD's OCR decision (§9) picked an ONNX runtime over macOS's native Vision framework in the first place.
+2. **AD-11**: every PR runs `cargo check`, clippy, **and** `cargo test` on `ubuntu-latest`, `windows-latest`, **and** `macos-latest` — all three, as *required* status checks. These three compile and execute code, and Rust's `#[cfg(target_os = "...")]` means OS-gated code is only compiled (and only tested) on its own platform — `src-tauri`, unlike `umbra-core`, is allowed such code, so skipping any one OS here would leave a real gap. A PR literally cannot merge if it silently broke Linux, Windows, or macOS compilation or tests — this is why the PRD's OCR decision (§9) picked an ONNX runtime over macOS's native Vision framework in the first place.
+
+   `cargo fmt --check`, eslint, and Vitest, by contrast, only read source text — they never compile or execute anything, so their result cannot differ by OS. These run once, on `ubuntu-latest`. The production build (`pnpm build`) also runs once, and deliberately on `ubuntu-latest` rather than macOS: Linux's case-sensitive filesystem catches an import-path casing bug (`import './Foo.vue'` against a file actually named `foo.vue`) that macOS's and Windows's default case-insensitive filesystems would silently let through. *(Amended 2026-07-23, Story 1.4, in two passes: first two runners → three runners so cross-platform proof doesn't depend on any one contributor's local machine; then split by whether a check compiles/executes code or only reads it, rather than bundling everything onto one OS. See the spine's AD-11 for the binding rule.)*
 
 ## The `ToolError` contract (AD-3)
 
