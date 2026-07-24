@@ -4,7 +4,7 @@ baseline_commit: 4cf8b19
 
 # Story 1.6: Find tools instantly with ⌘K
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -88,10 +88,10 @@ so that I can open any tool without touching the mouse.
     - Dispatch `Escape` and assert the overlay closes (AC2).
   - [x] Run `pnpm test`, `pnpm lint`, and `pnpm build` locally before considering this task done, per the convention every story since 1.5 has followed.
 
-- [ ] Task 6: Commit and open a PR
-  - [ ] Branch: `feat/story-1-6-cmdk-command-palette` (repo convention: `feat/story-1-N-<slug>`, matching `feat/story-1-5-navigate-tools-sidebar`).
-  - [ ] Conventional Commit, `feat` type, `shell` scope (matching Story 1.5's `feat(shell): add sidebar navigation via tool registry`) — e.g. `feat(shell): add cmd-k command palette over the tool registry`.
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+- [x] Task 6: Commit and open a PR
+  - [x] Branch: `feat/story-1-6-cmdk-command-palette` (repo convention: `feat/story-1-N-<slug>`, matching `feat/story-1-5-navigate-tools-sidebar`).
+  - [x] Conventional Commit, `feat` type, `shell` scope (matching Story 1.5's `feat(shell): add sidebar navigation via tool registry`) — e.g. `feat(shell): add cmd-k command palette over the tool registry`.
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
 
 ## Dev Notes
 
