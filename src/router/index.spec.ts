@@ -15,4 +15,13 @@ describe("router", () => {
     expect(matched).toHaveLength(1);
     expect(matched[0].components?.default).toBe(JsonView);
   });
+
+  it("resolves the JSON tool's route by name, matching its registry id", async () => {
+    const pinia = createPinia();
+    const router = createAppRouter(pinia);
+
+    const resolved = router.resolve({ name: "json" });
+
+    expect(resolved.path).toBe("/tools/json");
+  });
 });

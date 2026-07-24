@@ -10,6 +10,7 @@ export function createAppRouter(pinia: Pinia): Router {
     routes: [
       {
         path: "/",
+        name: "home",
         component: { template: "<p>Select a tool from the sidebar.</p>" },
       },
       ...registry.routes,
