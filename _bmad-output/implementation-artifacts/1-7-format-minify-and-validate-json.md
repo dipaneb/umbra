@@ -4,7 +4,7 @@ baseline_commit: a0c3d2e
 
 # Story 1.7: Format, minify, and validate JSON
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -195,7 +195,7 @@ so that I can clean real payloads without any data leaving my machine.
 - [x] **Task 8: Commit and open a PR**
   - [x] Branch: `feat/story-1-7-json-format-minify-validate` (repo convention: `feat/story-1-N-<slug>`).
   - [x] Conventional Commit(s), `feat` type. This story spans two scopes (`core` for `umbra-core::json`, `shell`/`json` for the Tauri command + Vue view + clipboard/invoke infrastructure) — either one well-scoped commit per concern or a single commit with a scope covering the whole story is acceptable; match whichever granularity Story 1.5/1.6 used for a comparably-sized change.
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4). PR #9: https://github.com/dipaneb/umbra/pull/9
 
 ## Dev Notes
 
