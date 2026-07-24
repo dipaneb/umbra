@@ -4,7 +4,7 @@ baseline_commit: 4cf8b19
 
 # Story 1.6: Find tools instantly with ⌘K
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -92,6 +92,25 @@ so that I can open any tool without touching the mouse.
   - [x] Branch: `feat/story-1-6-cmdk-command-palette` (repo convention: `feat/story-1-N-<slug>`, matching `feat/story-1-5-navigate-tools-sidebar`).
   - [x] Conventional Commit, `feat` type, `shell` scope (matching Story 1.5's `feat(shell): add sidebar navigation via tool registry`) — e.g. `feat(shell): add cmd-k command palette over the tool registry`.
   - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+
+### Review Findings
+
+**Patch:**
+
+- [x] [Review][Patch] `activeIndex` is never reset/clamped when a narrowing query invalidates it (only reset in `open()`) — after ArrowDown then typing more characters, `results.value[activeIndex.value]` can be `undefined`: no `<li>` shows `aria-selected`/`.active` and Enter silently no-ops instead of opening the top result (AC2/AC4). [src/shell/CommandPalette.vue:19-53]
+- [x] [Review][Patch] `aria-controls="listboxId"` and `aria-expanded="true"` are set unconditionally on the input, but `<ul id="command-palette-listbox">` only renders when `results.length > 0` — on a no-match query, both attributes reference/assert a listbox that isn't in the DOM. [src/shell/CommandPalette.vue:100-101]
+- [x] [Review][Patch] `selectActive()` calls `close()` immediately after firing `router.push()` without awaiting it; `previouslyFocused` may be mid-unmount or already detached by the time `.focus()` runs, so keyboard focus doesn't land anywhere useful after selecting a tool. [src/shell/CommandPalette.vue:47-53]
+- [x] [Review][Patch] `eslint.config.js`'s `languageOptions.globals: globals.browser` block has no `files` scope, so browser globals (`window`, `document`, etc.) become valid identifiers in every linted file, including Node-context config files, not just `src/**`. [eslint.config.js:11-15]
+- [x] [Review][Patch] No test asserts the capture-phase (`true`) flag on `addEventListener` or listener cleanup/exactly-one-listener on unmount — AD-14's core invariant is enforced by convention only, not by test. [src/shell/CommandPalette.spec.ts]
+- [x] [Review][Patch] `moveActive` wraparound only exercised via a single ArrowDown from the initial state; ArrowUp and multi-step/wraparound-past-the-ends are untested. [src/shell/CommandPalette.spec.ts]
+- [x] [Review][Patch] The cross-platform `ctrlKey` branch (NFR3: Ctrl+K on Windows/Linux) is never exercised — every test dispatches `metaKey: true` only. [src/shell/CommandPalette.spec.ts]
+- [x] [Review][Patch] No focus trap: Tab is not intercepted by `onKeydown`, so it moves focus out of the palette into background content that remains tabbable/interactive while the overlay is open. [src/shell/CommandPalette.vue:55-77]
+
+**Defer:**
+
+- [x] [Review][Defer] Duplicate `tool.id` across registry entries would collide in `aria-activedescendant`/DOM ids and Vue's keyed diffing. [src/shell/CommandPalette.vue:111] — deferred, pre-existing: registry `id` uniqueness has no guard, already flagged in Story 1.5's deferred-work entry; this story is just a new consumer of `tool.id` as a DOM id, not the source of the gap.
+- [x] [Review][Defer] No `event.isComposing` guard on Enter/Escape handling — an IME composition-confirm keystroke would misfire `selectActive()`/`close()` instead of confirming text. [src/shell/CommandPalette.vue:64-76] — deferred, pre-existing: no IME/CJK input support exists anywhere in the app yet; no AC/NFR covers it for v1.
+- [x] [Review][Defer] Palette CSS is hardcoded light-only (`#fff`/`#666`/etc.), no `prefers-color-scheme` or theming variables. [src/shell/CommandPalette.vue:131-184] — deferred, pre-existing: `AppSidebar.vue` has the identical gap; no styling/theming system exists yet anywhere in the shell (spine Deferred list).
 
 ## Dev Notes
 
