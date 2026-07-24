@@ -4,7 +4,7 @@ baseline_commit: 51d890f
 
 # Story 1.4: CI guards every pull request
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -103,6 +103,15 @@ so that no change merges without formatting, linting, tests, and a successful bu
   - [x] Branch: `feat/story-1-4-ci-guards-every-pr` (repo convention: `feat/story-1-N-<slug>` regardless of Conventional Commit type — matches Stories 1.2/1.3's branch names)
   - [x] Commit as a Conventional Commit with the `ci` type (first use of this type in the repo; fits better than `feat` for CI-config-only changes): e.g. `ci(workflow): add CI pipeline gating lint, test, and build on every PR`
   - [x] Push via a PR against `main` (branch protection requires it)
+
+### Review Findings
+
+- [x] [Review][Decision→Patch] `epics.md`'s AC3 text was never updated for the 3-runner reality — `epics.md:314` still reads "cargo check + clippy run on both ubuntu and windows runners," but `.github/workflows/ci.yml` runs all three (ubuntu, windows, macos) as required checks, and both `ARCHITECTURE-SPINE.md`/`ARCHITECTURE.md` were amended to match while this planning artifact's AC text was left stale. **Resolved:** updated `epics.md:314` to read "cargo check, clippy, and cargo test run on ubuntu, windows, and macos runners."
+- [x] [Review][Decision] No settings-as-code for branch protection's `required_status_checks` — Task 6 applied it via a live `gh api PUT`, documented only as prose in Dev Notes; nothing in the repo verifies the exact context strings stay correct over time. This exact class of drift is what blocked PR #5's merge (a "CI / " prefix mismatch between the configured required contexts and the actual check-run names) until this review caught and fixed it live. **Resolved:** accept the manual `gh api` process as-is — no new tooling added; rely on future code reviews to catch drift.
+- [x] [Review][Decision→Patch] CI's Rust toolchain and runner images are unpinned — `.github/workflows/ci.yml:11,22` used `os: [ubuntu-latest, windows-latest, macos-latest]` and `dtolnay/rust-toolchain@stable`. **Resolved (revised from initial proposal):** pinned only `dtolnay/rust-toolchain@1.94.0` (was floating `@stable`, the actual reproducibility risk — a new clippy lint on a fresh stable release could break every PR with no code change). Deliberately **kept `os: [ubuntu-latest, windows-latest, macos-latest]` unpinned** — AD-11's whole purpose is proving compatibility with the OS versions users are actually running today, so freezing runner images to older `windows-2022`/`macos-15` labels would work against that goal. Dependabot's existing `github-actions` watch can propose future toolchain bumps.
+- [x] [Review][Patch] No `timeout-minutes` set on the CI job [.github/workflows/ci.yml:7] — **Fixed:** added `timeout-minutes: 20` at job level.
+- [x] [Review][Patch] No `concurrency` group / `cancel-in-progress` on the CI workflow [.github/workflows/ci.yml:1] — **Fixed:** added `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` at workflow level.
+- [x] [Review][Defer→Patch] `apt-get install` for Tauri Linux system deps was unpinned and uncached [.github/workflows/ci.yml:21-25] — **Resolved (upgraded from deferred to fixed):** replaced the raw `apt-get update && apt-get install` step with `awalsh128/cache-apt-pkgs-action@v1` (verified via its README), which caches the downloaded packages across runs. Deliberately did not version-pin the individual apt packages — that would conflict with keeping `os: [ubuntu-latest, ...]` unpinned for OS currency (a pinned Debian package version disappears from mirrors as soon as Ubuntu ships a security update). Note: Tauri's own official reference CI workflow (verified via Context7) uses the exact same unpinned/uncached raw `apt-get` pattern this diff originally shipped — this gap is ecosystem-standard, not a Tauri-specific anti-pattern.
 
 ## Dev Notes
 
