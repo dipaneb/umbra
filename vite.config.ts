@@ -32,6 +32,6 @@ export default defineConfig(async () => ({
   },
 
   test: {
-    passWithNoTests: true,
+    environment: "jsdom",
   },
 }));
