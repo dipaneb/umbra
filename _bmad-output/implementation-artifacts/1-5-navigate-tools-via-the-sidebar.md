@@ -4,7 +4,7 @@ baseline_commit: 960a774
 
 # Story 1.5: Navigate tools via the sidebar
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
