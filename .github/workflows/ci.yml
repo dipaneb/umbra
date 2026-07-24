@@ -18,12 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # Not using awalsh128/cache-apt-pkgs-action here (tried in an earlier commit, reverted):
+      # it bootstraps a second unpinned third-party tool (apt-fast, fetched via `curl | bash`
+      # from ilikenwf/apt-fast) on every cache miss, and a partial failure permanently poisons
+      # its GitHub Actions cache key with zero packages restored on every future run (cache
+      # keys are immutable once saved) — exactly what broke this job. Plain apt-get is what
+      # Tauri's own official CI docs use for this same step; boring but reliable.
       - if: runner.os == 'Linux'
         name: install Tauri Linux system dependencies
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1
-        with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
-          version: 1.0
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
 
       - uses: dtolnay/rust-toolchain@3a8b2ad3ea1212417907ff0e1b3d0c4e121bef40 # 1.94.0
         with:
