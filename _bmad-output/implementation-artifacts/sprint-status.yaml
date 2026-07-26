@@ -47,6 +47,7 @@ last_updated: 2026-07-26
 # note: story 1.5 moved to done 2026-07-24 (code review complete)
 # note: story 1.6 moved to done 2026-07-25 (code review complete)
 # note: story 1.7 moved to done 2026-07-26 (code review complete)
+# note: story 1.8 moved to done 2026-07-26 (code review complete)
 project: Umbra
 # note: story 1.4 created 2026-07-23
 # note: story 1.5 created 2026-07-24
@@ -66,7 +67,7 @@ development_status:
   1-5-navigate-tools-via-the-sidebar: done
   1-6-find-tools-instantly-with-cmd-k: done
   1-7-format-minify-and-validate-json: done
-  1-8-inspect-json-as-a-collapsible-tree: review
+  1-8-inspect-json-as-a-collapsible-tree: done
   1-9-stay-responsive-on-10mb-documents: backlog
   1-10-settings-that-remember-my-session: backlog
   epic-1-retrospective: optional

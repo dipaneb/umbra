@@ -4,7 +4,7 @@ baseline_commit: dd66d57
 
 # Story 1.8: Inspect JSON as a collapsible tree
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -262,6 +262,21 @@ so that I can explore a payload's structure without reading raw braces.
   - [x] Branch: `feat/story-1-8-<slug>` (repo convention: `feat/story-1-N-<slug>`, e.g. `feat/story-1-8-json-collapsible-tree`).
   - [x] Conventional Commit(s), `feat` type, scoped to `core`/`json` as this story's size warrants (match whichever granularity Story 1.7 used for a comparably-sized change).
   - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+
+### Review Findings
+
+- [x] [Review][Decision] Reset vs. persist tree expand/focus state across unrelated document swaps — resolved: persist (current behavior) is intentional, kept for typing continuity. Dismissed as working-as-intended.
+
+- [x] [Review][Patch] Roving tabindex is index-based, not row-identity-based [src/tools/json/JsonTree.vue:12-27] — fixed: focus is now tracked by row `path` (`focusedPath`), with `focusedIndex` derived from it via `findIndex`, so collapsing/expanding above the focused row can no longer silently move logical focus onto an unrelated row.
+- [x] [Review][Patch] Non-null assertions on virtualized row data can throw on a rows/virtualizer desync [src/tools/json/JsonTree.vue:135-158] — fixed: template now iterates a `renderRows` computed that pairs each virtual item with its row and filters out any `undefined` pairing, replacing all `rows[virtualRow.index]!` assertions.
+- [x] [Review][Patch] Large integers silently lose precision in the tree view [crates/umbra-core/src/json.rs:55; src/tools/json/jsonTreeValue.ts:9; src/tools/json/flattenJsonTree.ts:30-31] — fixed: `JsonTreeValue::Number` now carries the value's exact source text (`String`, populated via `serde_json::Number::to_string()`) instead of a native number; frontend types and `previewFor` updated to match. Regression tests added in both `json.rs` and `flattenJsonTree.spec.ts`.
+- [x] [Review][Patch] Long string preview values have no truncation or CSS containment [src/tools/json/flattenJsonTree.ts:28-29; src/tools/json/JsonTree.vue style block] — fixed: `previewFor` truncates string previews at 80 chars with an ellipsis, and `.json-tree-preview` now has `overflow`/`text-overflow`/`white-space` containment. Regression test added.
+- [x] [Review][Patch] No cleanup of the debounce timer or in-flight `json_parse` call on unmount [src/tools/json/JsonView.vue:26-42; src/shell/debounce.ts] — fixed: `debounce()` now returns a `.cancel()` handle, called from `onUnmounted` in `JsonView.vue`.
+- [x] [Review][Patch] Rapid/held arrow-key repeats can race overlapping `focusRow` calls [src/tools/json/JsonTree.vue:53-63] — fixed: each call captures an incrementing call counter; a call whose count is no longer current drops its resolution instead of stealing focus.
+- [x] [Review][Patch] `JsonTree.spec.ts` mutates `HTMLElement.prototype` globally with no restore [src/tools/json/JsonTree.spec.ts:15-22] — fixed: original property descriptors are captured before the override and restored in `afterAll`.
+
+- [x] [Review][Defer] `json_parse` has no `spawn_blocking`, now triggered on every keystroke instead of only on click [src-tauri/src/commands/json.rs:14-17] — deferred, pre-existing precedent from Story 1.7 (`json_format`/`json_minify` are the same plain `async fn` shape), explicitly and correctly scoped by this story's own Dev Notes to Story 1.9's thread-pool dispatch work.
+- [x] [Review][Defer] Deeply nested JSON risks a Rust-side stack overflow in `parse`/`From<Value>` conversion [crates/umbra-core/src/json.rs:40-76] — deferred, pre-existing since Story 1.7's `format`/`minify` (identical recursive `serde_json::from_str` call); this story's `From<serde_json::Value>` conversion adds a second recursive pass at the same depth, not a materially lower crash threshold.
 
 ## Dev Notes
 
