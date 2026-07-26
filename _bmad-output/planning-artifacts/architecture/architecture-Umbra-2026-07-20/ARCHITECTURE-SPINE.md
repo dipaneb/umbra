@@ -168,6 +168,7 @@ graph LR
 | Pinia | 4.x (4.0.2 observed 2026-07-20 — corrected; draft had guessed 2.x unverified) |
 | `oar-ocr` (Rust crate, PaddleOCR mobile det+rec English ONNX via `ort`, bundled) | 0.8.x (0.8.0 confirmed via crates.io API 2026-07-20, published 2026-07-08). The original spine's 0.8.x pin was correct — an earlier reconstruction pass "corrected" this to 0.2.x based on a stale search snippet; that correction was itself wrong and has been reverted. Pre-1.0: re-verify exact API at Epic 4 start regardless, since minors can still break. |
 | `croner` (Rust crate — not the same-named JS package) | 3.x — verified 2026-07-20, unchanged. The JS npm package `croner` is unrelated and at 10.x; do not confuse the two when reviewing dependencies. |
+| `@tanstack/vue-virtual` | 3.x (3.13.34 observed 2026-07-26, MIT, peer `vue: ^2.7.0 \|\| ^3.0.0`) — headless row virtualizer for Story 1.8's JSON tree (AD-4); renders nothing itself, not a styling/component framework choice |
 | Package manager | pnpm 11.x (11.15.1 observed 2026-07-20; pure ESM, requires Node.js 22+) |
 | Scaffold tool | `create-tauri-app` — latest stable at scaffold time (4.6.2 confirmed via direct npm registry query 2026-07-20, no fixed pin by design) |
 | CI / Release | GitHub Actions + `tauri-action` (macOS build/sign/notarize runner at release; ubuntu + windows + macOS check/clippy/test matrix on every PR, text-only checks once on ubuntu, AD-11/AD-12) |
@@ -235,7 +236,7 @@ flowchart TB
 
 - **Styling/component framework.** No UX design contract exists (confirmed 2026-07-20). Plain scoped CSS until a UX phase happens.
 - **Exact OCR ONNX model files.** Chosen and documented at Epic 4 Story 4.1.
-- **JSON tree IPC transfer strategy.** Defaults to one payload + virtualized DOM. A lazy per-node fetch fallback is introduced only as an explicit spine amendment if profiling shows FR9 cannot be met — never as a silent switch.
+- ~~**JSON tree IPC transfer strategy.**~~ Resolved by Story 1.8 (2026-07-26): one payload (`json_parse` → `JsonTreeValue`, order-preserving) + virtualized DOM via `@tanstack/vue-virtual`. A lazy per-node fetch fallback is introduced only as an explicit spine amendment if profiling shows FR9 cannot be met — never as a silent switch.
 - **FR29 — second AI feature choice** (regex-explain vs. OCR→structured). Deferred to Epic 6 Story 6.3, decided from evidence gathered in Epics 3–4.
 - **Landing page stack/hosting.** Decided at Epic 5 Story 5.4, outside this app spine's boundary.
 - **Windows/Linux packaging.** Deferred to P3 grooming; AD-11's CI matrix keeps the code check-ready meanwhile.

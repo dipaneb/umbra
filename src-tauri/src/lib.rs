@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::json::{json_format, json_minify};
+use commands::json::{json_format, json_minify, json_parse};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -13,7 +13,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .invoke_handler(tauri::generate_handler![greet, json_format, json_minify])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            json_format,
+            json_minify,
+            json_parse
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

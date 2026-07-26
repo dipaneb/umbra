@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import JsonView from "./JsonView.vue";
+import JsonTree from "./JsonTree.vue";
+import type { JsonTreeValue } from "./jsonTreeValue";
 
 const { invokeMock, readTextMock, writeTextMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -19,12 +21,21 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 
 let wrapper: VueWrapper | undefined;
 
+// Live tree-parsing is debounced (src/shell/debounce.ts). Fake timers mean a
+// test's pending debounce timeout simply never fires unless explicitly
+// advanced — real timers would instead leave it dangling into whichever test
+// runs next 200ms later, letting it steal a queued invoke mock response.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
 afterEach(() => {
   wrapper?.unmount();
   wrapper = undefined;
   invokeMock.mockReset();
   readTextMock.mockReset();
   writeTextMock.mockReset();
+  vi.useRealTimers();
 });
 
 function deferred<T>() {
@@ -269,5 +280,54 @@ describe("JsonView", () => {
     await flushPromises();
 
     expect(wrapper.find("[role='alert']").text()).toContain("(offset 42)");
+  });
+
+  it("parses live from typed input without clicking Format or Minify (AC1)", async () => {
+    const parsed: JsonTreeValue = { kind: "Object", data: [["a", { kind: "Number", data: 1 }]] };
+    invokeMock.mockResolvedValueOnce(parsed);
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("json_parse", { input: '{"a":1}' });
+    expect(wrapper.findComponent(JsonTree).props("value")).toEqual(parsed);
+  });
+
+  it("shows the tree as unavailable when the live parse rejects (AC3)", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "json-syntax",
+      message: "unexpected end of input",
+      position: { kind: "LineCol", line: 1, column: 1 },
+      context: null,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue("{");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.findComponent(JsonTree).props("value")).toBeNull();
+  });
+
+  it("ends up with a null tree, not a stale value, when input is cleared before a slow parse resolves", async () => {
+    const slow = deferred<JsonTreeValue>();
+    invokeMock.mockReturnValueOnce(slow.promise);
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await vi.advanceTimersByTimeAsync(200);
+
+    await inputTextarea(wrapper).setValue("");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.findComponent(JsonTree).props("value")).toBeNull();
+
+    slow.resolve({ kind: "Object", data: [["a", { kind: "Number", data: 1 }]] });
+    await flushPromises();
+
+    expect(wrapper.findComponent(JsonTree).props("value")).toBeNull();
   });
 });
