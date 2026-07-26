@@ -8,3 +8,12 @@ export interface ToolError {
   position: ToolErrorPosition | null;
   context: string | null;
 }
+
+export function isToolError(value: unknown): value is ToolError {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { code?: unknown }).code === "string" &&
+    typeof (value as { message?: unknown }).message === "string"
+  );
+}

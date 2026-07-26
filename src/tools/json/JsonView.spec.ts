@@ -27,12 +27,22 @@ afterEach(() => {
   writeTextMock.mockReset();
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function inputTextarea(w: VueWrapper) {
-  return w.find("[aria-label='JSON input']");
+  return w.find("#json-input");
 }
 
 function outputValue(w: VueWrapper) {
-  return (w.find("[aria-label='JSON output']").element as HTMLTextAreaElement).value;
+  return (w.find("#json-output").element as HTMLTextAreaElement).value;
 }
 
 function clickButton(w: VueWrapper, text: string) {
@@ -147,5 +157,117 @@ describe("JsonView", () => {
 
     const copyButton = wrapper.findAll("button").find((b) => b.text() === "Copy to clipboard");
     expect(copyButton?.attributes("disabled")).toBeDefined();
+  });
+
+  it("clears a stale successful output when a later Format call fails", async () => {
+    invokeMock.mockResolvedValueOnce('{\n  "a": 1\n}');
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+    expect(outputValue(wrapper)).toBe('{\n  "a": 1\n}');
+
+    invokeMock.mockRejectedValueOnce({
+      code: "json-syntax",
+      message: "unexpected end of input",
+      position: { kind: "LineCol", line: 1, column: 1 },
+      context: null,
+    });
+    await inputTextarea(wrapper).setValue("{");
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+
+    expect(outputValue(wrapper)).toBe("");
+    const copyButton = wrapper.findAll("button").find((b) => b.text() === "Copy to clipboard");
+    expect(copyButton?.attributes("disabled")).toBeDefined();
+  });
+
+  it("clears stale output and error when Paste supplies new input", async () => {
+    invokeMock.mockResolvedValueOnce('{"a":1}');
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await clickButton(wrapper, "Minify");
+    await flushPromises();
+    expect(outputValue(wrapper)).toBe('{"a":1}');
+
+    readTextMock.mockResolvedValueOnce("new pasted text");
+    await clickButton(wrapper, "Paste from clipboard");
+    await flushPromises();
+
+    expect(outputValue(wrapper)).toBe("");
+    expect(wrapper.find("[role='alert']").exists()).toBe(false);
+  });
+
+  it("surfaces a Paste rejection via the error alert instead of failing silently (AC3)", async () => {
+    readTextMock.mockRejectedValueOnce(new Error("clipboard permission denied"));
+    wrapper = mount(JsonView);
+
+    await clickButton(wrapper, "Paste from clipboard");
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").text()).toContain("clipboard permission denied");
+  });
+
+  it("surfaces a Copy rejection via the error alert instead of failing silently (AC3)", async () => {
+    invokeMock.mockResolvedValueOnce('{"a":1}');
+    writeTextMock.mockRejectedValueOnce(new Error("clipboard write failed"));
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await clickButton(wrapper, "Minify");
+    await flushPromises();
+    await clickButton(wrapper, "Copy to clipboard");
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").text()).toContain("clipboard write failed");
+  });
+
+  it("discards a stale Paste read that resolves after a newer Paste click", async () => {
+    const first = deferred<string>();
+    const second = deferred<string>();
+    readTextMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    wrapper = mount(JsonView);
+
+    const pasteButton = wrapper.findAll("button").find((b) => b.text() === "Paste from clipboard")!;
+    const firstClick = pasteButton.trigger("click");
+    const secondClick = pasteButton.trigger("click");
+
+    second.resolve("second paste");
+    await flushPromises();
+    first.resolve("first paste");
+    await flushPromises();
+    await firstClick;
+    await secondClick;
+
+    expect((inputTextarea(wrapper).element as HTMLTextAreaElement).value).toBe("second paste");
+  });
+
+  it("renders a fallback message when a rejection is not ToolError-shaped", async () => {
+    invokeMock.mockRejectedValueOnce(new Error("IPC deserialization failed"));
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").text()).toContain("IPC deserialization failed");
+  });
+
+  it("renders a ByteOffset error position instead of dropping it (AC2 position variants)", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "json-internal",
+      message: "invalid utf-8",
+      position: { kind: "ByteOffset", offset: 42 },
+      context: null,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").text()).toContain("(offset 42)");
   });
 });

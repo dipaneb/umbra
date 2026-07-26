@@ -21,10 +21,10 @@ describe("createLatestWinsRunner", () => {
     const secondResult = runLatestWins(() => second.promise);
 
     second.resolve("second");
-    await expect(secondResult).resolves.toBe("second");
+    await expect(secondResult).resolves.toEqual({ superseded: false, value: "second" });
 
     first.resolve("first");
-    await expect(firstResult).resolves.toBeUndefined();
+    await expect(firstResult).resolves.toEqual({ superseded: true });
   });
 
   it("discards a rejected stale call instead of throwing", async () => {
@@ -36,21 +36,39 @@ describe("createLatestWinsRunner", () => {
     const secondResult = runLatestWins(() => second.promise);
 
     second.resolve("second");
-    await expect(secondResult).resolves.toBe("second");
+    await expect(secondResult).resolves.toEqual({ superseded: false, value: "second" });
 
     first.reject(new Error("stale failure"));
-    await expect(firstResult).resolves.toBeUndefined();
+    await expect(firstResult).resolves.toEqual({ superseded: true });
   });
 
   it("resolves normally when a single call is not superseded", async () => {
     const runLatestWins = createLatestWinsRunner();
 
-    await expect(runLatestWins(() => Promise.resolve("only"))).resolves.toBe("only");
+    await expect(runLatestWins(() => Promise.resolve("only"))).resolves.toEqual({
+      superseded: false,
+      value: "only",
+    });
   });
 
   it("rejects normally when a single call is not superseded", async () => {
     const runLatestWins = createLatestWinsRunner();
 
     await expect(runLatestWins(() => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
+  });
+
+  it("distinguishes a superseded call from a call that legitimately resolves to undefined", async () => {
+    const runLatestWins = createLatestWinsRunner();
+    const first = deferred<undefined>();
+    const second = deferred<undefined>();
+
+    const firstResult = runLatestWins(() => first.promise);
+    const secondResult = runLatestWins(() => second.promise);
+
+    second.resolve(undefined);
+    await expect(secondResult).resolves.toEqual({ superseded: false, value: undefined });
+
+    first.resolve(undefined);
+    await expect(firstResult).resolves.toEqual({ superseded: true });
   });
 });

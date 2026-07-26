@@ -4,7 +4,7 @@ baseline_commit: a0c3d2e
 
 # Story 1.7: Format, minify, and validate JSON
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -197,6 +197,23 @@ so that I can clean real payloads without any data leaving my machine.
   - [x] Conventional Commit(s), `feat` type. This story spans two scopes (`core` for `umbra-core::json`, `shell`/`json` for the Tauri command + Vue view + clipboard/invoke infrastructure) — either one well-scoped commit per concern or a single commit with a scope covering the whole story is acceptable; match whichever granularity Story 1.5/1.6 used for a comparably-sized change.
   - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4). PR #9: https://github.com/dipaneb/umbra/pull/9
 
+### Review Findings
+
+**Decision needed:**
+
+- [x] [Review][Decision] Is a dedicated "Validate" UI action required, or is Format-as-validate sufficient? — AC2 reads "when I format or validate it," implying a distinct action, but Task 6 only specifies Format/Minify/Paste/Copy buttons; validation is currently only reachable as a side effect of clicking Format. [src/tools/json/JsonView.vue] — Resolved: Format-as-validate is intentional; clicking Format already surfaces syntax errors the same way a dedicated Validate action would. No code change needed.
+
+**Patch:**
+
+- [x] [Review][Patch] Clear output/error state on transform failure and on paste, so Copy can never send stale output that doesn't match the current input/error [src/tools/json/JsonView.vue:29-56]
+- [x] [Review][Patch] Wrap Paste/Copy clipboard calls in try/catch and surface rejections via error state instead of letting them become unhandled promise rejections [src/tools/json/JsonView.vue:50-56]
+- [x] [Review][Patch] Route Paste's `readClipboardText()` call through `runLatestWins` to close the rapid-double-click race with a stale clipboard read [src/tools/json/JsonView.vue:50-52]
+- [x] [Review][Patch] Validate the shape of a `runTransform` rejection before assigning it to `error.value`, so a non-`ToolError` rejection doesn't render a blank alert [src/tools/json/JsonView.vue:35-36]
+- [x] [Review][Patch] Replace `createLatestWinsRunner()`'s `T | undefined` return with a discriminated result so "superseded" can't be confused with a legitimate `undefined` resolution [src/shell/invoke.ts:8-16]
+- [x] [Review][Patch] Handle the `ByteOffset` variant in `errorLocation` instead of silently dropping it [src/tools/json/JsonView.vue:17-23]
+- [x] [Review][Patch] Move the hand-duplicated `JsonIndent` TS union into a shared file (matching `ToolError`'s existing pattern in `src/shell/toolError.ts`) so it doesn't silently drift from the Rust enum [src/tools/json/JsonView.vue:8]
+- [x] [Review][Patch] Remove the redundant `aria-label` duplicating each textarea's existing `<label for>` text [src/tools/json/JsonView.vue:64-70,135-140]
+
 ## Dev Notes
 
 ### Architecture compliance for this story
@@ -299,5 +316,11 @@ Claude Sonnet 5 (claude-sonnet-5)
 - `package.json` (modified — `+@tauri-apps/plugin-clipboard-manager`)
 - `pnpm-lock.yaml` (modified — lockfile update from `pnpm add`)
 - `Cargo.lock` (modified — lockfile update from new Rust dependencies)
-- `src/tools/json/JsonView.vue` (modified — placeholder replaced with real implementation; added a WHY comment on the error-clearing timing in `runTransform`)
+- `src/tools/json/JsonView.vue` (modified — placeholder replaced with real implementation; added a WHY comment on the error-clearing timing in `runTransform`; code review pass: clears stale output/error on failed transform and on Paste, wraps Paste/Copy in try/catch, routes Paste through `runLatestWins`, validates rejection shape via `isToolError`, renders `ByteOffset` positions, imports `JsonIndent` from shared location, drops redundant `aria-label`s)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — story status tracking)
+- `src/tools/json/jsonIndent.ts` (new — code review pass: `JsonIndent` extracted from `JsonView.vue` into its own shared file)
+- `src/shell/toolError.spec.ts` (new — code review pass: unit tests for the new `isToolError` type guard)
+- `src/shell/toolError.ts` (modified — code review pass: added `isToolError` type guard)
+- `src/shell/invoke.ts` (modified — code review pass: `runLatestWins` now returns a discriminated `LatestWinsResult<T>` instead of `T | undefined`, so a superseded call can't be confused with a legitimate `undefined` resolution)
+- `src/shell/invoke.spec.ts` (modified — code review pass: updated assertions for the new discriminated return shape; added a regression test for the `undefined`-resolution ambiguity)
+- `src/tools/json/JsonView.spec.ts` (modified — code review pass: updated selectors to use element `id`s instead of the removed `aria-label`s; added 8 tests covering stale-output clearing, clipboard error handling, the Paste latest-wins race, non-`ToolError` rejections, and `ByteOffset` rendering)

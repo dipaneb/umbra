@@ -3,9 +3,8 @@ import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
-import type { ToolError } from "../../shell/toolError";
-
-type JsonIndent = "two_spaces" | "four_spaces" | "tab";
+import { isToolError, type ToolError } from "../../shell/toolError";
+import type { JsonIndent } from "./jsonIndent";
 
 const input = ref("");
 const output = ref("");
@@ -19,8 +18,15 @@ const errorLocation = computed(() => {
   if (position?.kind === "LineCol") {
     return `(line ${position.line}, column ${position.column})`;
   }
+  if (position?.kind === "ByteOffset") {
+    return `(offset ${position.offset})`;
+  }
   return null;
 });
+
+function toToolError(err: unknown): ToolError {
+  return isToolError(err) ? err : { code: "unknown", message: String(err), position: null, context: null };
+}
 
 async function runTransform(task: () => Promise<string>) {
   // Cleared unconditionally, before we know if this call wins the latest-wins
@@ -29,11 +35,14 @@ async function runTransform(task: () => Promise<string>) {
   error.value = null;
   try {
     const result = await runLatestWins(task);
-    if (result !== undefined) {
-      output.value = result;
+    if (!result.superseded) {
+      output.value = result.value;
     }
   } catch (err) {
-    error.value = err as ToolError;
+    // Also clear output: a failed transform must never leave a *previous*
+    // success sitting next to the new error looking like the current result.
+    output.value = "";
+    error.value = toToolError(err);
   }
 }
 
@@ -48,11 +57,26 @@ async function onMinify() {
 }
 
 async function onPaste() {
-  input.value = await readClipboardText();
+  error.value = null;
+  try {
+    const result = await runLatestWins(() => readClipboardText());
+    if (!result.superseded) {
+      input.value = result.value;
+      // A prior Format/Minify result no longer corresponds to this new input.
+      output.value = "";
+    }
+  } catch (err) {
+    error.value = toToolError(err);
+  }
 }
 
 async function onCopy() {
-  await writeClipboardText(output.value);
+  error.value = null;
+  try {
+    await writeClipboardText(output.value);
+  } catch (err) {
+    error.value = toToolError(err);
+  }
 }
 </script>
 
@@ -65,7 +89,6 @@ async function onCopy() {
       <textarea
         id="json-input"
         v-model="input"
-        aria-label="JSON input"
         rows="10"
       />
     </div>
@@ -135,7 +158,6 @@ async function onCopy() {
       <label for="json-output">JSON output</label>
       <textarea
         id="json-output"
-        aria-label="JSON output"
         readonly
         rows="10"
         :value="output"
