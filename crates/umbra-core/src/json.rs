@@ -37,6 +37,51 @@ pub fn minify(input: &str) -> Result<String, ToolError> {
     serde_json::to_string(&value).map_err(map_internal_error)
 }
 
+pub fn parse(input: &str) -> Result<serde_json::Value, ToolError> {
+    serde_json::from_str(input).map_err(map_parse_error)
+}
+
+// Wire type for the JSON tree (Story 1.8): `serde_json::Value::Object` round-trips
+// through Tauri's IPC as a plain JS object, and the ECMAScript spec always
+// enumerates canonical-integer-string keys ("0", "1", ...) in ascending numeric
+// order before any other string keys, regardless of source order. Real payloads
+// have numeric-ID-keyed objects, so the tree needs a shape immune to that —
+// arrays fully preserve order no matter what the keys look like.
+//
+// `Number` carries the value's exact source text, not `serde_json::Number`:
+// that type round-trips through Tauri's IPC as a native JS number (float64),
+// silently losing precision for any integer beyond `Number.MAX_SAFE_INTEGER`
+// (e.g. snowflake IDs) — the same category of "native-JS-representation
+// silently mangles real payload data" pitfall motivating the `Object` shape
+// above, just for numbers instead of keys.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "kind", content = "data")]
+pub enum JsonTreeValue {
+    Null,
+    Bool(bool),
+    Number(String),
+    String(String),
+    Array(Vec<JsonTreeValue>),
+    Object(Vec<(String, JsonTreeValue)>),
+}
+
+impl From<serde_json::Value> for JsonTreeValue {
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Null => JsonTreeValue::Null,
+            serde_json::Value::Bool(b) => JsonTreeValue::Bool(b),
+            serde_json::Value::Number(n) => JsonTreeValue::Number(n.to_string()),
+            serde_json::Value::String(s) => JsonTreeValue::String(s),
+            serde_json::Value::Array(a) => {
+                JsonTreeValue::Array(a.into_iter().map(Into::into).collect())
+            }
+            serde_json::Value::Object(m) => {
+                JsonTreeValue::Object(m.into_iter().map(|(k, v)| (k, v.into())).collect())
+            }
+        }
+    }
+}
+
 fn map_parse_error(err: serde_json::Error) -> ToolError {
     ToolError {
         code: "json-syntax".to_string(),
@@ -130,5 +175,62 @@ mod tests {
     fn minify_empty_string_returns_syntax_error() {
         let err = minify("").unwrap_err();
         assert_eq!(err.code, "json-syntax");
+    }
+
+    #[test]
+    fn parse_valid_object_preserves_key_order() {
+        let result = parse(r#"{"b":1,"a":2}"#).unwrap();
+        assert_eq!(result, serde_json::json!({"b": 1, "a": 2}));
+        assert_eq!(
+            result.as_object().unwrap().keys().collect::<Vec<_>>(),
+            vec!["b", "a"]
+        );
+    }
+
+    #[test]
+    fn parse_malformed_input_returns_json_syntax_error_with_position() {
+        let err = parse(r#"{"a":}"#).unwrap_err();
+        assert_eq!(err.code, "json-syntax");
+        assert!(matches!(err.position, Some(Position::LineCol { .. })));
+        if let Some(Position::LineCol { line, column }) = err.position {
+            assert_eq!(line, 1);
+            assert_eq!(column, 6);
+        }
+    }
+
+    #[test]
+    fn parse_empty_string_returns_syntax_error() {
+        let err = parse("").unwrap_err();
+        assert_eq!(err.code, "json-syntax");
+    }
+
+    #[test]
+    fn json_tree_value_preserves_large_integer_precision_as_exact_text() {
+        // Regression: this would catch a reversion to `Number(serde_json::Number)`,
+        // which round-trips through Tauri's IPC as a native JS float64 and silently
+        // rounds any integer beyond Number.MAX_SAFE_INTEGER (e.g. snowflake IDs).
+        let value: serde_json::Value = serde_json::from_str(r#"{"id":9007199254740993}"#).unwrap();
+        let tree: JsonTreeValue = value.into();
+        assert_eq!(
+            tree,
+            JsonTreeValue::Object(vec![(
+                "id".to_string(),
+                JsonTreeValue::Number("9007199254740993".to_string())
+            )])
+        );
+    }
+
+    #[test]
+    fn json_tree_value_preserves_source_key_order_not_numeric_order() {
+        let value: serde_json::Value =
+            serde_json::from_str(r#"{"1":"b","0":"a","name":"x"}"#).unwrap();
+        let tree: JsonTreeValue = value.into();
+        let serialized = serde_json::to_value(&tree).unwrap();
+        let data = serialized.get("data").unwrap().as_array().unwrap();
+        let keys: Vec<&str> = data
+            .iter()
+            .map(|entry| entry.as_array().unwrap()[0].as_str().unwrap())
+            .collect();
+        assert_eq!(keys, vec!["1", "0", "name"]);
     }
 }
