@@ -7,6 +7,8 @@ publish = false
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
-serde_json = "1"
+# preserve_order: without it, Value's object map is a BTreeMap and silently
+# alphabetizes keys on parse. A formatter/minifier must round-trip a real
+# payload's key order unchanged, so this is a correctness requirement, not
+# a style choice — see json.rs's key-order regression tests.
+serde_json = { version = "1", features = ["preserve_order"] }
