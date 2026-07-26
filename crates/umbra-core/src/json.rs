@@ -239,7 +239,7 @@ mod tests {
     // pre-existing, out-of-scope stack-overflow risk exists in `parse`/`From<Value>`
     // on deeply nested input (deferred-work.md, Story 1.8 entry) and this fixture
     // shape avoids tripping it.
-    fn large_json_fixture(min_bytes: usize) -> String {
+    fn large_json_fixture(min_bytes: usize) -> (String, u64) {
         let mut out = String::from("[");
         let mut i: u64 = 0;
         while out.len() < min_bytes {
@@ -253,28 +253,30 @@ mod tests {
             i += 1;
         }
         out.push(']');
-        out
+        (out, i)
     }
 
     #[test]
     fn format_succeeds_on_10mb_document() {
-        let input = large_json_fixture(10 * 1024 * 1024);
+        let (input, _) = large_json_fixture(10 * 1024 * 1024);
         let result = format(&input, JsonIndent::TwoSpaces);
         assert!(result.is_ok());
     }
 
     #[test]
     fn minify_succeeds_on_10mb_document() {
-        let input = large_json_fixture(10 * 1024 * 1024);
+        let (input, _) = large_json_fixture(10 * 1024 * 1024);
         let result = minify(&input);
         assert!(result.is_ok());
     }
 
     #[test]
     fn parse_succeeds_on_10mb_document() {
-        let input = large_json_fixture(10 * 1024 * 1024);
-        let expected_len = input.matches(r#""id":"#).count();
+        // Expected length comes from the fixture's own item counter, not a
+        // re-derived textual scan, so it can't silently drift into a
+        // tautology if the fixture shape ever changes.
+        let (input, expected_len) = large_json_fixture(10 * 1024 * 1024);
         let result = parse(&input).unwrap();
-        assert_eq!(result.as_array().unwrap().len(), expected_len);
+        assert_eq!(result.as_array().unwrap().len(), expected_len as usize);
     }
 }

@@ -4,7 +4,7 @@ baseline_commit: 9ef652a
 
 # Story 1.9: Stay responsive on 10 MB documents
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -172,6 +172,19 @@ so that the tool is trustworthy on real-world payloads.
 - Live-verified this session by direct file read: `crates/umbra-core/src/json.rs`, `src-tauri/src/commands/json.rs`, `src-tauri/lib.rs`, `src-tauri/Cargo.toml` (confirmed `tokio` is `[dev-dependencies]`-only — no runtime tokio dependency exists), `src/tools/json/JsonView.vue`, `src/tools/json/JsonView.spec.ts`, `src/tools/json/JsonTree.vue`, `src/shell/invoke.ts`, `.github/workflows/ci.yml` (confirmed `cargo test --workspace` runs on all three OS runners with a 20-minute job timeout — informs the "generous, not tight" timing-assertion guidance above).
 - Context7 (`docs.rs/tauri/2.9.3` via `/websites/rs_tauri_2_9_3`, verified this session): `tauri::async_runtime::spawn_blocking<F, R>(func: F) -> JoinHandle<R>` signature; `impl<T> Future for JoinHandle<T> { type Output = crate::Result<T>; }` — confirming `.await` on a Tauri `JoinHandle` yields `tauri::Result<T>` directly (single-unwrap), unlike raw `tokio::task::JoinHandle` which needs `.await??`. This is the detail Task 1 is built around; get it wrong and either the code won't compile (using `tokio::task::JoinError` types that don't apply here) or it'll double-`?` against a type that's already flat.
 
+### Review Findings
+
+- [x] [Review][Patch] (resolved decision) Add an automated concurrency test proving `spawn_blocking` keeps the async runtime unblocked — added `spawn_blocking_lets_a_light_command_finish_promptly_alongside_a_heavy_one` [src-tauri/src/commands/json.rs]
+- [x] [Review][Patch] (resolved decision) Raise the 5-second CI timing ceiling on the three new 10MB regression tests — raised to 20s [src-tauri/src/commands/json.rs]
+
+- [x] [Review][Patch] `map_join_error`'s panic-handling branch has zero test coverage — added `map_join_error_produces_json_internal_tool_error_on_panic` [src-tauri/src/commands/json.rs]
+- [x] [Review][Patch] `parse_succeeds_on_10mb_document`'s expected-length oracle re-derives the count via a fragile substring match instead of reusing the loop counter — `large_json_fixture` now returns `(String, u64)` and the test uses the real counter [crates/umbra-core/src/json.rs]
+- [x] [Review][Patch] `map_join_error`'s message hardcodes "background task panicked" even though a `tauri::Error` join failure can also arise from non-panic causes — reworded to "background task failed" [src-tauri/src/commands/json.rs:28]
+- [x] [Review][Patch] Completion Notes' Task 1 bullet inaccurately claims "All 9 pre-existing `src-tauri` command tests pass unchanged" — corrected to "6 pre-existing... (9 total after adding the 3 new 10MB regression tests)" [this file, Completion Notes List, Task 1 bullet]
+
+- [x] [Review][Defer] Superseded `spawn_blocking` jobs are never cancelled — a stale Format/Minify/live-parse call still runs its CPU work to completion on the blocking thread pool even after the UI has already discarded its result via latest-wins. Real but pre-existing: the debounce + `createLatestWinsRunner` design was established in Stories 1.7-1.8 and this story's own Dev Notes scope AD-16 work to "verify, don't rebuild" [src/tools/json/JsonView.vue, src-tauri/src/commands/json.rs] — deferred, pre-existing
+- [x] [Review][Defer] AC1's own wording lists "format, minify, validate, or render it as a tree" as the operations that must stay responsive, but no `json_validate` command exists anywhere in the codebase (confirmed by search) — this wording is inherited unchanged from the epics/Story 1.7 phrasing and out of scope for this story's actual diff [this file, Acceptance Criteria 1] — deferred, pre-existing
+
 ## Change Log
 
 - 2026-07-27: All 6 tasks implemented on `feat/story-1-9-stay-responsive-10mb`, branched from `main` after fast-forwarding it to `origin/main` (Story 1.8's PR #10 had squash-merged since the prior session's `feat/story-1-8` branch head). `json_format`/`json_minify`/`json_parse` dispatch onto Tauri's blocking thread pool (AD-4); 10 MB fixture correctness/timing regression tests added on both sides of the IPC boundary; AD-16 latest-wins regression coverage added for realistic non-trivial payloads. AC3 profiling call made: single-payload transfer strategy holds, no spine amendment needed (outcome recorded in `ARCHITECTURE-SPINE.md`). `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (30 tests), `pnpm lint`, `pnpm test` (69 tests), and `pnpm build` all pass locally. `pnpm tauri dev` manual verification performed by the user with a real 10 MB fixture confirmed the UI stays responsive.
@@ -190,7 +203,7 @@ Claude Sonnet 5
 
 ### Completion Notes List
 
-- Task 1: `json_format`/`json_minify`/`json_parse` now dispatch their `umbra-core` calls via `tauri::async_runtime::spawn_blocking`, with a new `map_join_error` mapping a background-task panic to a `"json-internal"` `ToolError`. `umbra-core` itself unchanged (stays pure/sync). All 9 pre-existing `src-tauri` command tests pass unchanged.
+- Task 1: `json_format`/`json_minify`/`json_parse` now dispatch their `umbra-core` calls via `tauri::async_runtime::spawn_blocking`, with a new `map_join_error` mapping a background-task panic to a `"json-internal"` `ToolError`. `umbra-core` itself unchanged (stays pure/sync). All 6 pre-existing `src-tauri` command tests pass unchanged (9 total after adding the 3 new 10MB regression tests).
 - Task 2: Added a local `large_json_fixture` generator (duplicated in both test modules per Dev Notes) producing a wide, flat ≥10 MB JSON array. `umbra-core` gained 3 correctness tests (`format`/`minify`/`parse` succeed on the fixture, `parse` asserted against the exact item count). `src-tauri` gained 3 `#[tokio::test]` timing regressions with a generous 5s ceiling; see Debug Log for actual measured numbers.
 - Task 3: Added 2 regression tests to `JsonView.spec.ts` proving AD-16 latest-wins holds for realistic non-trivial payloads: two racing `Format` calls (older resolves late, newer output wins) and two racing live-parse calls with distinct non-null trees (older resolves late, newer tree wins). No production code changes were needed — `createLatestWinsRunner`/`runTreeParse` already handled both cases correctly.
 - Task 4 (AC3 profiling call): release-build Rust-side handling of the 10 MB fixture (438-537ms) plus a manual `pnpm tauri dev` check (performed by the user, since Tauri's macOS webview has no WebDriver support and this agent has no native-window automation tool) confirmed the UI stays responsive — window remained draggable/interactive throughout every operation, with no observed freeze. The **single-payload transfer strategy holds**; no AD-3 spine amendment/lazy-fetch fallback is needed. Per-operation end-to-end latency (~1-2s in the debug build) reflects real computation + IPC + render cost for a 10 MB document, not a main-thread block — AC1 requires the latter, not sub-200ms total latency. Outcome recorded in `ARCHITECTURE-SPINE.md`'s Deferred section.
