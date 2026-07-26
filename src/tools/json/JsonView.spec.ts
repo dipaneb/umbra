@@ -330,4 +330,47 @@ describe("JsonView", () => {
 
     expect(wrapper.findComponent(JsonTree).props("value")).toBeNull();
   });
+
+  it("discards a stale Format result that resolves after a newer Format call, keeping the newer output (AC2)", async () => {
+    const first = deferred<string>();
+    const second = deferred<string>();
+    invokeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    const firstClick = clickButton(wrapper, "Format");
+    const secondClick = clickButton(wrapper, "Format");
+
+    second.resolve('{\n  "a": 2\n}');
+    await flushPromises();
+    first.resolve('{\n  "a": 1\n}');
+    await flushPromises();
+    await firstClick;
+    await secondClick;
+
+    expect(outputValue(wrapper)).toBe('{\n  "a": 2\n}');
+  });
+
+  it("keeps the newer of two distinct non-null live-parsed trees when an older parse resolves late (AC2)", async () => {
+    const first = deferred<JsonTreeValue>();
+    const second = deferred<JsonTreeValue>();
+    invokeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await vi.advanceTimersByTimeAsync(200);
+    await inputTextarea(wrapper).setValue('{"b":2}');
+    await vi.advanceTimersByTimeAsync(200);
+
+    const treeA: JsonTreeValue = { kind: "Object", data: [["a", { kind: "Number", data: "1" }]] };
+    const treeB: JsonTreeValue = { kind: "Object", data: [["b", { kind: "Number", data: "2" }]] };
+
+    second.resolve(treeB);
+    await flushPromises();
+    expect(wrapper.findComponent(JsonTree).props("value")).toEqual(treeB);
+
+    first.resolve(treeA);
+    await flushPromises();
+    expect(wrapper.findComponent(JsonTree).props("value")).toEqual(treeB);
+  });
 });
