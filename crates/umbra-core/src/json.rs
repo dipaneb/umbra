@@ -233,4 +233,48 @@ mod tests {
             .collect();
         assert_eq!(keys, vec!["1", "0", "name"]);
     }
+
+    // Wide, flat array of many small same-shaped objects — the realistic shape for
+    // FR9's 10 MB bar (large arrays/log dumps). Deliberately not deeply nested: a
+    // pre-existing, out-of-scope stack-overflow risk exists in `parse`/`From<Value>`
+    // on deeply nested input (deferred-work.md, Story 1.8 entry) and this fixture
+    // shape avoids tripping it.
+    fn large_json_fixture(min_bytes: usize) -> String {
+        let mut out = String::from("[");
+        let mut i: u64 = 0;
+        while out.len() < min_bytes {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str(&format!(
+                r#"{{"id":{i},"name":"item-{i}","active":{active},"tags":["a","b","c"]}}"#,
+                active = i % 2 == 0
+            ));
+            i += 1;
+        }
+        out.push(']');
+        out
+    }
+
+    #[test]
+    fn format_succeeds_on_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let result = format(&input, JsonIndent::TwoSpaces);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn minify_succeeds_on_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let result = minify(&input);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_succeeds_on_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let expected_len = input.matches(r#""id":"#).count();
+        let result = parse(&input).unwrap();
+        assert_eq!(result.as_array().unwrap().len(), expected_len);
+    }
 }

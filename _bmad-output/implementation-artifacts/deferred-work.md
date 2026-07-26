@@ -28,5 +28,4 @@
 
 ## Deferred from: code review of 1-8-inspect-json-as-a-collapsible-tree (2026-07-26)
 
-- `json_parse` has no `spawn_blocking`, now triggered on every keystroke instead of only on click. Pre-existing precedent from Story 1.7 (`json_format`/`json_minify` are the same plain `async fn` shape) — this story's own Dev Notes already and correctly scope thread-pool dispatch to Story 1.9. [`src-tauri/src/commands/json.rs:14-17`]
 - Deeply nested JSON risks a Rust-side stack overflow in `parse`/`From<Value>` conversion. Pre-existing since Story 1.7's `format`/`minify` (identical recursive `serde_json::from_str` call); Story 1.8's `From<serde_json::Value>` conversion adds a second recursive pass at the same depth, not a materially lower crash threshold. [`crates/umbra-core/src/json.rs:40-76`]
