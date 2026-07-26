@@ -6,7 +6,7 @@
 export type JsonTreeValue =
   | { kind: "Null" }
   | { kind: "Bool"; data: boolean }
-  | { kind: "Number"; data: number }
+  | { kind: "Number"; data: string }
   | { kind: "String"; data: string }
   | { kind: "Array"; data: JsonTreeValue[] }
   | { kind: "Object"; data: Array<[string, JsonTreeValue]> };

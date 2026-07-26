@@ -47,12 +47,19 @@ pub fn parse(input: &str) -> Result<serde_json::Value, ToolError> {
 // order before any other string keys, regardless of source order. Real payloads
 // have numeric-ID-keyed objects, so the tree needs a shape immune to that —
 // arrays fully preserve order no matter what the keys look like.
+//
+// `Number` carries the value's exact source text, not `serde_json::Number`:
+// that type round-trips through Tauri's IPC as a native JS number (float64),
+// silently losing precision for any integer beyond `Number.MAX_SAFE_INTEGER`
+// (e.g. snowflake IDs) — the same category of "native-JS-representation
+// silently mangles real payload data" pitfall motivating the `Object` shape
+// above, just for numbers instead of keys.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "kind", content = "data")]
 pub enum JsonTreeValue {
     Null,
     Bool(bool),
-    Number(serde_json::Number),
+    Number(String),
     String(String),
     Array(Vec<JsonTreeValue>),
     Object(Vec<(String, JsonTreeValue)>),
@@ -63,7 +70,7 @@ impl From<serde_json::Value> for JsonTreeValue {
         match value {
             serde_json::Value::Null => JsonTreeValue::Null,
             serde_json::Value::Bool(b) => JsonTreeValue::Bool(b),
-            serde_json::Value::Number(n) => JsonTreeValue::Number(n),
+            serde_json::Value::Number(n) => JsonTreeValue::Number(n.to_string()),
             serde_json::Value::String(s) => JsonTreeValue::String(s),
             serde_json::Value::Array(a) => {
                 JsonTreeValue::Array(a.into_iter().map(Into::into).collect())
@@ -195,6 +202,22 @@ mod tests {
     fn parse_empty_string_returns_syntax_error() {
         let err = parse("").unwrap_err();
         assert_eq!(err.code, "json-syntax");
+    }
+
+    #[test]
+    fn json_tree_value_preserves_large_integer_precision_as_exact_text() {
+        // Regression: this would catch a reversion to `Number(serde_json::Number)`,
+        // which round-trips through Tauri's IPC as a native JS float64 and silently
+        // rounds any integer beyond Number.MAX_SAFE_INTEGER (e.g. snowflake IDs).
+        let value: serde_json::Value = serde_json::from_str(r#"{"id":9007199254740993}"#).unwrap();
+        let tree: JsonTreeValue = value.into();
+        assert_eq!(
+            tree,
+            JsonTreeValue::Object(vec![(
+                "id".to_string(),
+                JsonTreeValue::Number("9007199254740993".to_string())
+            )])
+        );
     }
 
     #[test]

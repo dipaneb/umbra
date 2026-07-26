@@ -11,7 +11,7 @@ function arr(data: JsonTreeValue[]): JsonTreeValue {
 }
 
 const str = (data: string): JsonTreeValue => ({ kind: "String", data });
-const num = (data: number): JsonTreeValue => ({ kind: "Number", data });
+const num = (data: string): JsonTreeValue => ({ kind: "Number", data });
 
 describe("flattenJsonTree", () => {
   it("shows the root row plus immediate children but not grandchildren when only root is expanded", () => {
@@ -67,7 +67,7 @@ describe("flattenJsonTree", () => {
     const scalars: JsonTreeValue[] = [
       { kind: "Null" },
       { kind: "Bool", data: true },
-      num(1),
+      num("1"),
       str("x"),
     ];
 
@@ -87,5 +87,19 @@ describe("flattenJsonTree", () => {
     const paths = rows.slice(1).map((r) => r.path);
 
     expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it("previews a number's exact source text unchanged, even beyond Number.MAX_SAFE_INTEGER", () => {
+    // Regression: this would catch a reversion to carrying Number as a JS
+    // `number`, which silently rounds integers beyond 2^53 (e.g. snowflake IDs).
+    const rows = flattenJsonTree(num("9007199254740993"), new Set(["[]"]));
+    expect(rows[0]?.preview).toBe("9007199254740993");
+  });
+
+  it("truncates a long string preview instead of rendering it at full width", () => {
+    const longString = "x".repeat(200);
+    const rows = flattenJsonTree(str(longString), new Set(["[]"]));
+    expect(rows[0]?.preview.length).toBeLessThan(longString.length);
+    expect(rows[0]?.preview.endsWith("…")).toBe(true);
   });
 });

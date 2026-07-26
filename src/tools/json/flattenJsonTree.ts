@@ -19,6 +19,14 @@ function containerEntries(value: JsonTreeValue): Array<[string | number, JsonTre
   return [];
 }
 
+// Long scalar previews are truncated so a single large value (a JWT, a
+// base64 blob) can't force one virtualized row far wider than the panel.
+const MAX_PREVIEW_LEN = 80;
+
+function truncate(text: string): string {
+  return text.length > MAX_PREVIEW_LEN ? `${text.slice(0, MAX_PREVIEW_LEN)}…` : text;
+}
+
 function previewFor(value: JsonTreeValue, childCount: number): string {
   switch (value.kind) {
     case "Object":
@@ -26,9 +34,11 @@ function previewFor(value: JsonTreeValue, childCount: number): string {
     case "Array":
       return childCount === 1 ? "[1 item]" : `[${childCount} items]`;
     case "String":
-      return JSON.stringify(value.data);
+      return truncate(JSON.stringify(value.data));
     case "Number":
-      return String(value.data);
+      // Exact source text (see JsonTreeValue's Number variant) — never
+      // reparsed into a JS number, so large integers stay precise.
+      return value.data;
     case "Bool":
       return String(value.data);
     case "Null":

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
@@ -42,6 +42,11 @@ const debouncedParse = debounce((value: string) => {
 }, 200);
 
 watch(input, (value) => debouncedParse(value), { immediate: true });
+
+// Otherwise a pending timer fires into this component's refs after the user
+// has navigated away to a different tool, wasting a debounce cycle and an
+// IPC round-trip that nothing will ever read.
+onUnmounted(() => debouncedParse.cancel());
 
 const errorLocation = computed(() => {
   const position = error.value?.position;

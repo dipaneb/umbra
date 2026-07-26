@@ -283,7 +283,7 @@ describe("JsonView", () => {
   });
 
   it("parses live from typed input without clicking Format or Minify (AC1)", async () => {
-    const parsed: JsonTreeValue = { kind: "Object", data: [["a", { kind: "Number", data: 1 }]] };
+    const parsed: JsonTreeValue = { kind: "Object", data: [["a", { kind: "Number", data: "1" }]] };
     invokeMock.mockResolvedValueOnce(parsed);
     wrapper = mount(JsonView);
 
@@ -325,7 +325,7 @@ describe("JsonView", () => {
 
     expect(wrapper.findComponent(JsonTree).props("value")).toBeNull();
 
-    slow.resolve({ kind: "Object", data: [["a", { kind: "Number", data: 1 }]] });
+    slow.resolve({ kind: "Object", data: [["a", { kind: "Number", data: "1" }]] });
     await flushPromises();
 
     expect(wrapper.findComponent(JsonTree).props("value")).toBeNull();

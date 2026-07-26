@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
-import { flattenJsonTree } from "./flattenJsonTree";
+import { flattenJsonTree, type JsonTreeRow } from "./flattenJsonTree";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 const props = defineProps<{ value: JsonTreeValue | null }>();
@@ -10,20 +10,22 @@ const props = defineProps<{ value: JsonTreeValue | null }>();
 // `JSON.stringify([])`, the root's path per flattenJsonTree's encoding. This
 // keeps the initial visible-row count minimal even on a huge document.
 const expanded = ref<Set<string>>(new Set(["[]"]));
-const focusedIndex = ref(0);
+// Focus is tracked by row *path*, not raw index: an index would silently
+// point at an unrelated row once anything above it collapses/expands and
+// shifts every subsequent index. `focusedIndex` (below) is derived from this.
+const focusedPath = ref<string>("[]");
 const scrollParentRef = ref<HTMLElement | null>(null);
 
 const rows = computed(() =>
   props.value === null ? [] : flattenJsonTree(props.value, expanded.value),
 );
 
-// A stale focusedIndex pointing past the end (collapsing an ancestor, or a
-// re-parse producing a smaller tree) would leave the keyboard-nav DOM lookup
-// unable to find anything to focus.
-watch(rows, (newRows) => {
-  if (focusedIndex.value >= newRows.length) {
-    focusedIndex.value = Math.max(0, newRows.length - 1);
-  }
+const focusedIndex = computed(() => {
+  const byPath = rows.value.findIndex((r) => r.path === focusedPath.value);
+  // The previously-focused path no longer exists (its subtree collapsed, or
+  // the document reshaped) — fall back to the root instead of an
+  // out-of-range or otherwise arbitrary index.
+  return byPath !== -1 ? byPath : 0;
 });
 
 const ROW_HEIGHT_PX = 24;
@@ -38,6 +40,19 @@ const virtualizer = useVirtualizer(
   })),
 );
 
+// Pairs each virtual item with its row data and drops any that resolve to
+// `undefined` — the virtualizer's own update cycle can lag one tick behind
+// `rows` shrinking (e.g. right after a collapse), so indexing `rows` directly
+// in the template is not safe to assert non-null.
+const renderRows = computed(() =>
+  virtualizer.value
+    .getVirtualItems()
+    .map((virtualRow) => ({ virtualRow, row: rows.value[virtualRow.index] }))
+    .filter((entry): entry is { virtualRow: typeof entry.virtualRow; row: JsonTreeRow } =>
+      entry.row !== undefined,
+    ),
+);
+
 function toggle(index: number) {
   const row = rows.value[index];
   if (!row || !row.expandable) return;
@@ -50,14 +65,24 @@ function toggle(index: number) {
   expanded.value = next;
 }
 
+// Tags each call so an overlapping, later call (e.g. from held-down arrow
+// keys firing faster than a prior call's `await nextTick()` resolves) always
+// wins — a stale call's resolution is dropped instead of stealing focus back.
+let focusCallCount = 0;
+
 async function focusRow(index: number) {
+  focusCallCount += 1;
+  const thisCallNumber = focusCallCount;
   const clamped = Math.max(0, Math.min(index, rows.value.length - 1));
-  focusedIndex.value = clamped;
+  const row = rows.value[clamped];
+  if (!row) return;
+  focusedPath.value = row.path;
   virtualizer.value.scrollToIndex(clamped);
   // `scrollToIndex` is not guaranteed to be reflected in the DOM
   // synchronously — the target row may not exist as an element yet on the
   // same tick.
   await nextTick();
+  if (thisCallNumber !== focusCallCount) return;
   const el = scrollParentRef.value?.querySelector<HTMLElement>(`[data-index="${clamped}"]`);
   el?.focus();
 }
@@ -126,18 +151,14 @@ async function onKeydown(event: KeyboardEvent, index: number) {
       :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }"
     >
       <div
-        v-for="virtualRow in virtualizer.getVirtualItems()"
+        v-for="{ virtualRow, row } in renderRows"
         :key="String(virtualRow.key)"
         role="treeitem"
         class="json-tree-row"
         :data-index="virtualRow.index"
         :tabindex="virtualRow.index === focusedIndex ? 0 : -1"
-        :aria-level="rows[virtualRow.index]!.depth + 1"
-        :aria-expanded="
-          rows[virtualRow.index]!.expandable
-            ? (rows[virtualRow.index]!.expanded ? 'true' : 'false')
-            : undefined
-        "
+        :aria-level="row.depth + 1"
+        :aria-expanded="row.expandable ? (row.expanded ? 'true' : 'false') : undefined"
         :style="{
           position: 'absolute',
           top: 0,
@@ -145,17 +166,17 @@ async function onKeydown(event: KeyboardEvent, index: number) {
           width: '100%',
           height: `${ROW_HEIGHT_PX}px`,
           transform: `translateY(${virtualRow.start}px)`,
-          paddingLeft: `${rows[virtualRow.index]!.depth * 1.2}em`,
+          paddingLeft: `${row.depth * 1.2}em`,
         }"
         @click="toggle(virtualRow.index)"
         @keydown="onKeydown($event, virtualRow.index)"
-        @focus="focusedIndex = virtualRow.index"
+        @focus="focusedPath = row.path"
       >
         <span
-          v-if="rows[virtualRow.index]!.keyLabel !== null"
+          v-if="row.keyLabel !== null"
           class="json-tree-key"
-        >{{ rows[virtualRow.index]!.keyLabel }}:</span>
-        <span class="json-tree-preview">{{ rows[virtualRow.index]!.preview }}</span>
+        >{{ row.keyLabel }}:</span>
+        <span class="json-tree-preview">{{ row.preview }}</span>
       </div>
     </div>
   </div>
@@ -182,5 +203,11 @@ async function onKeydown(event: KeyboardEvent, index: number) {
 
 .json-tree-key {
   color: #6b7280;
+}
+
+.json-tree-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

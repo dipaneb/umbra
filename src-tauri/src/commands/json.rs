@@ -58,7 +58,7 @@ mod tests {
         assert_eq!(
             result,
             JsonTreeValue::Object(vec![
-                ("a".to_string(), JsonTreeValue::Number(1.into())),
+                ("a".to_string(), JsonTreeValue::Number("1".to_string())),
                 (
                     "b".to_string(),
                     JsonTreeValue::Array(vec![JsonTreeValue::Bool(true), JsonTreeValue::Null])

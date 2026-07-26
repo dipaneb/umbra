@@ -12,6 +12,8 @@ globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObse
 // virtualizer reads exactly these to size the scroll container, and with a
 // measured size of 0 it short-circuits to an empty visible range regardless
 // of `overscan`. Give every element a non-zero size so rows actually render.
+const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
 Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
   configurable: true,
   value: 500,
@@ -21,7 +23,12 @@ Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
   value: 500,
 });
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+
+afterAll(() => {
+  if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
+  if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", originalOffsetWidth);
+});
 import { mount, type VueWrapper } from "@vue/test-utils";
 import { nextTick } from "vue";
 import JsonTree from "./JsonTree.vue";
