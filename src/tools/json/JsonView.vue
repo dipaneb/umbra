@@ -23,6 +23,9 @@ const errorLocation = computed(() => {
 });
 
 async function runTransform(task: () => Promise<string>) {
+  // Cleared unconditionally, before we know if this call wins the latest-wins
+  // race: whichever call turns out to be newest already cleared it when IT
+  // started, so a stale error can never linger next to a fresher result.
   error.value = null;
   try {
     const result = await runLatestWins(task);

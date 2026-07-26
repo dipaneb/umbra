@@ -27,5 +27,7 @@ serde_json = "1"
 umbra-core = { path = "../crates/umbra-core" }
 
 [dev-dependencies]
+# Only #[tokio::test] needs an executor to run async #[tauri::command] fns
+# directly in tests; the app itself uses Tauri's own runtime, not tokio.
 tokio = { version = "1", features = ["macros", "rt"] }
 

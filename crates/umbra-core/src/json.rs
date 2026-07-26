@@ -22,6 +22,8 @@ impl JsonIndent {
 pub fn format(input: &str, indent: JsonIndent) -> Result<String, ToolError> {
     let value: serde_json::Value = serde_json::from_str(input).map_err(map_parse_error)?;
     let mut buf = Vec::new();
+    // `PrettyFormatter::with_indent` (not `to_string_pretty`, which is fixed at
+    // 2 spaces) accepts an arbitrary indent byte sequence — needed for the tab case.
     let formatter = serde_json::ser::PrettyFormatter::with_indent(indent.as_bytes());
     let mut serializer = serde_json::Serializer::with_formatter(&mut buf, formatter);
     value
@@ -47,6 +49,9 @@ fn map_parse_error(err: serde_json::Error) -> ToolError {
     }
 }
 
+// Handles steps that are fallible in signature only (re-serializing a Value we
+// just parsed; the pretty-printer emitting valid UTF-8) — real failures here
+// would be exceptional, but this keeps them an Err instead of an unwrap/panic.
 fn map_internal_error<E: std::fmt::Display>(err: E) -> ToolError {
     ToolError {
         code: "json-internal".to_string(),

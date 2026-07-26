@@ -19,6 +19,10 @@ pub struct ToolError {
 }
 
 /// A location within the input that produced a `ToolError`.
+// `tag = "kind"` flattens the variant name into a sibling `"kind"` field
+// (`{"kind":"LineCol","line":1,"column":6}`) instead of serde's default
+// `{"LineCol":{...}}` wrapping — this shape is what lets the frontend model
+// it as a TS discriminated union (`src/shell/toolError.ts`) keyed on `kind`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum Position {
