@@ -4,7 +4,7 @@ baseline_commit: fbeaf20
 
 # Story 1.10: Settings that remember my session
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -93,6 +93,15 @@ so that persistence is convenient and fully transparent.
   - [ ] Branch: `feat/story-1-10-<slug>` (repo convention).
   - [ ] Conventional Commit(s), `feat` type scoped to `settings`/`shell` as size warrants.
   - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+
+### Review Findings
+
+- [x] [Review][Patch] Pending debounced `shell.windowGeometry` write is never cancelled when restore is toggled off or "Clear all" runs, so a write scheduled just before either action still lands afterward — violates AC4's "no stale values are written" and INV-3's "one action clears all persisted state" [src/stores/settings.ts:43-48,58-62,73-80] — fixed: `setRestoreEnabled(false)` and `clearAll()` both call `writeGeometry.cancel()` before returning; added regression tests covering both paths.
+- [x] [Review][Patch] Visiting the Settings route overwrites `shell.lastTool` with `"settings"`, a non-restorable route id, silently discarding the real last-used tool for the next launch's restore [src/main.ts:47-51] — fixed: `router.afterEach` now only calls `recordLastTool` when `to.name` matches a `registry.tools` id.
+- [x] [Review][Patch] `getStore()` throws unguarded on every settings call after a failed `init()` (corrupted `settings.json` / plugin IPC failure) — `router.afterEach`'s `recordLastTool` and `SettingsView`'s `refreshEntries`/toggle/clear all then produce unhandled rejections for the rest of the session, and the Settings pane misleadingly shows "Nothing is currently persisted" [src/stores/settings.ts:23-28; src/main.ts:47-51; src/shell/SettingsView.vue:8-22] — fixed: `init()` now catches a `load()`/`get()` failure and leaves `backingStore` unset; every action (`setRestoreEnabled`, `recordLastTool`, `writeGeometry`, `entries`, `clearAll`) checks `backingStore` and no-ops instead of throwing. `getStore()` removed as dead code. Added a regression test for the degrade-to-defaults path.
+- [x] [Review][Patch] Fire-and-forget settings store writes (`writeGeometry`'s `store.set().then(store.save)`, `SettingsView`'s toggle/clear handlers) have no `.catch`, so an IPC/disk rejection fails silently with no user-visible error [src/stores/settings.ts:58-62; src/shell/SettingsView.vue:14-22] — fixed: `writeGeometry` catches and logs; `onToggleRestore` and `onClearAll` in `SettingsView.vue` catch and log.
+
+Post-patch verification: `pnpm lint` and `pnpm test` (86/86 pass, 3 new regression tests) both clean.
 
 ## Dev Notes
 

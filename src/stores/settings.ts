@@ -20,45 +20,51 @@ const GEOMETRY_WRITE_DEBOUNCE_MS = 300;
 export const useSettingsStore = defineStore("settings", () => {
   let backingStore: Store | undefined;
 
-  function getStore(): Store {
-    if (!backingStore) {
-      throw new Error("settings store accessed before init() resolved");
-    }
-    return backingStore;
-  }
-
   const restoreEnabled = ref(true);
   const lastTool = ref<string | undefined>(undefined);
   const windowGeometry = ref<WindowGeometry | undefined>(undefined);
 
   async function init(): Promise<void> {
-    backingStore = await load("settings.json", { autoSave: false });
-    restoreEnabled.value =
-      (await backingStore.get<boolean>("shell.restoreSessionEnabled")) ?? true;
-    lastTool.value = await backingStore.get<string>("shell.lastTool");
-    windowGeometry.value =
-      await backingStore.get<WindowGeometry>("shell.windowGeometry");
+    try {
+      const store = await load("settings.json", { autoSave: false });
+      restoreEnabled.value =
+        (await store.get<boolean>("shell.restoreSessionEnabled")) ?? true;
+      lastTool.value = await store.get<string>("shell.lastTool");
+      windowGeometry.value =
+        await store.get<WindowGeometry>("shell.windowGeometry");
+      backingStore = store;
+    } catch (error) {
+      console.error("settings: failed to load settings.json, using defaults", error);
+    }
   }
 
   async function setRestoreEnabled(value: boolean): Promise<void> {
     restoreEnabled.value = value;
-    const store = getStore();
+    if (!value) writeGeometry.cancel();
+    if (!backingStore) return;
+    const store = backingStore;
     await store.set("shell.restoreSessionEnabled", value);
     await store.save();
   }
 
   async function recordLastTool(toolId: string): Promise<void> {
-    if (!restoreEnabled.value) return;
+    if (!restoreEnabled.value || !backingStore) return;
     lastTool.value = toolId;
-    const store = getStore();
+    const store = backingStore;
     await store.set("shell.lastTool", toolId);
     await store.save();
   }
 
   const writeGeometry = debounce((geometry: WindowGeometry) => {
+    if (!backingStore) return;
     windowGeometry.value = geometry;
-    const store = getStore();
-    void store.set("shell.windowGeometry", geometry).then(() => store.save());
+    const store = backingStore;
+    void store
+      .set("shell.windowGeometry", geometry)
+      .then(() => store.save())
+      .catch((error: unknown) => {
+        console.error("settings: failed to persist window geometry", error);
+      });
   }, GEOMETRY_WRITE_DEBOUNCE_MS);
 
   function recordWindowGeometry(geometry: WindowGeometry): void {
@@ -67,16 +73,19 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   async function entries(): Promise<[string, unknown][]> {
-    return getStore().entries();
+    if (!backingStore) return [];
+    return backingStore.entries();
   }
 
   async function clearAll(): Promise<void> {
-    const store = getStore();
-    await store.clear();
-    await store.save();
+    writeGeometry.cancel();
     restoreEnabled.value = true;
     lastTool.value = undefined;
     windowGeometry.value = undefined;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.clear();
+    await store.save();
   }
 
   return {

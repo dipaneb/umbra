@@ -45,7 +45,10 @@ async function bootstrap(): Promise<void> {
   }
 
   router.afterEach((to) => {
-    if (typeof to.name === "string") {
+    if (
+      typeof to.name === "string" &&
+      registry.tools.some((tool) => tool.id === to.name)
+    ) {
       settings.recordLastTool(to.name);
     }
   });

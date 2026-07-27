@@ -119,4 +119,44 @@ describe("useSettingsStore", () => {
     expect(fakeStore.save).toHaveBeenCalled();
     expect(settings.restoreEnabled).toBe(true);
   });
+
+  it("cancels a pending window geometry write when restore is toggled off mid-debounce", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    settings.recordWindowGeometry({ x: 1, y: 2, width: 800, height: 600 });
+    await settings.setRestoreEnabled(false);
+
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(fakeStore.set).not.toHaveBeenCalledWith(
+      "shell.windowGeometry",
+      expect.anything(),
+    );
+  });
+
+  it("cancels a pending window geometry write when clearAll runs mid-debounce", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    settings.recordWindowGeometry({ x: 1, y: 2, width: 800, height: 600 });
+    await settings.clearAll();
+    fakeStore.set.mockClear();
+
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(fakeStore.set).not.toHaveBeenCalled();
+  });
+
+  it("degrades to defaults and does not throw when settings.json fails to load", async () => {
+    load.mockRejectedValueOnce(new Error("corrupt settings.json"));
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.restoreEnabled).toBe(true);
+    await expect(settings.recordLastTool("json")).resolves.toBeUndefined();
+    await expect(settings.entries()).resolves.toEqual([]);
+    expect(fakeStore.set).not.toHaveBeenCalled();
+  });
 });

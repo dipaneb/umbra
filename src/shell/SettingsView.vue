@@ -13,12 +13,18 @@ onMounted(refreshEntries);
 
 function onToggleRestore(event: Event): void {
   const checked = (event.target as HTMLInputElement).checked;
-  void settings.setRestoreEnabled(checked);
+  void settings.setRestoreEnabled(checked).catch((error: unknown) => {
+    console.error("settings: failed to persist restore toggle", error);
+  });
 }
 
 async function onClearAll(): Promise<void> {
-  await settings.clearAll();
-  await refreshEntries();
+  try {
+    await settings.clearAll();
+    await refreshEntries();
+  } catch (error) {
+    console.error("settings: failed to clear persisted settings", error);
+  }
 }
 </script>
 

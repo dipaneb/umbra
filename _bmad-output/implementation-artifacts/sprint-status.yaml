@@ -42,6 +42,7 @@
 
 generated: 2026-07-20
 last_updated: 2026-07-27
+# note: story 1.10 moved to done 2026-07-27 (code review complete)
 # note: story 1.10 moved to in-progress 2026-07-27
 # note: story 1.8 moved to in-progress 2026-07-26
 # note: story 1.8 moved to review 2026-07-26
@@ -75,7 +76,7 @@ development_status:
   1-7-format-minify-and-validate-json: done
   1-8-inspect-json-as-a-collapsible-tree: done
   1-9-stay-responsive-on-10mb-documents: done
-  1-10-settings-that-remember-my-session: in-progress
+  1-10-settings-that-remember-my-session: done
   epic-1-retrospective: optional
 
   epic-2: backlog
