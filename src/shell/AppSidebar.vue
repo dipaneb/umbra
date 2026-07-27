@@ -17,6 +17,13 @@ const registry = useRegistryStore();
         </RouterLink>
       </li>
     </ul>
+    <RouterLink
+      to="/settings"
+      class="settings-link"
+    >
+      <span aria-hidden="true">⚙</span>
+      Settings
+    </RouterLink>
   </nav>
 </template>
 

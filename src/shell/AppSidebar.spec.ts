@@ -17,12 +17,27 @@ describe("AppSidebar", () => {
     });
 
     const registry = useRegistryStore(pinia);
-    const links = wrapper.findAll("a");
+    const links = wrapper.findAll("ul a");
 
     expect(links).toHaveLength(registry.tools.length);
     links.forEach((link, index) => {
       expect(link.element.tagName).toBe("A");
       expect(link.text()).toContain(registry.tools[index].name);
     });
+  });
+
+  it("renders a Settings link that is not sourced from the registry", async () => {
+    const pinia = createPinia();
+    const router = createAppRouter(pinia);
+    router.push("/");
+    await router.isReady();
+
+    const wrapper = mount(AppSidebar, {
+      global: { plugins: [pinia, router] },
+    });
+
+    const settingsLink = wrapper.find('a[href="/settings"]');
+    expect(settingsLink.exists()).toBe(true);
+    expect(settingsLink.text()).toContain("Settings");
   });
 });
