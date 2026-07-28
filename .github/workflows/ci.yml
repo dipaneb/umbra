@@ -7,6 +7,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     timeout-minutes: 20
@@ -17,6 +20,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       # Not using awalsh128/cache-apt-pkgs-action here (tried in an earlier commit, reverted):
       # it bootstraps a second unpinned third-party tool (apt-fast, fetched via `curl | bash`
