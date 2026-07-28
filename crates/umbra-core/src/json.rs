@@ -19,7 +19,33 @@ impl JsonIndent {
     }
 }
 
+// Upper bound on accepted input length, in bytes. `serde_json::from_str` builds
+// an owned `Value` tree (and `format`/`minify` additionally re-serialize it),
+// which is memory-proportional to input size with typical multiplier overhead
+// versus the raw string — with no cap, a hostile paste of hundreds of MB to a
+// few GB can drive uncontrolled allocation and freeze or OOM the process
+// (CWE-400). Set well above FR9's 10 MB "must handle comfortably" bar (see the
+// 10 MB fixture tests below) so it never turns away a legitimate document,
+// while still bounding the worst case.
+const MAX_INPUT_BYTES: usize = 100 * 1024 * 1024;
+
+fn check_input_size(input: &str) -> Result<(), ToolError> {
+    if input.len() > MAX_INPUT_BYTES {
+        return Err(ToolError {
+            code: "json-input-too-large".to_string(),
+            message: format!(
+                "input is {} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit",
+                input.len()
+            ),
+            position: None,
+            context: None,
+        });
+    }
+    Ok(())
+}
+
 pub fn format(input: &str, indent: JsonIndent) -> Result<String, ToolError> {
+    check_input_size(input)?;
     let value: serde_json::Value = serde_json::from_str(input).map_err(map_parse_error)?;
     let mut buf = Vec::new();
     // `PrettyFormatter::with_indent` (not `to_string_pretty`, which is fixed at
@@ -33,11 +59,13 @@ pub fn format(input: &str, indent: JsonIndent) -> Result<String, ToolError> {
 }
 
 pub fn minify(input: &str) -> Result<String, ToolError> {
+    check_input_size(input)?;
     let value: serde_json::Value = serde_json::from_str(input).map_err(map_parse_error)?;
     serde_json::to_string(&value).map_err(map_internal_error)
 }
 
 pub fn parse(input: &str) -> Result<serde_json::Value, ToolError> {
+    check_input_size(input)?;
     serde_json::from_str(input).map_err(map_parse_error)
 }
 
@@ -278,5 +306,33 @@ mod tests {
         let (input, expected_len) = large_json_fixture(10 * 1024 * 1024);
         let result = parse(&input).unwrap();
         assert_eq!(result.as_array().unwrap().len(), expected_len as usize);
+    }
+
+    // Regression guards for the CWE-400 unbounded-allocation finding: input
+    // over `MAX_INPUT_BYTES` must be rejected before it ever reaches
+    // `serde_json::from_str`, regardless of whether its content would
+    // otherwise be valid JSON.
+    #[test]
+    fn format_rejects_input_over_max_size() {
+        let input = "1".repeat(MAX_INPUT_BYTES + 1);
+        let err = format(&input, JsonIndent::TwoSpaces).unwrap_err();
+        assert_eq!(err.code, "json-input-too-large");
+        assert_eq!(err.position, None);
+    }
+
+    #[test]
+    fn minify_rejects_input_over_max_size() {
+        let input = "1".repeat(MAX_INPUT_BYTES + 1);
+        let err = minify(&input).unwrap_err();
+        assert_eq!(err.code, "json-input-too-large");
+        assert_eq!(err.position, None);
+    }
+
+    #[test]
+    fn parse_rejects_input_over_max_size() {
+        let input = "1".repeat(MAX_INPUT_BYTES + 1);
+        let err = parse(&input).unwrap_err();
+        assert_eq!(err.code, "json-input-too-large");
+        assert_eq!(err.position, None);
     }
 }
