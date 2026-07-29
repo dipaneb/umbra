@@ -56,6 +56,10 @@ const TOOLS: ToolRegistryEntry[] = [
     route: "/tools/base64",
     icon: "64",
     component: () => import("../tools/base64/Base64View.vue"),
+    // Tauri's native drop event carries only filesystem paths, never a
+    // browser-supplied MIME type — this field is presence-of-`.drop`-means-
+    // accepts, not yet used for actual filtering (no story needs it yet).
+    drop: { acceptedMimeTypes: [], handler: "base64_encode_file" },
   },
 ];
 

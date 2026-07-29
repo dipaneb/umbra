@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { isToolError, type ToolError } from "../../shell/toolError";
+import { lastDrop } from "../../shell/dropZone";
 
 type Alphabet = "standard" | "url_safe";
 
@@ -57,6 +59,30 @@ async function onDecode() {
   await runTransform(() => invoke<string>("base64_decode", { input: input.value }));
 }
 
+async function onFileDropped(path: string) {
+  await runTransform(() =>
+    invoke<string>("base64_encode_file", { path, url_safe: alphabet.value === "url_safe" }),
+  );
+}
+
+watch(lastDrop, (drop) => {
+  if (!drop || drop.toolId !== "base64") return;
+  // Single dropped file only (explicit scope limitation); one-shot signal
+  // so a stale drop can't re-trigger if this view remounts.
+  onFileDropped(drop.paths[0]);
+  lastDrop.value = null;
+});
+
+async function onDecodeToFile() {
+  const path = await save();
+  if (path === null) return; // user cancelled — not an error
+  try {
+    await invoke("base64_decode_to_file", { input: input.value, path });
+  } catch (err) {
+    error.value = toToolError(err);
+  }
+}
+
 async function onPaste() {
   error.value = null;
   try {
@@ -84,6 +110,10 @@ async function onCopy() {
 <template>
   <section>
     <h1>Base64</h1>
+
+    <p class="drop-hint">
+      Drop a file anywhere in the window to Base64-encode it.
+    </p>
 
     <div class="field">
       <label for="base64-input">Text or Base64 input</label>
@@ -135,6 +165,12 @@ async function onCopy() {
       >
         Paste from clipboard
       </button>
+      <button
+        type="button"
+        @click="onDecodeToFile"
+      >
+        Decode to file
+      </button>
     </div>
 
     <p
@@ -167,6 +203,15 @@ async function onCopy() {
 </template>
 
 <style scoped>
+.drop-hint {
+  color: #666;
+  font-size: 0.9em;
+  border: 1px dashed #ccc;
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  margin-bottom: 1em;
+}
+
 .field {
   display: flex;
   flex-direction: column;

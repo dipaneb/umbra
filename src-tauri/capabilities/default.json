@@ -9,6 +9,7 @@
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "store:default",
+    "dialog:default",
     "core:window:allow-show",
     "core:window:allow-set-position",
     "core:window:allow-set-size"

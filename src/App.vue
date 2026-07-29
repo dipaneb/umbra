@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppSidebar from "./shell/AppSidebar.vue";
 import CommandPalette from "./shell/CommandPalette.vue";
+import DropZone from "./shell/DropZone.vue";
 </script>
 
 <template>
@@ -10,6 +11,7 @@ import CommandPalette from "./shell/CommandPalette.vue";
       <RouterView />
     </main>
     <CommandPalette />
+    <DropZone />
   </div>
 </template>
 
