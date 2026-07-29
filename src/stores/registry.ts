@@ -13,22 +13,52 @@ export interface ToolRegistryEntry {
   shortcut?: string;
 }
 
+// Duplicate ids are a developer error, not a runtime condition — the array
+// below is a hardcoded literal, never user input. Assert at module load so a
+// colliding id fails loud the moment it's written, instead of surfacing
+// later as sidebar/palette/routing entries silently overwriting each other.
+export function assertUniqueToolIds(entries: ToolRegistryEntry[]): void {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const entry of entries) {
+    if (seen.has(entry.id)) {
+      duplicates.add(entry.id);
+    }
+    seen.add(entry.id);
+  }
+  if (duplicates.size > 0) {
+    throw new Error(
+      `Duplicate tool registry id(s): ${Array.from(duplicates)
+        .map((id) => `"${id}"`)
+        .join(", ")}`,
+    );
+  }
+}
+
 // AD-5: this store is the single source of truth for every tool in the app.
 // The sidebar (AppSidebar.vue), the router's route table below, and (Story
 // 1.6) the ⌘K command palette are all *generated* from `tools` — none of
 // them list tool names, routes, or components independently. To add a tool,
 // add one entry here; don't hand-edit the sidebar or the router.
+const TOOLS: ToolRegistryEntry[] = [
+  {
+    id: "json",
+    name: "JSON",
+    aliases: ["json", "formatter"],
+    route: "/tools/json",
+    icon: "{ }",
+    component: () => import("../tools/json/JsonView.vue"),
+  },
+];
+
+assertUniqueToolIds(TOOLS);
+
 export const useRegistryStore = defineStore("registry", () => {
-  const tools = ref<ToolRegistryEntry[]>([
-    {
-      id: "json",
-      name: "JSON",
-      aliases: ["json", "formatter"],
-      route: "/tools/json",
-      icon: "{ }",
-      component: () => import("../tools/json/JsonView.vue"),
-    },
-  ]);
+  // Each store instance gets its own array copy — `TOOLS` must stay a single
+  // shared reference for the module-load assertion above, but Pinia's `ref()`
+  // wraps arrays by reference rather than cloning, so reusing `TOOLS` here
+  // directly would make every store instance mutate the same underlying array.
+  const tools = ref<ToolRegistryEntry[]>([...TOOLS]);
 
   // Named routes use `tool.id` as the route name — already unique per entry,
   // so no separate field is needed. This lets other code navigate with
