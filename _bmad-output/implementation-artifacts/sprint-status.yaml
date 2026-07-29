@@ -41,7 +41,8 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-07-27
+last_updated: 2026-07-29
+# note: epic-1 retrospective completed 2026-07-29
 # note: story 1.10 moved to done 2026-07-27 (code review complete)
 # note: story 1.10 moved to in-progress 2026-07-27
 # note: story 1.8 moved to in-progress 2026-07-26
@@ -77,7 +78,7 @@ development_status:
   1-8-inspect-json-as-a-collapsible-tree: done
   1-9-stay-responsive-on-10mb-documents: done
   1-10-settings-that-remember-my-session: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: backlog
   2-1-encode-and-decode-text-base64: backlog
@@ -114,3 +115,30 @@ development_status:
   6-3-choose-the-second-ai-feature: backlog
   6-4-ship-the-chosen-ai-feature: backlog
   epic-6-retrospective: optional
+
+action_items:
+  - epic: 1
+    action: "Add a registry id-uniqueness guard before Epic 2 Story 2.1 starts"
+    owner: "Amelia/Winston"
+    status: open
+  - epic: 1
+    action: "Decide and document settings.json schema migration policy before Epic 2 Story 2.1 starts"
+    owner: "Winston"
+    status: done
+    # resolved 2026-07-29: deferred building migration machinery (schemaVersion
+    # stamp) until a story first renames/removes/retypes an existing key; no
+    # Epic 2 story does. Documented as an AD-10 amendment in ARCHITECTURE-SPINE.md's
+    # Deferred section, with the actual risk (silent key-rename data loss) and
+    # trigger condition made explicit instead of left silent.
+  - epic: 1
+    action: "Add a nesting-depth cap to the JSON parser (crates/umbra-core/src/json.rs) - unbounded-input gap not covered by F6's size cap"
+    owner: "Amelia"
+    status: open
+  - epic: 1
+    action: "Add a 'gate the write, not just the read' check to the dev/review checklist for async toggle state"
+    owner: "Amelia"
+    status: open
+  - epic: 1
+    action: "Require a manual production-build smoke check on any story touching routing/rendering before marking it done"
+    owner: "Amelia"
+    status: open
