@@ -120,7 +120,11 @@ action_items:
   - epic: 1
     action: "Add a registry id-uniqueness guard before Epic 2 Story 2.1 starts"
     owner: "Amelia/Winston"
-    status: open
+    status: done
+    # resolved 2026-07-29: assertUniqueToolIds() throws on module load per
+    # architect guidance (dev-time assertion, not a soft runtime guard).
+    # spec-tool-registry-id-uniqueness-guard.md, branch
+    # fix/tool-registry-id-uniqueness-guard.
   - epic: 1
     action: "Decide and document settings.json schema migration policy before Epic 2 Story 2.1 starts"
     owner: "Winston"
@@ -133,7 +137,12 @@ action_items:
   - epic: 1
     action: "Add a nesting-depth cap to the JSON parser (crates/umbra-core/src/json.rs) - unbounded-input gap not covered by F6's size cap"
     owner: "Amelia"
-    status: open
+    status: done
+    # resolved 2026-07-29: investigation found the premise false - serde_json
+    # already enforces a 128-level recursion limit by default (unbounded_depth
+    # feature not enabled), verified empirically. Locked in with regression
+    # tests instead of redundant depth-counting logic.
+    # spec-json-nesting-depth-cap.md, branch fix/json-parser-nesting-depth-cap.
   - epic: 1
     action: "Add a 'gate the write, not just the read' check to the dev/review checklist for async toggle state"
     owner: "Amelia"
