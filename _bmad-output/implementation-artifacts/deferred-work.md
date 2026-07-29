@@ -28,7 +28,7 @@
 
 ## Deferred from: code review of 1-8-inspect-json-as-a-collapsible-tree (2026-07-26)
 
-- Deeply nested JSON risks a Rust-side stack overflow in `parse`/`From<Value>` conversion. Pre-existing since Story 1.7's `format`/`minify` (identical recursive `serde_json::from_str` call); Story 1.8's `From<serde_json::Value>` conversion adds a second recursive pass at the same depth, not a materially lower crash threshold. [`crates/umbra-core/src/json.rs:40-76`]
+- **[Superseded 2026-07-29 — see the "spec-json-nesting-depth-cap" entry below]** Deeply nested JSON risks a Rust-side stack overflow in `parse`/`From<Value>` conversion. Pre-existing since Story 1.7's `format`/`minify` (identical recursive `serde_json::from_str` call); Story 1.8's `From<serde_json::Value>` conversion adds a second recursive pass at the same depth, not a materially lower crash threshold. [`crates/umbra-core/src/json.rs:40-76`]
 
 ## Deferred from: code review of 1-9-stay-responsive-on-10mb-documents (2026-07-27)
 

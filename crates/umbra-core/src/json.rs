@@ -29,6 +29,21 @@ impl JsonIndent {
 // while still bounding the worst case.
 const MAX_INPUT_BYTES: usize = 100 * 1024 * 1024;
 
+// Nesting-depth protection (CWE-400 adjacent: a small, deeply-nested payload
+// can exhaust the stack even when well under MAX_INPUT_BYTES). serde_json
+// enforces a 128-level recursion limit on `from_str::<Value>` by default —
+// verified directly: a 100,000-deep nested array is rejected with a clean
+// `RecursionLimitExceeded` error, not a stack overflow. This holds as long as
+// the `unbounded_depth` feature stays off (see `Cargo.toml`, which enables
+// only `preserve_order`); if a future dependency change ever turns that
+// feature on, the regression tests below stop passing — as a clean assertion
+// failure if the limit is merely raised, or as an aborted test process if
+// it's removed outright, but either way CI stops being green instead of
+// silently reopening this gap. `format`/`minify`/`parse` all build their
+// `Value` tree through this same guarded call before anything else runs, so
+// `JsonTreeValue`'s `From<Value>` conversion (below) only ever walks an
+// already-bounded tree.
+
 fn check_input_size(input: &str) -> Result<(), ToolError> {
     if input.len() > MAX_INPUT_BYTES {
         return Err(ToolError {
@@ -263,10 +278,9 @@ mod tests {
     }
 
     // Wide, flat array of many small same-shaped objects — the realistic shape for
-    // FR9's 10 MB bar (large arrays/log dumps). Deliberately not deeply nested: a
-    // pre-existing, out-of-scope stack-overflow risk exists in `parse`/`From<Value>`
-    // on deeply nested input (deferred-work.md, Story 1.8 entry) and this fixture
-    // shape avoids tripping it.
+    // FR9's 10 MB bar (large arrays/log dumps), and deliberately not deeply nested
+    // so it stays well clear of the 128-level recursion limit exercised by the
+    // `*_rejects_deeply_nested_input` tests below.
     fn large_json_fixture(min_bytes: usize) -> (String, u64) {
         let mut out = String::from("[");
         let mut i: u64 = 0;
@@ -334,5 +348,50 @@ mod tests {
         let err = parse(&input).unwrap_err();
         assert_eq!(err.code, "json-input-too-large");
         assert_eq!(err.position, None);
+    }
+
+    // Regression guards for the nesting-depth gap flagged in the Epic 1 retro:
+    // a small, deeply-nested payload must be rejected cleanly, not overflow
+    // the stack. `depth` produces syntactically well-formed JSON (matched
+    // brackets around a single scalar), so any error on it is attributable
+    // to depth alone — no need to inspect the message text, which would
+    // couple these tests to serde_json's exact wording.
+    fn deeply_nested_json_fixture(depth: usize) -> String {
+        let mut out = String::with_capacity(depth * 2 + 1);
+        out.extend(std::iter::repeat_n('[', depth));
+        out.push('1');
+        out.extend(std::iter::repeat_n(']', depth));
+        out
+    }
+
+    #[test]
+    fn parse_rejects_deeply_nested_input() {
+        let input = deeply_nested_json_fixture(100_000);
+        let err = parse(&input).unwrap_err();
+        assert_eq!(err.code, "json-syntax");
+    }
+
+    #[test]
+    fn format_rejects_deeply_nested_input() {
+        let input = deeply_nested_json_fixture(100_000);
+        let err = format(&input, JsonIndent::TwoSpaces).unwrap_err();
+        assert_eq!(err.code, "json-syntax");
+    }
+
+    #[test]
+    fn minify_rejects_deeply_nested_input() {
+        let input = deeply_nested_json_fixture(100_000);
+        let err = minify(&input).unwrap_err();
+        assert_eq!(err.code, "json-syntax");
+    }
+
+    // Boundary check on the legitimate side: a document nested well within
+    // the 128-level limit must still succeed. Without this, a future
+    // serde_json release that *lowered* the limit (rejecting real,
+    // previously-valid documents) would pass every test above undetected.
+    #[test]
+    fn parse_succeeds_on_moderately_nested_input() {
+        let input = deeply_nested_json_fixture(50);
+        assert!(parse(&input).is_ok());
     }
 }
