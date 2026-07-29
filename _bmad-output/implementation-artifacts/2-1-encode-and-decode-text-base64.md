@@ -59,10 +59,10 @@ so that I can handle tokens, payloads, and data URIs I could never paste into a 
   - [x] `pnpm lint`, `pnpm test`, `pnpm build`, `vue-tsc --noEmit`.
   - [ ] Manual `pnpm tauri dev` check (same precedent as every prior story back to 1.7): encode text with both alphabets, decode valid Base64 of both alphabets, decode invalid Base64 and confirm the inline error (with offset) renders, paste-from-clipboard and copy-to-clipboard round-trip, confirm the tool appears in the sidebar and is found via `⌘K` searching both "base64" and "b64". **Deferred to the user per this session's explicit decision** — the dev agent has no way to visually drive a native Tauri/WKWebView window (only Chrome-tab browser automation is available), so this check could not be performed by the agent. The user opted to run it themselves before/during PR review rather than have the agent launch the window blind.
 
-- [ ] **Task 6: Commit and open a PR**
-  - [ ] Branch: `feat/story-2-1-<slug>` (repo convention, e.g. `feat/story-2-1-base64-text`).
-  - [ ] Conventional Commit(s), `feat` type scoped to `base64`.
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+- [x] **Task 6: Commit and open a PR**
+  - [x] Branch: `feat/story-2-1-<slug>` (repo convention, e.g. `feat/story-2-1-base64-text`).
+  - [x] Conventional Commit(s), `feat` type scoped to `base64`.
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4). PR: https://github.com/dipaneb/umbra/pull/25
 
 ## Dev Notes
 
