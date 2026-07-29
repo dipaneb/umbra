@@ -34,3 +34,12 @@
 
 - Superseded `spawn_blocking` jobs are never cancelled — a stale Format/Minify/live-parse call still runs its CPU work to completion on the blocking thread pool even after the UI has already discarded its result via latest-wins. Pre-existing: the debounce + `createLatestWinsRunner` design was established in Stories 1.7-1.8; this story's own Dev Notes scope AD-16 work to "verify, don't rebuild," not add cancellation. [`src/tools/json/JsonView.vue`, `src-tauri/src/commands/json.rs`]
 - AC1's own wording lists "format, minify, validate, or render it as a tree" as the operations that must stay responsive, but no `json_validate` command exists anywhere in the codebase (confirmed by search). Inherited unchanged from the epics/Story 1.7 phrasing; out of scope for Story 1.9's actual diff.
+
+## Deferred from: code review of spec-tool-registry-id-uniqueness-guard (2026-07-29)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-tool-registry-id-uniqueness-guard.md`
+  summary: `assertUniqueToolIds` only checks `id` collisions, not `route` or `shortcut` collisions, which would also silently break routing/keybindings.
+  evidence: Pre-existing gap — no guard of any kind existed on any registry field before this change, and the architect's guidance scoped this fix specifically to `id`. Not reachable today (single-entry registry); worth a follow-up once Epic 2 adds enough entries for a real collision risk on `route`/`shortcut`. [`src/stores/registry.ts`]
+- source_spec: `_bmad-output/implementation-artifacts/spec-tool-registry-id-uniqueness-guard.md`
+  summary: The new tests exercise `assertUniqueToolIds` against synthetic fixtures only — nothing asserts the real module-level call site (`assertUniqueToolIds(TOOLS)`) stays wired in.
+  evidence: A future edit that removed or swallowed that call would leave all unit tests green while the actual protection silently regressed. No cheap, non-disproportionate way to test import-time side effects with the current test setup; flagging so a future registry refactor checks for this. [`src/stores/registry.ts`, `src/stores/registry.spec.ts`]
