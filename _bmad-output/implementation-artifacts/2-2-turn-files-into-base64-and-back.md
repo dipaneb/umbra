@@ -84,7 +84,7 @@ so that I can produce data URIs and unpack binary API payloads locally.
 - [x] **Task 9: Commit and open a PR**
   - [x] Branch: `feat/story-2-2-<slug>` (e.g. `feat/story-2-2-base64-files`).
   - [x] Conventional Commit(s), `feat` type scoped to `base64` (or split a `feat(shell)` commit for the new drop-zone infrastructure vs. a `feat(base64)` commit consuming it, if that separation reads more clearly in review — this project has done both single- and multi-commit stories; use judgment).
-  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4). PR: https://github.com/dipaneb/umbra/pull/26
 
 ## Dev Notes
 
