@@ -54,22 +54,31 @@ pub fn encode(input: &str, url_safe: bool) -> String {
 pub fn decode(input: &str) -> Result<String, ToolError> {
     check_input_size(input)?;
 
+    // Real-world Base64 is routinely wrapped across lines (PEM, MIME,
+    // `openssl base64`) or carries a trailing newline from a clipboard copy;
+    // strip whitespace before decoding rather than rejecting otherwise-valid
+    // input on it.
+    let cleaned: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+    let cleaned = cleaned.as_str();
+
     // The standard and URL-safe alphabets share every character except '+'/'/'
     // (standard) vs '-'/'_' (URL-safe); presence of either URL-safe-only
     // character is enough to pick that engine, and pure-alphanumeric input
     // decodes identically either way.
-    let url_safe = input.contains('-') || input.contains('_');
+    let url_safe = cleaned.contains('-') || cleaned.contains('_');
     let bytes = if url_safe {
-        URL_SAFE_DECODER.decode(input)
+        URL_SAFE_DECODER.decode(cleaned)
     } else {
-        STANDARD_DECODER.decode(input)
+        STANDARD_DECODER.decode(cleaned)
     }
     .map_err(map_decode_error)?;
 
     String::from_utf8(bytes).map_err(|err| ToolError {
         code: "base64-not-utf8".to_string(),
         message: err.to_string(),
-        position: None,
+        position: Some(Position::ByteOffset {
+            offset: err.utf8_error().valid_up_to() as u64,
+        }),
         context: None,
     })
 }
@@ -131,11 +140,18 @@ mod tests {
 
     #[test]
     fn decode_unpadded_url_safe_input_succeeds() {
-        // Encode "hello?" with the URL-safe alphabet, then strip padding.
-        let padded = encode("hello?", true);
+        // "<=>?" is 4 bytes (not a multiple of 3, so its encoding carries
+        // real '=' padding) AND its standard encoding contains '+'
+        // (URL-safe: '-'), so the unpadded form still routes through the
+        // URL-safe decoder branch. (Using a fixture whose encoding has no
+        // '+'/'/' or already has no padding wouldn't actually distinguish
+        // this from a premade, non-tolerant decoder — see the earlier
+        // "known_good" fixtures, which cover the alphabet-detection case
+        // but not padding tolerance together with it.)
+        let padded = encode("<=>?", true);
+        assert_eq!(padded, "PD0-Pw==");
         let unpadded = padded.trim_end_matches('=');
-        assert!(unpadded.contains('_') || unpadded.contains('-'));
-        assert_eq!(decode(unpadded).unwrap(), "hello?");
+        assert_eq!(decode(unpadded).unwrap(), "<=>?");
     }
 
     #[test]
@@ -149,10 +165,46 @@ mod tests {
     #[test]
     fn decode_non_utf8_bytes_returns_distinct_error_not_lossy_text() {
         use base64::{Engine as _, engine::general_purpose::STANDARD};
-        // 0xff 0xfe decodes cleanly as Base64 but is not valid UTF-8.
+        // 0xff 0xfe decodes cleanly as Base64 but is not valid UTF-8; both
+        // bytes are invalid, so the valid-UTF-8 prefix is empty (offset 0).
         let encoded = STANDARD.encode([0xffu8, 0xfe]);
         let err = decode(&encoded).unwrap_err();
         assert_eq!(err.code, "base64-not-utf8");
+        assert_eq!(err.position, Some(Position::ByteOffset { offset: 0 }));
+    }
+
+    #[test]
+    fn decode_non_utf8_bytes_reports_offset_after_valid_prefix() {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        // "hi" (valid UTF-8, 2 bytes) followed by 0xff (invalid) — the
+        // reported offset should land after the valid prefix, not at 0.
+        let encoded = STANDARD.encode([b'h', b'i', 0xffu8]);
+        let err = decode(&encoded).unwrap_err();
+        assert_eq!(err.code, "base64-not-utf8");
+        assert_eq!(err.position, Some(Position::ByteOffset { offset: 2 }));
+    }
+
+    #[test]
+    fn decode_ignores_trailing_newline() {
+        // A trailing newline is close to universal when Base64 is copied
+        // from a terminal, file, or editor.
+        assert_eq!(decode("aGVsbG8=\n").unwrap(), "hello");
+    }
+
+    #[test]
+    fn decode_ignores_line_wrapped_input() {
+        // PEM/MIME-style line wrapping is common for real-world Base64 blobs.
+        let encoded = encode("hello world, this is a longer message", false);
+        let wrapped: String = encoded
+            .as_bytes()
+            .chunks(8)
+            .map(|c| std::str::from_utf8(c).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            decode(&wrapped).unwrap(),
+            "hello world, this is a longer message"
+        );
     }
 
     #[test]

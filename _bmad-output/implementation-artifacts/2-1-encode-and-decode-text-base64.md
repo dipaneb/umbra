@@ -4,7 +4,7 @@ baseline_commit: 928588b
 
 # Story 2.1: Encode and decode text ↔ Base64
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -63,6 +63,15 @@ so that I can handle tokens, payloads, and data URIs I could never paste into a 
   - [x] Branch: `feat/story-2-1-<slug>` (repo convention, e.g. `feat/story-2-1-base64-text`).
   - [x] Conventional Commit(s), `feat` type scoped to `base64`.
   - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4). PR: https://github.com/dipaneb/umbra/pull/25
+
+### Review Findings
+
+- [x] [Review][Defer] `encode()` has no input-size guard, unlike `decode()` [crates/umbra-core/src/base64.rs:43-49] — deferred, reason: bundle with Story 2.2 (file-size handling is that story's actual scope; revisit the encode-side guard there alongside real file-size limits)
+- [x] [Review][Patch] `base64-not-utf8` error omits a byte offset though one is computable — use `err.utf8_error().valid_up_to()` to populate `Position::ByteOffset` [crates/umbra-core/src/base64.rs:69-74]
+- [x] [Review][Patch] `decode()` rejects whitespace/newlines (e.g. a trailing clipboard newline, line-wrapped input) [crates/umbra-core/src/base64.rs:54]
+- [x] [Review][Patch] `decode_unpadded_url_safe_input_succeeds` test doesn't actually exercise padding tolerance [crates/umbra-core/src/base64.rs:132-139]
+- [x] [Review][Defer] Error alert shows the byte offset twice (message already embeds it, `errorLocation` appends it again) [src/tools/base64/Base64View.vue:832-841] — deferred, pre-existing (same redundancy already exists in `JsonView.vue`/`json.rs`; spec explicitly directed reusing `errorLocation` verbatim)
+- [x] [Review][Defer] `errorLocation` has no exhaustiveness guard for future `Position` variants; `isToolError` only loosely validates shape [src/shell/toolError.ts, src/tools/json/JsonView.vue] — deferred, pre-existing (shared code unmodified by this diff)
 
 ## Dev Notes
 
@@ -150,6 +159,7 @@ so that I can handle tokens, payloads, and data URIs I could never paste into a 
 ## Change Log
 
 - 2026-07-29: Tasks 1–4 implemented on `feat/story-2-1-base64-text`, branched from the story's `baseline_commit` (`928588b`). Added `crates/umbra-core/src/base64.rs` (encode/decode, alphabet auto-detection, padding-tolerant decode engines, `base64-invalid`/`base64-not-utf8`/`base64-input-too-large` error codes) and thin `spawn_blocking` Tauri commands mirroring `json.rs`. Built `Base64View.vue` mirroring `JsonView.vue`'s conventions, registered as the `TOOLS` array's second entry (id `base64`, aliases `base64`/`b64`). Extended `CommandPalette.spec.ts` and `router/index.spec.ts` to account for the real second registry entry (previously a synthetic stand-in). `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (53 tests, up from 32), `pnpm lint`, `pnpm test` (99 tests across 16 files, up from 91/15), `pnpm build`, and `vue-tsc --noEmit` all pass. Task 5's manual `pnpm tauri dev` interactive walkthrough is still outstanding — flagged for the user, same precedent as Story 1.10.
+- 2026-07-29: Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor, run in parallel). Two decision-needed items resolved by the user: the `encode()` size-guard asymmetry deferred to bundle with Story 2.2's file-size work; the missing byte offset on the `base64-not-utf8` error approved as an in-scope patch. Three patches applied to `crates/umbra-core/src/base64.rs`: (1) `decode()` now strips whitespace before decoding, fixing rejection of trailing clipboard newlines and line-wrapped input; (2) `base64-not-utf8` errors now carry a `Position::ByteOffset` via `FromUtf8Error::utf8_error().valid_up_to()`; (3) `decode_unpadded_url_safe_input_succeeds` rewritten with a verified fixture (`"<=>?"`, encoding `"PD0-Pw=="`) that actually forces the padding-tolerant URL-safe decode path, replacing a fixture that was a no-op assertion. Two additional regression tests added (line-wrapped input, non-UTF-8-with-valid-prefix offset). `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (56 tests, up from 53) all pass. Two pre-existing, out-of-scope issues deferred to `deferred-work.md` (duplicate byte-offset text in the error alert; missing exhaustiveness/shape validation in shared error-rendering code) — both inherited verbatim from `JsonView.vue`/`toolError.ts` per this story's own explicit reuse instructions, not introduced here. Status moved to `done`.
 
 ## Dev Agent Record
 

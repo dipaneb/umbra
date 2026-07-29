@@ -42,6 +42,7 @@
 
 generated: 2026-07-20
 last_updated: 2026-07-29
+# note: story 2.1 moved to done 2026-07-29 (code review complete; manual pnpm tauri dev check still outstanding, deferred to user)
 # note: story 2.1 moved to review 2026-07-29 (manual pnpm tauri dev check outstanding, deferred to user)
 # note: story 2.1 moved to in-progress 2026-07-29
 # note: epic-1 retrospective completed 2026-07-29
@@ -84,7 +85,7 @@ development_status:
   epic-1-retrospective: done
 
   epic-2: in-progress
-  2-1-encode-and-decode-text-base64: review
+  2-1-encode-and-decode-text-base64: done
   2-2-turn-files-into-base64-and-back: backlog
   2-3-generate-uuids: backlog
   2-4-hash-text: backlog
