@@ -7,7 +7,7 @@ paradigm: 'functional core, thin shell'
 scope: 'Umbra v1 app architecture (MVP + P2 + P3 seed) — full system'
 status: final
 created: '2026-07-20'
-updated: '2026-07-23'
+updated: '2026-07-29'
 binds: [FR1-FR35, NFR1-NFR7, INV-1-INV-4]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-Umbra-2026-07-19/prd.md
@@ -244,6 +244,6 @@ flowchart TB
 - **NFR1 automation.** Stays a manual per-release checklist procedure in v1 (AD-12, Epic 5 Story 5.3).
 - **Deployment/environment topology.** Not a separate dimension to decide: there is no server-side component. The full envelope is the tag-driven GitHub Actions pipeline (AD-12) publishing to GitHub Releases — no further infra/provider strategy applies.
 - **`ToolError.code` cross-tool namespacing.** No enforced prefix convention yet (e.g. `tool-id/reason`). Revisit if two tools are observed picking colliding codes; low risk at current tool count.
-- **`settings.json` schema migration across releases.** AD-10 fixes the writer and namespacing but not a migration story for old keys as FR35's weekly/fortnightly P3 cadence adds new ones over many releases. Revisit before Epic 2 ships beyond the Epic 1 baseline keys.
+- **`settings.json` schema migration across releases.** AD-10 fixes the writer and namespacing but not a migration story for old keys as FR35's weekly/fortnightly P3 cadence adds new ones over many releases. *(Re-scoped 2026-07-29, Epic 1 retrospective — see that document for full discussion.)* The actual risk isn't new-key addition — `src/stores/settings.ts` already reads every key as optional-with-default, so a new key just defaults cleanly on first read for existing users. The risk is **renaming, removing, or changing the type of an existing key**: none of that is detected by tests or CI today (CI runs against a fresh store with nothing to diverge from), so it fails silently as a user-visible "my settings reset for no reason" regression, with the orphaned old key persisting unread in their `settings.json` afterward. Confirmed no Epic 2 story (2.1-2.6) renames, removes, or changes the type of an Epic 1 key — all Epic 2 keys are new, tool-scoped additions, which the current design already handles safely. Decision: **defer building migration machinery (e.g. a `schemaVersion` stamp + migration function) until a story first needs to rename/remove/retype an existing key** — building it now would be architecture ahead of a real need. When that trigger is hit, revisit as an AD-10 amendment, not a new AD.
 - **AD-8's OCR trait shape vs. a structured second AI feature.** If Epic 6 Story 6.3 (FR29) chooses OCR→structured over regex-explain, that story's decision record must state whether it extends or forks the flat text+confidence trait — not decided here since the FR29 choice itself is already deferred to that story.
 - **Keyboard-operable alternative to Bucket drag-and-drop (NFR5).** No mechanism specified yet (e.g. a keyboard-triggered file picker). Carried forward under the styling/UX-phase deferral above, not a new gap — but named explicitly so it is not silently dropped when that phase starts.
