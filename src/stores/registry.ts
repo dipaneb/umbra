@@ -49,6 +49,14 @@ const TOOLS: ToolRegistryEntry[] = [
     icon: "{ }",
     component: () => import("../tools/json/JsonView.vue"),
   },
+  {
+    id: "base64",
+    name: "Base64",
+    aliases: ["base64", "b64"],
+    route: "/tools/base64",
+    icon: "64",
+    component: () => import("../tools/base64/Base64View.vue"),
+  },
 ];
 
 assertUniqueToolIds(TOOLS);

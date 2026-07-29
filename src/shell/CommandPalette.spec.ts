@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { createAppRouter } from "../router";
-import { useRegistryStore } from "../stores/registry";
 import CommandPalette from "./CommandPalette.vue";
 
 let wrapper: VueWrapper | undefined;
@@ -12,18 +11,11 @@ afterEach(() => {
   wrapper = undefined;
 });
 
+// Real registry order is [JSON, Base64] (see src/stores/registry.ts) — tests
+// below rely on that order rather than injecting a synthetic tool, so they
+// exercise the actual "b64" alias resolution (FR2).
 async function setup() {
   const pinia = createPinia();
-
-  useRegistryStore(pinia).tools.push({
-    id: "b64",
-    name: "Base64",
-    aliases: ["b64"],
-    route: "/tools/b64",
-    icon: "#",
-    component: () => Promise.resolve({ template: "<div />" }),
-  });
-
   const router = createAppRouter(pinia);
   router.push("/");
   await router.isReady();
@@ -83,10 +75,32 @@ describe("CommandPalette", () => {
     expect(document.activeElement?.tagName).toBe("INPUT");
 
     dispatch({ key: "Enter" });
-    await flushPromises();
 
-    expect(router.currentRoute.value.name).toBe("b64");
+    // The Base64 route's component is a genuine dynamic `import()` (unlike a
+    // synthetic test double), so resolving the navigation takes a few real
+    // event-loop turns beyond a single flushPromises() microtask flush —
+    // poll instead of assuming one flush is enough.
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("base64"));
+    await flushPromises();
     expect(wrapper.find(".palette-overlay").exists()).toBe(false);
+  });
+
+  it("resolves the 'b64' alias to the Base64 tool (FR2)", async () => {
+    const { wrapper, router } = await setup();
+
+    dispatch({ key: "k", metaKey: true });
+    await wrapper.vm.$nextTick();
+
+    const input = wrapper.find("input");
+    await input.setValue("b64");
+
+    const options = wrapper.findAll("li[role='option']");
+    expect(options).toHaveLength(1);
+    expect(options[0].text()).toContain("Base64");
+
+    dispatch({ key: "Enter" });
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("base64"));
   });
 
   it("shows an explicit empty state for a query matching nothing (AC3)", async () => {
@@ -154,9 +168,8 @@ describe("CommandPalette", () => {
     expect(wrapper.find("li.active").attributes("aria-selected")).toBe("true");
 
     dispatch({ key: "Enter" });
-    await flushPromises();
 
-    expect(wrapper.find(".palette-overlay").exists()).toBe(false);
+    await vi.waitFor(() => expect(wrapper?.find(".palette-overlay").exists()).toBe(false));
   });
 
   it("removes the window keydown listener on unmount (AD-14)", async () => {

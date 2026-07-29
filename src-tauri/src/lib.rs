@@ -1,5 +1,6 @@
 mod commands;
 
+use commands::base64::{base64_decode, base64_encode};
 use commands::json::{json_format, json_minify, json_parse};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -18,7 +19,9 @@ pub fn run() {
             greet,
             json_format,
             json_minify,
-            json_parse
+            json_parse,
+            base64_encode,
+            base64_decode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
