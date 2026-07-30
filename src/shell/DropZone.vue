@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useRegistryStore } from "../stores/registry";
-import { resolveActiveTool, routeDrop, lastDrop } from "./dropZone";
+import { toToolError } from "./toolError";
+import { resolveActiveTool, routeDrop } from "./dropZone";
 
 const route = useRoute();
 const registry = useRegistryStore();
@@ -21,7 +23,7 @@ function showNotice(message: string) {
 }
 
 onMounted(async () => {
-  unlisten = await getCurrentWebview().onDragDropEvent((event) => {
+  unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
     if (event.payload.type !== "drop") return;
 
     const activeTool = resolveActiveTool(route.path, registry.tools);
@@ -32,7 +34,20 @@ onMounted(async () => {
       return;
     }
 
-    lastDrop.value = { toolId: routing.toolId!, paths: routing.paths! };
+    // AD-14: this is the shell's one generic dispatcher — it invokes the
+    // registry-declared handler command directly. It only knows the dropped
+    // path; any further, tool-specific arguments come from the active
+    // tool's own registered provider (AD-6: the signal lives in the
+    // `registry` store, not a bare module ref).
+    const toolId = routing.toolId!;
+    const path = routing.paths![0];
+    const extraArgs = registry.dropArgsProviders[toolId]?.() ?? {};
+    try {
+      const value = await invoke<string>(activeTool!.drop!.handler, { path, ...extraArgs });
+      registry.dropResult = { toolId, value };
+    } catch (err) {
+      registry.dropResult = { toolId, error: toToolError(err) };
+    }
   });
 });
 

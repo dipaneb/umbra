@@ -4,7 +4,7 @@ baseline_commit: 44f2b20
 
 # Story 2.2: Turn files into Base64 and back
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -85,6 +85,25 @@ so that I can produce data URIs and unpack binary API payloads locally.
   - [x] Branch: `feat/story-2-2-<slug>` (e.g. `feat/story-2-2-base64-files`).
   - [x] Conventional Commit(s), `feat` type scoped to `base64` (or split a `feat(shell)` commit for the new drop-zone infrastructure vs. a `feat(base64)` commit consuming it, if that separation reads more clearly in review — this project has done both single- and multi-commit stories; use judgment).
   - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4). PR: https://github.com/dipaneb/umbra/pull/26
+
+### Review Findings
+
+- [x] [Review][Patch] **(resolved decision)** Registry's `drop.handler` field is dead code; the shell doesn't invoke it generically. **User decision:** build the generic dispatcher. [src/shell/DropZone.vue:35, src/shell/dropZone.ts:34, src/stores/registry.ts:62, src/tools/base64/Base64View.vue:62-66] — fixed: `DropZone.vue` now invokes `activeTool.drop.handler` directly (literal AD-14 compliance). Tool-specific invoke arguments come from a `dropArgsProviders` map added to the `registry` Pinia store (AD-6-compliant home for this cross-tool signal), registered by `Base64View.vue` on mount; the outcome comes back via a new `registry.dropResult` one-shot signal, replacing `lastDrop` entirely. Trade-off noted: the drop-triggered encode no longer shares `Base64View.vue`'s `runLatestWins` counter with Encode/Decode/Paste, since the `invoke()` call now lives in a different component; no AC requires that ordering across components.
+- [x] [Review][Patch] **(resolved decision)** `MAX_INPUT_BYTES` (100MB) reused unchanged for the file-byte path lets `base64_encode_file`'s Base64 text return reach ~133MB, crossing IPC and binding into a plain `<textarea>`. **User decision:** give the file-byte path its own, smaller ceiling. [crates/umbra-core/src/base64.rs:17, src/tools/base64/Base64View.vue:187-193] — fixed: added a `base64_encode_file`-scoped `MAX_FILE_BYTES = 10MB` constant in `src-tauri/src/commands/base64.rs`, checked via `std::fs::metadata` before any read (see next finding). Text-input `MAX_INPUT_BYTES` (100MB) is unchanged.
+
+- [x] [Review][Patch] Oversized dropped files are fully read into memory before the size guard runs — `read_file_bytes` does an unconditional `std::fs::read`, and `check_size` only runs afterward inside `encode_bytes`; a multi-GB dropped file is materialized in RAM before rejection, risking OOM against NFR4's "no crash on bad input." [src-tauri/src/fs_helper.rs:8-15, src-tauri/src/commands/base64.rs:19-26] — fixed: `base64_encode_file` now checks `std::fs::metadata(&path)?.len()` against the new 10MB `MAX_FILE_BYTES` (see above) before calling `read_file_bytes`, so an oversized file is rejected without ever being read into memory. Added a regression test (`base64_encode_file_command_rejects_a_file_over_the_size_limit_without_reading_it`) exercising the guard through the actual command, not just `encode_bytes` directly.
+- [x] [Review][Patch] `onDecodeToFile` never clears `error.value` before running (every other action in this file does), leaving a stale error visible after a successful/cancelled decode-to-file; its `save()` call also sits outside the try/catch (unhandled-rejection risk), and it has no latest-wins/disabled guard against rapid double-clicks like `onEncode`/`onDecode`/`onPaste` have. [src/tools/base64/Base64View.vue:76-84] — fixed: `onDecodeToFile` now clears `error.value` up front, wraps `save()` inside the `try`, and sets a `decodingToFile` ref (bound to the button's `:disabled`) for the duration of the call. Added regression tests for stale-error clearing, a rejecting `save()` dialog, and the disabled-while-pending state.
+- [x] [Review][Patch] `write_file_bytes` performs a direct, non-atomic `std::fs::write` — a failure partway through (disk full, permission revoked mid-write) can leave a corrupted/partial file, including when overwriting a file the user selected via the save dialog. [src-tauri/src/fs_helper.rs:17-24] — fixed: `write_file_bytes` now writes to a sibling temp file and `std::fs::rename`s it into place, atomic on the same volume. Added a regression test covering overwrite of an existing file with no leftover temp file.
+- [x] [Review][Patch] `routeDrop`/`onFileDropped` never guard against an empty `paths` array on a `"drop"` payload — would call `invoke` with `path: undefined` and surface a confusing raw error instead of AC3's clean no-op notice. [src/shell/dropZone.ts:18-28, src/tools/base64/Base64View.vue:62-66] — fixed: `routeDrop` now rejects an empty `paths` array with a "No file was found in that drop." notice, before any dispatch is attempted. Added a regression test.
+- [x] [Review][Patch] `fs_helper.rs`'s error messages don't include the failing path (`err.to_string()` alone) — the `ToolError.context` field looks purpose-built for this but is left `None` and confirmed unused app-wide (`JsonView.vue`/`Base64View.vue` templates only render `.message`), so the fix belongs in `message` itself. Same generic, path-less message also fires when a directory is dropped instead of a file. [src-tauri/src/fs_helper.rs:8-24] — fixed: both `read_file_bytes` and `write_file_bytes` now build their `ToolError.message` as `"{path}: {err}"` via a shared `file_error` helper. Added regression assertions that the path appears in the message.
+
+- [x] [Review][Defer] `DropZone.vue`'s `onMounted` async listener registration has no try/catch — a rejection would silently disable drop support for the whole session with no indication. [src/shell/DropZone.vue:23-37] — deferred, low practical likelihood (`onDragDropEvent` registration essentially never rejects at mount time in a live Tauri window); worth a follow-up hardening pass, not blocking.
+- [x] [Review][Defer] If `DropZone.vue` unmounted before its `onMounted` await resolved, the listener would leak (never released). [src/shell/DropZone.vue:23-41] — deferred, theoretical: `DropZone` is mounted once at the app root and never unmounted during normal operation.
+- [x] [Review][Defer] Rust test helpers' `std::fs::remove_file(&path).unwrap()` cleanup is skipped if an earlier assertion in the same test fails, leaking temp files on red CI runs. [src-tauri/src/fs_helper.rs:40,59; src-tauri/src/commands/base64.rs:105,125] — deferred, pre-existing test-hygiene pattern shared by prior stories' temp-file tests, no production impact.
+
+Dismissed as noise (4): new GTK/Linux transitive dependency risk (verified false — CI passed on all 3 OS legs for PR #26); multi-file drop silently discarding extra files (explicit, stated scope decision in the story text, not a defect); the case-insensitive-filesystem justification for merging `dropZone.spec.ts`/`DropZone.spec.ts` (verified empirically true); AC1's "~64KB" / AD-15 byte-array wording concern (verified compliant against the actual spine text).
+
+Post-patch verification: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (68/68 pass, up from 66), `pnpm lint`, `pnpm test` (123/123 pass across 17 files, up from 114), `pnpm build` (includes `vue-tsc --noEmit`) — all clean.
 
 ## Dev Notes
 
@@ -180,11 +199,13 @@ None — no debugging beyond normal iterative development was required.
 - `Cargo.lock`
 - `package.json` (+`@tauri-apps/plugin-dialog`)
 - `pnpm-lock.yaml`
-- `src/shell/dropZone.ts` (new: `resolveActiveTool`, `routeDrop`, `lastDrop`)
-- `src/shell/DropZone.vue` (new: window-level drop listener + no-op notice UI)
-- `src/shell/dropZone.spec.ts` (new: pure-function tests + `DropZone.vue` component tests, merged per the case-insensitive-filesystem deviation noted above)
+- `src/shell/dropZone.ts` (new: `resolveActiveTool`, `routeDrop`; post-review: `lastDrop` removed, empty-`paths` guard added)
+- `src/shell/DropZone.vue` (new: window-level drop listener + no-op notice UI; post-review: is now the generic AD-14 dispatcher — invokes `activeTool.drop.handler` directly)
+- `src/shell/dropZone.spec.ts` (new: pure-function tests + `DropZone.vue` component tests, merged per the case-insensitive-filesystem deviation noted above; post-review: rewritten for the generic-dispatcher invoke flow)
+- `src/shell/toolError.ts` (post-review: added shared `toToolError()`, deduplicating the copy previously local to `Base64View.vue`)
+- `src/shell/toolError.spec.ts` (post-review: tests for `toToolError()`)
 - `src/App.vue` (+`<DropZone />`)
-- `src/stores/registry.ts` (base64 entry's `drop` field populated)
-- `src/tools/base64/Base64View.vue` (+drop consumption, +decode-to-file)
-- `src/tools/base64/Base64View.spec.ts` (extended: drop-triggered encode, cross-tool drop ignored, file-read error, decode-to-file happy/cancelled/error paths)
+- `src/stores/registry.ts` (base64 entry's `drop` field populated; post-review: added `dropArgsProviders`/`setDropArgsProvider`/`dropResult` — the AD-6-compliant home for the shell↔tool drop signal)
+- `src/tools/base64/Base64View.vue` (+drop consumption, +decode-to-file; post-review: consumes `registry.dropResult` instead of `lastDrop`, registers a drop-args provider, hardened `onDecodeToFile`)
+- `src/tools/base64/Base64View.spec.ts` (extended: drop-triggered encode, cross-tool drop ignored, file-read error, decode-to-file happy/cancelled/error paths; post-review: rewritten drop tests for the registry-based signal, added decode-to-file hardening tests)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (story marked in-progress, then review)

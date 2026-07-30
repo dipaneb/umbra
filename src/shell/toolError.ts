@@ -17,3 +17,7 @@ export function isToolError(value: unknown): value is ToolError {
     typeof (value as { message?: unknown }).message === "string"
   );
 }
+
+export function toToolError(err: unknown): ToolError {
+  return isToolError(err) ? err : { code: "unknown", message: String(err), position: null, context: null };
+}

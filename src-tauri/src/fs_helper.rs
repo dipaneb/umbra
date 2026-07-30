@@ -5,22 +5,27 @@ use umbra_core::ToolError;
 // read/write failure modes against a different tool, hence the
 // `"file-*-error"` codes below are not prefixed `base64-*`.
 
-pub fn read_file_bytes(path: &str) -> Result<Vec<u8>, ToolError> {
-    std::fs::read(path).map_err(|err| ToolError {
-        code: "file-read-error".to_string(),
-        message: err.to_string(),
+fn file_error(code: &str, path: &str, err: std::io::Error) -> ToolError {
+    ToolError {
+        code: code.to_string(),
+        message: format!("{path}: {err}"),
         position: None,
         context: None,
-    })
+    }
 }
 
+pub fn read_file_bytes(path: &str) -> Result<Vec<u8>, ToolError> {
+    std::fs::read(path).map_err(|err| file_error("file-read-error", path, err))
+}
+
+/// Writes `bytes` to `path` via a temp-file-then-rename so a failure partway
+/// through the write (disk full, permissions revoked mid-write) can never
+/// leave a corrupted partial file at `path` — including when `path` already
+/// exists and is being overwritten.
 pub fn write_file_bytes(path: &str, bytes: &[u8]) -> Result<(), ToolError> {
-    std::fs::write(path, bytes).map_err(|err| ToolError {
-        code: "file-write-error".to_string(),
-        message: err.to_string(),
-        position: None,
-        context: None,
-    })
+    let tmp_path = format!("{path}.umbra-tmp-{}", std::process::id());
+    std::fs::write(&tmp_path, bytes).map_err(|err| file_error("file-write-error", path, err))?;
+    std::fs::rename(&tmp_path, path).map_err(|err| file_error("file-write-error", path, err))
 }
 
 #[cfg(test)]
@@ -42,9 +47,15 @@ mod tests {
 
     #[test]
     fn read_file_bytes_maps_nonexistent_path_to_file_read_error() {
-        let err = read_file_bytes("/nonexistent/path/that/does/not/exist").unwrap_err();
+        let path = "/nonexistent/path/that/does/not/exist";
+        let err = read_file_bytes(path).unwrap_err();
         assert_eq!(err.code, "file-read-error");
         assert_eq!(err.position, None);
+        assert!(
+            err.message.contains(path),
+            "message should name the failing path: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -60,9 +71,35 @@ mod tests {
     }
 
     #[test]
+    fn write_file_bytes_overwrites_an_existing_file_atomically() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!(
+            "umbra-fs-helper-overwrite-{}.bin",
+            std::process::id()
+        ));
+        let path = path.to_str().unwrap();
+
+        std::fs::write(path, [0u8, 0, 0]).unwrap();
+        write_file_bytes(path, &[9u8, 9]).unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), vec![9, 9]);
+        // No leftover temp file from the rename step.
+        assert!(
+            !std::path::Path::new(&format!("{path}.umbra-tmp-{}", std::process::id())).exists()
+        );
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn write_file_bytes_maps_unwritable_path_to_file_write_error() {
-        let err = write_file_bytes("/nonexistent-dir-umbra/file.bin", &[1u8]).unwrap_err();
+        let path = "/nonexistent-dir-umbra/file.bin";
+        let err = write_file_bytes(path, &[1u8]).unwrap_err();
         assert_eq!(err.code, "file-write-error");
         assert_eq!(err.position, None);
+        assert!(
+            err.message.contains(path),
+            "message should name the failing path: {}",
+            err.message
+        );
     }
 }
