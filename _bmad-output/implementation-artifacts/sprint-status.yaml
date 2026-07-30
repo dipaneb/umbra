@@ -41,7 +41,11 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-07-30
+last_updated: 2026-07-31
+# note: story 2.4 moved to done 2026-07-31 (code review complete; manual pnpm tauri dev check still outstanding, deferred to user)
+# note: story 2.4 moved to review 2026-07-31 (manual pnpm tauri dev check outstanding, deferred to user)
+# note: story 2.4 moved to in-progress 2026-07-31
+# note: story 2.4 created 2026-07-31
 # note: story 2.3 moved to done 2026-07-30 (code review complete; manual pnpm tauri dev check still outstanding, deferred to user)
 # note: story 2.3 moved to review 2026-07-30 (manual pnpm tauri dev check outstanding, deferred to user)
 # note: story 2.3 moved to in-progress 2026-07-30
@@ -96,7 +100,7 @@ development_status:
   2-1-encode-and-decode-text-base64: done
   2-2-turn-files-into-base64-and-back: done
   2-3-generate-uuids: done
-  2-4-hash-text: backlog
+  2-4-hash-text: done
   2-5-hash-files: backlog
   2-6-decode-jwts-offline: backlog
   epic-2-retrospective: optional
