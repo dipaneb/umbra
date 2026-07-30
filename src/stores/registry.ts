@@ -70,6 +70,14 @@ const TOOLS: ToolRegistryEntry[] = [
     icon: "ID",
     component: () => import("../tools/uuid/UuidView.vue"),
   },
+  {
+    id: "hash",
+    name: "Hash",
+    aliases: ["hash", "checksum", "sha256", "md5", "digest"],
+    route: "/tools/hash",
+    icon: "#",
+    component: () => import("../tools/hash/HashView.vue"),
+  },
 ];
 
 assertUniqueToolIds(TOOLS);
