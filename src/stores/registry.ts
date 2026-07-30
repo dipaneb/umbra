@@ -73,7 +73,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "hash",
     name: "Hash",
-    aliases: ["hash", "checksum", "sha256", "md5", "digest"],
+    aliases: ["hash", "checksum", "sha256", "sha512", "md5", "sha1", "digest"],
     route: "/tools/hash",
     icon: "#",
     component: () => import("../tools/hash/HashView.vue"),

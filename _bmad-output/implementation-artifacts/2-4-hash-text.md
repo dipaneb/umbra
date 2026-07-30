@@ -4,7 +4,7 @@ baseline_commit: 610aa97
 
 # Story 2.4: Hash text
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -128,16 +128,26 @@ so that I can produce checksums without pasting content into a website.
   - [x] Conventional Commit(s), `feat` type scoped to `hash`.
   - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4) — [PR #28](https://github.com/dipaneb/umbra/pull/28).
 
+### Review Findings
+
+- [x] [Review][Patch] Registry search aliases omit "sha1" and "sha512" despite both being prominently displayed result rows — ⌘K search for either term won't surface the Hash tool [src/stores/registry.ts:76]
+- [x] [Review][Patch] Stale `md_5` dependency-key references survive in Dev Notes prose (Architecture compliance, File Structure Requirements, Previous Story Intelligence) even though Task 1's own Debug Log documents the correction to `md-5` — a reader skimming those sections instead of Task 1 copies the broken key [_bmad-output/implementation-artifacts/2-4-hash-text.md:135,140,152,168]
+- [x] [Review][Defer] `Cargo.lock` carries two `sha2` versions side by side (0.10.9 pulled transitively via tauri/wry, 0.11.0 direct) since tauri hasn't picked up the 0.11 lockstep release yet [Cargo.lock] — deferred, pre-existing (accepted tradeoff of pinning the latest verified-stable release; no functional impact, only minor build/binary-size cost)
+- [x] [Review][Defer] No loading/disabled state on Compute/Paste while a call is in flight, so rapid re-clicks can stack concurrent `hash_compute` invocations over up to 100MB input [src/tools/hash/HashView.vue] — deferred, pre-existing (identical gap already deferred for `UuidView.vue`'s Generate button and `Base64View.vue`'s Encode/Decode in prior story reviews — an app-wide pattern, not specific to this story)
+- [x] [Review][Defer] No frontend size guard on the input `<textarea>` before the 100MB check runs server-side after the IPC round-trip, so a very large paste can jank the webview via Vue reactivity/DOM rendering alone [src/tools/hash/HashView.vue] — deferred, pre-existing (identical to `Base64View.vue`'s existing textarea binding, an app-wide pattern)
+- [x] [Review][Defer] Per-row Copy buttons give no success feedback (no "Copied" confirmation, no `aria-live` announcement) [src/tools/hash/HashView.vue] — deferred, pre-existing (matches `Base64View.vue`/`UuidView.vue`'s existing Copy button convention; no tool in this codebase announces successful actions yet)
+- [x] [Review][Defer] `HashView.spec.ts`'s error-path test mounts fresh and rejects immediately, so there is no explicit regression test proving `digests.value` is cleared when a NEW failure follows a prior success (the behavior itself is correctly implemented in `onCompute`'s catch block) [src/tools/hash/HashView.spec.ts] — deferred, pre-existing (the same test-coverage gap exists in `Base64View.spec.ts`'s and `UuidView.spec.ts`'s error tests)
+
 ## Dev Notes
 
 ### Architecture compliance for this story
 
-- **AD-1/AD-2 (functional core):** `compute()` is a pure function in `crates/umbra-core/src/hash.rs` — zero I/O, zero Tauri dependency, no `#[cfg(target_os)]` branches. The uppercase/lowercase case toggle is explicitly view-owned per AD-1 ("presentation formatting... case toggles for display... never computed in core") — see Task 4's warning about not re-invoking `hash_compute` on toggle. `sha2`/`sha1`/`md_5`'s required features are all platform-neutral, so this story introduces no cross-platform risk (AD-11). [Source: `ARCHITECTURE-SPINE.md` AD-1, AD-2]
+- **AD-1/AD-2 (functional core):** `compute()` is a pure function in `crates/umbra-core/src/hash.rs` — zero I/O, zero Tauri dependency, no `#[cfg(target_os)]` branches. The uppercase/lowercase case toggle is explicitly view-owned per AD-1 ("presentation formatting... case toggles for display... never computed in core") — see Task 4's warning about not re-invoking `hash_compute` on toggle. `sha2`/`sha1`/`md-5`'s required features are all platform-neutral, so this story introduces no cross-platform risk (AD-11). [Source: `ARCHITECTURE-SPINE.md` AD-1, AD-2]
 - **AD-3 (ToolError contract):** two new tool-scoped kebab-case codes — `hash-input-too-large` (the only real business-rule error) and `hash-internal` (background-task-join fallback, matching every other command's `<tool>-internal` pattern) — both with `position: None` (no error this module produces has a meaningful location). [Source: `ARCHITECTURE-SPINE.md` AD-3]
 - **AD-4 (heavy work off the main thread):** unlike `uuid_generate`'s `spawn_blocking` (a consistency choice on trivially fast work), this command's `spawn_blocking` is load-bearing — hashing up to 100 MB with four algorithms can genuinely exceed the ~100 ms bar. [Source: `ARCHITECTURE-SPINE.md` AD-4]
 - **AD-5 (one Tool Registry):** exactly one new entry in `src/stores/registry.ts`; nothing else enumerates tools. [Source: `ARCHITECTURE-SPINE.md` AD-5]
 - **AD-6 (tools are islands):** this tool reads no other tool's state; no new cross-cutting signal needed (no drop handling in this story, unlike Story 2.2/2.5). [Source: `ARCHITECTURE-SPINE.md` AD-6]
-- **AD-11 (cross-platform CI):** `sha2`/`sha1`/`md_5` have no platform-specific code paths — no special CI attention expected beyond the existing gate passing. [Source: `ARCHITECTURE-SPINE.md` AD-11]
+- **AD-11 (cross-platform CI):** `sha2`/`sha1`/`md-5` have no platform-specific code paths — no special CI attention expected beyond the existing gate passing. [Source: `ARCHITECTURE-SPINE.md` AD-11]
 
 ### Library/Framework requirements
 
@@ -149,7 +159,7 @@ so that I can produce checksums without pasting content into a website.
 ### File Structure Requirements
 
 - **New:** `crates/umbra-core/src/hash.rs` (+inline unit tests), `src-tauri/src/commands/hash.rs` (+inline unit tests), `src/tools/hash/HashView.vue`, `src/tools/hash/HashView.spec.ts`, `src/tools/hash/hashDigests.ts`.
-- **Modified:** `crates/umbra-core/Cargo.toml` (+3 dependencies: `sha2`, `sha1`, `md_5`), `crates/umbra-core/src/lib.rs` (+`pub mod hash;`, insert alphabetically: `base64`, `error`, `hash`, `json`, `uuid`), `src-tauri/src/commands/mod.rs` (+`pub mod hash;`, insert alphabetically: `base64`, `hash`, `json`, `uuid`), `src-tauri/src/lib.rs` (+import, +`generate_handler!` entry), `src/stores/registry.ts` (+one new entry), `Cargo.lock`, `pnpm-lock.yaml` (lockfile churn from the three new Rust dependencies — no manual edits, regenerated by tooling).
+- **Modified:** `crates/umbra-core/Cargo.toml` (+3 dependencies: `sha2`, `sha1`, `md-5`), `crates/umbra-core/src/lib.rs` (+`pub mod hash;`, insert alphabetically: `base64`, `error`, `hash`, `json`, `uuid`), `src-tauri/src/commands/mod.rs` (+`pub mod hash;`, insert alphabetically: `base64`, `hash`, `json`, `uuid`), `src-tauri/src/lib.rs` (+import, +`generate_handler!` entry), `src/stores/registry.ts` (+one new entry), `Cargo.lock`, `pnpm-lock.yaml` (lockfile churn from the three new Rust dependencies — no manual edits, regenerated by tooling).
 - **Expected ripple (same pattern as Story 2.3's registry-count bump):** `src/router/index.spec.ts` and `src/shell/CommandPalette.spec.ts` likely hard-code the current tool count/order (3 tools after Story 2.3) and will need updating to 4 — this is AD-5's single-registry design working as intended, not a scope deviation.
 - **Not touched:** `src-tauri/Cargo.toml` (no direct dependency needed — see Task 2), `src-tauri/capabilities/default.json` (no plugin, no capability entry needed), `src/router/index.ts`, `src/shell/AppSidebar.vue`, `src/App.vue` (all generated from/unaffected by the single registry entry), `src/shell/dropZone.ts`, `src/shell/DropZone.vue` (this story has no drop behavior — Story 2.5 adds it), any Base64/JSON/UUID tool file.
 - Story 2.5 (Hash files) is the very next story and will extend `umbra-core::hash` with file-byte hashing plus a drop handler — keep `compute(input: &str)`'s signature and `HashDigests` shape reusable for a future `compute_bytes(&[u8])` split (mirroring how `base64.rs` factors `encode`/`encode_bytes`), but do not build that split now — YAGNI until 2.5 actually needs it.
@@ -165,7 +175,7 @@ so that I can produce checksums without pasting content into a website.
 
 - **From Story 2.3 (immediate predecessor in Epic 2):** two mistakes made there and fixed only in code review are worth avoiding up front this time: (1) `UuidView.vue` copied `Base64View.vue`'s `errorLocation` computed property wholesale even though `uuid.rs` never returns a `Position` — pure dead code, flagged in review. `hash.rs` has the same "always `position: None`" shape, so `HashView.vue` must not copy that computed property either (see Task 4). (2) A version-switch race let a stale in-flight response repopulate `results` after the user had already changed the selector; this story has no equivalent server-round-trip-per-selector-change (the case toggle is deliberately client-only, precisely to avoid needing that same latest-wins-vs-selector-change guard), but if `input` editing while a `hash_compute` call is in flight becomes a concern, `runLatestWins` already covers stale *response* ordering — no new mechanism needed.
 - **Confirms the `spawn_blocking`-for-every-command convention** is a *consistency* choice for most commands (established in Story 2.2, reconfirmed in Story 2.3) but is a genuine *correctness* requirement here given the 100 MB input ceiling — see Architecture compliance above.
-- **Cross-epic:** this is the second story to add Rust dependencies to `crates/umbra-core/Cargo.toml` since the original scaffold (Story 2.3 added `uuid`) — confirm `Cargo.lock` picks up `sha2`/`sha1`/`md_5` and any transitive deps cleanly across all three CI runners; none of the three has any platform-gated feature, so no special risk expected.
+- **Cross-epic:** this is the second story to add Rust dependencies to `crates/umbra-core/Cargo.toml` since the original scaffold (Story 2.3 added `uuid`) — confirm `Cargo.lock` picks up `sha2`/`sha1`/`md-5` and any transitive deps cleanly across all three CI runners; none of the three has any platform-gated feature, so no special risk expected.
 
 ### Git Intelligence
 
