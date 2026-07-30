@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isToolError } from "./toolError";
+import { isToolError, toToolError } from "./toolError";
 
 describe("isToolError", () => {
   it("accepts a value with string code and message fields", () => {
@@ -23,5 +23,21 @@ describe("isToolError", () => {
   it("rejects null and undefined", () => {
     expect(isToolError(null)).toBe(false);
     expect(isToolError(undefined)).toBe(false);
+  });
+});
+
+describe("toToolError", () => {
+  it("passes an existing ToolError through unchanged", () => {
+    const err = { code: "json-syntax", message: "boom", position: null, context: null };
+    expect(toToolError(err)).toBe(err);
+  });
+
+  it("wraps a non-ToolError value into an unknown-code ToolError", () => {
+    expect(toToolError(new Error("boom"))).toEqual({
+      code: "unknown",
+      message: "Error: boom",
+      position: null,
+      context: null,
+    });
   });
 });

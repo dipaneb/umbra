@@ -12,6 +12,11 @@ use base64::{
 // large even without going through the file-drop path. Each tool module
 // owns its own constant rather than sharing json.rs's, per that file's
 // existing convention.
+//
+// Reused unchanged for the file-byte path (Story 2.2): this project has no
+// stated file-size requirement beyond FR9's JSON-specific 10 MB bar, so
+// reusing this already-reviewed threshold for dropped-file bytes is the
+// pragmatic default rather than inventing a new number.
 const MAX_INPUT_BYTES: usize = 100 * 1024 * 1024;
 
 // The premade `STANDARD`/`URL_SAFE` engines require canonical padding and
@@ -23,13 +28,12 @@ const DECODE_CONFIG: GeneralPurposeConfig =
 const STANDARD_DECODER: GeneralPurpose = GeneralPurpose::new(&alphabet::STANDARD, DECODE_CONFIG);
 const URL_SAFE_DECODER: GeneralPurpose = GeneralPurpose::new(&alphabet::URL_SAFE, DECODE_CONFIG);
 
-fn check_input_size(input: &str) -> Result<(), ToolError> {
-    if input.len() > MAX_INPUT_BYTES {
+fn check_size(len: usize) -> Result<(), ToolError> {
+    if len > MAX_INPUT_BYTES {
         return Err(ToolError {
             code: "base64-input-too-large".to_string(),
             message: format!(
-                "input is {} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit",
-                input.len()
+                "input is {len} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit"
             ),
             position: None,
             context: None,
@@ -38,21 +42,28 @@ fn check_input_size(input: &str) -> Result<(), ToolError> {
     Ok(())
 }
 
-/// Encodes `input`'s UTF-8 bytes as Base64. Infallible: any `&str`'s bytes
-/// are valid encoder input.
-pub fn encode(input: &str, url_safe: bool) -> String {
-    if url_safe {
-        URL_SAFE.encode(input.as_bytes())
+/// Encodes `bytes` as Base64. This is the single encode implementation —
+/// `encode` is a thin wrapper over it for the text-input case.
+pub fn encode_bytes(bytes: &[u8], url_safe: bool) -> Result<String, ToolError> {
+    check_size(bytes.len())?;
+    Ok(if url_safe {
+        URL_SAFE.encode(bytes)
     } else {
-        STANDARD.encode(input.as_bytes())
-    }
+        STANDARD.encode(bytes)
+    })
+}
+
+/// Encodes `input`'s UTF-8 bytes as Base64.
+pub fn encode(input: &str, url_safe: bool) -> Result<String, ToolError> {
+    encode_bytes(input.as_bytes(), url_safe)
 }
 
 /// Decodes `input` as Base64, auto-detecting standard vs. URL-safe alphabet
-/// and tolerating both padded and unpadded input, then validates the
-/// decoded bytes are valid UTF-8.
-pub fn decode(input: &str) -> Result<String, ToolError> {
-    check_input_size(input)?;
+/// and tolerating both padded and unpadded input. Returns raw bytes — a
+/// decoded file's content is not expected to be UTF-8 text, so no such
+/// validation happens here (contrast `decode`, below).
+pub fn decode_bytes(input: &str) -> Result<Vec<u8>, ToolError> {
+    check_size(input.len())?;
 
     // Real-world Base64 is routinely wrapped across lines (PEM, MIME,
     // `openssl base64`) or carries a trailing newline from a clipboard copy;
@@ -66,12 +77,18 @@ pub fn decode(input: &str) -> Result<String, ToolError> {
     // character is enough to pick that engine, and pure-alphanumeric input
     // decodes identically either way.
     let url_safe = cleaned.contains('-') || cleaned.contains('_');
-    let bytes = if url_safe {
+    if url_safe {
         URL_SAFE_DECODER.decode(cleaned)
     } else {
         STANDARD_DECODER.decode(cleaned)
     }
-    .map_err(map_decode_error)?;
+    .map_err(map_decode_error)
+}
+
+/// Decodes `input` as Base64, then validates the decoded bytes are valid
+/// UTF-8 text.
+pub fn decode(input: &str) -> Result<String, ToolError> {
+    let bytes = decode_bytes(input)?;
 
     String::from_utf8(bytes).map_err(|err| ToolError {
         code: "base64-not-utf8".to_string(),
@@ -108,13 +125,13 @@ mod tests {
 
     #[test]
     fn encode_standard_round_trips_through_decode() {
-        let encoded = encode("hello world", false);
+        let encoded = encode("hello world", false).unwrap();
         assert_eq!(decode(&encoded).unwrap(), "hello world");
     }
 
     #[test]
     fn encode_url_safe_round_trips_through_decode() {
-        let encoded = encode("hello world", true);
+        let encoded = encode("hello world", true).unwrap();
         assert_eq!(decode(&encoded).unwrap(), "hello world");
     }
 
@@ -148,7 +165,7 @@ mod tests {
         // this from a premade, non-tolerant decoder — see the earlier
         // "known_good" fixtures, which cover the alphabet-detection case
         // but not padding tolerance together with it.)
-        let padded = encode("<=>?", true);
+        let padded = encode("<=>?", true).unwrap();
         assert_eq!(padded, "PD0-Pw==");
         let unpadded = padded.trim_end_matches('=');
         assert_eq!(decode(unpadded).unwrap(), "<=>?");
@@ -194,7 +211,7 @@ mod tests {
     #[test]
     fn decode_ignores_line_wrapped_input() {
         // PEM/MIME-style line wrapping is common for real-world Base64 blobs.
-        let encoded = encode("hello world, this is a longer message", false);
+        let encoded = encode("hello world, this is a longer message", false).unwrap();
         let wrapped: String = encoded
             .as_bytes()
             .chunks(8)
@@ -211,6 +228,23 @@ mod tests {
     fn decode_rejects_input_over_max_size() {
         let input = "A".repeat(MAX_INPUT_BYTES + 1);
         let err = decode(&input).unwrap_err();
+        assert_eq!(err.code, "base64-input-too-large");
+        assert_eq!(err.position, None);
+    }
+
+    #[test]
+    fn encode_bytes_and_decode_bytes_round_trip_non_utf8_bytes() {
+        // This is the core case `decode()` could never previously support:
+        // arbitrary binary content, as a real dropped file would contain.
+        let bytes = [0xffu8, 0xfe, 0x00, 0x01];
+        let encoded = encode_bytes(&bytes, false).unwrap();
+        assert_eq!(decode_bytes(&encoded).unwrap(), bytes);
+    }
+
+    #[test]
+    fn encode_bytes_rejects_input_over_max_size() {
+        let bytes = vec![0u8; MAX_INPUT_BYTES + 1];
+        let err = encode_bytes(&bytes, false).unwrap_err();
         assert_eq!(err.code, "base64-input-too-large");
         assert_eq!(err.position, None);
     }

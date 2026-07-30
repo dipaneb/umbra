@@ -1,6 +1,7 @@
 import { computed, ref, type Component } from "vue";
 import { defineStore } from "pinia";
 import type { RouteRecordRaw } from "vue-router";
+import type { ToolError } from "../shell/toolError";
 
 export interface ToolRegistryEntry {
   id: string;
@@ -56,6 +57,10 @@ const TOOLS: ToolRegistryEntry[] = [
     route: "/tools/base64",
     icon: "64",
     component: () => import("../tools/base64/Base64View.vue"),
+    // Tauri's native drop event carries only filesystem paths, never a
+    // browser-supplied MIME type — this field is presence-of-`.drop`-means-
+    // accepts, not yet used for actual filtering (no story needs it yet).
+    drop: { acceptedMimeTypes: [], handler: "base64_encode_file" },
   },
 ];
 
@@ -79,5 +84,27 @@ export const useRegistryStore = defineStore("registry", () => {
     })),
   );
 
-  return { tools, routes };
+  // AD-14: `DropZone.vue` is the shell's single generic drop dispatcher — it
+  // invokes `activeTool.drop.handler` directly, but the dropped *path* is
+  // the only argument it can supply on its own. Any additional,
+  // tool-specific invoke arguments (e.g. Base64's `url_safe`, drawn from
+  // that tool's own currently-selected radio button) come from the active
+  // tool's own view via a provider registered here. Cross-tool signal lives
+  // in this store, not a bare module `ref`, per AD-6.
+  const dropArgsProviders = ref<Record<string, () => Record<string, unknown>>>({});
+  function setDropArgsProvider(toolId: string, provider: (() => Record<string, unknown>) | null): void {
+    if (provider) {
+      dropArgsProviders.value[toolId] = provider;
+    } else {
+      delete dropArgsProviders.value[toolId];
+    }
+  }
+
+  // One-shot outcome of a dispatcher-invoked drop command — set by
+  // `DropZone.vue` after it invokes `activeTool.drop.handler`, consumed
+  // (watched, then cleared) by the tool view that registered the provider
+  // above.
+  const dropResult = ref<{ toolId: string; value: string } | { toolId: string; error: ToolError } | null>(null);
+
+  return { tools, routes, dropArgsProviders, setDropArgsProvider, dropResult };
 });

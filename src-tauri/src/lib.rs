@@ -1,6 +1,7 @@
 mod commands;
+mod fs_helper;
 
-use commands::base64::{base64_decode, base64_encode};
+use commands::base64::{base64_decode, base64_decode_to_file, base64_encode, base64_encode_file};
 use commands::json::{json_format, json_minify, json_parse};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -15,13 +16,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             json_format,
             json_minify,
             json_parse,
             base64_encode,
-            base64_decode
+            base64_decode,
+            base64_encode_file,
+            base64_decode_to_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
