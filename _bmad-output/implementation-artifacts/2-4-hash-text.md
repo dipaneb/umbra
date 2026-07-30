@@ -123,10 +123,10 @@ so that I can produce checksums without pasting content into a website.
 - [ ] **Task 7: Manual verification (deferred to the user)**
   - [ ] `pnpm tauri dev`, per this project's established precedent (Stories 1.10, 2.1, 2.2, 2.3 — the dev agent cannot visually drive a native Tauri window): paste text and compute; confirm all four digests display simultaneously with MD5/SHA-1 visibly marked legacy; toggle uppercase/lowercase and confirm all four re-render instantly (no network/loading flicker, since no `invoke` call happens); copy a couple of individual digests and confirm clipboard content; confirm the tool appears in the sidebar and is reachable via ⌘K under "hash"/"checksum"/"sha256"/"md5".
 
-- [ ] **Task 8: Commit and open a PR**
-  - [ ] Branch: `feat/story-2-4-<slug>` (e.g. `feat/story-2-4-hash-text`).
-  - [ ] Conventional Commit(s), `feat` type scoped to `hash`.
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+- [x] **Task 8: Commit and open a PR**
+  - [x] Branch: `feat/story-2-4-<slug>` (e.g. `feat/story-2-4-hash-text`).
+  - [x] Conventional Commit(s), `feat` type scoped to `hash`.
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4) — [PR #28](https://github.com/dipaneb/umbra/pull/28).
 
 ## Dev Notes
 
