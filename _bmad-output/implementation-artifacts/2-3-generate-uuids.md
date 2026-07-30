@@ -120,10 +120,10 @@ so that I can fill fixtures and IDs without an online generator.
 - [ ] **Task 7: Manual verification (deferred to the user)**
   - [ ] `pnpm tauri dev`, per this project's established precedent (Stories 1.10, 2.1, 2.2 — the dev agent cannot visually drive a native Tauri window): generate a single v4 UUID and copy it; generate a bulk count (e.g. 500) of v7 UUIDs and confirm the list is visibly sorted/time-ordered and the window stays responsive; attempt a count of 1001 and confirm the inline rejection message, not a silently clamped list; switch v4↔v7 and confirm the prior list clears; use "Copy all" and paste to confirm newline-joined content; confirm the tool appears in the sidebar and is reachable via ⌘K under "uuid" and "guid".
 
-- [ ] **Task 8: Commit and open a PR**
-  - [ ] Branch: `feat/story-2-3-<slug>` (e.g. `feat/story-2-3-uuid-generator`).
-  - [ ] Conventional Commit(s), `feat` type scoped to `uuid`.
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+- [x] **Task 8: Commit and open a PR**
+  - [x] Branch: `feat/story-2-3-<slug>` (e.g. `feat/story-2-3-uuid-generator`).
+  - [x] Conventional Commit(s), `feat` type scoped to `uuid`.
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4) — [PR #27](https://github.com/dipaneb/umbra/pull/27).
 
 ## Dev Notes
 
