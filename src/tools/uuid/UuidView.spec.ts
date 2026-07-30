@@ -113,6 +113,25 @@ describe("UuidView", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("round-trips a count of 0 to the server instead of blocking it client-side", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "uuid-count-zero",
+      message: "count must be at least 1",
+      position: null,
+      context: null,
+    });
+    mountView();
+
+    await countInput(wrapper!).setValue(0);
+    await clickButton(wrapper!, "Generate");
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("uuid_generate", { version: "v4", count: 0 });
+    const alert = wrapper!.find("[role='alert']");
+    expect(alert.exists()).toBe(true);
+    expect(alert.text()).toContain("count must be at least 1");
+  });
+
   it("clears a previous result when switching version (AC3)", async () => {
     invokeMock.mockResolvedValueOnce(["v4-result"]);
     mountView();
@@ -122,6 +141,26 @@ describe("UuidView", () => {
     expect(resultRows(wrapper!)).toHaveLength(1);
 
     await wrapper!.find('input[type="radio"][value="v7"]').setValue();
+    await flushPromises();
+
+    expect(resultRows(wrapper!)).toHaveLength(0);
+  });
+
+  it("discards a stale in-flight response after the version changes before it resolves", async () => {
+    let resolveInvoke: (value: string[]) => void;
+    invokeMock.mockReturnValueOnce(
+      new Promise<string[]>((resolve) => {
+        resolveInvoke = resolve;
+      }),
+    );
+    mountView();
+
+    await clickButton(wrapper!, "Generate");
+    await wrapper!.find('input[type="radio"][value="v7"]').setValue();
+    await flushPromises();
+    expect(resultRows(wrapper!)).toHaveLength(0);
+
+    resolveInvoke!(["stale-v4-result"]);
     await flushPromises();
 
     expect(resultRows(wrapper!)).toHaveLength(0);

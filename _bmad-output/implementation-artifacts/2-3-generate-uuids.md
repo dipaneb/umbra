@@ -4,7 +4,7 @@ baseline_commit: 3c2e48b
 
 # Story 2.3: Generate UUIDs
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -124,6 +124,36 @@ so that I can fill fixtures and IDs without an online generator.
   - [x] Branch: `feat/story-2-3-<slug>` (e.g. `feat/story-2-3-uuid-generator`).
   - [x] Conventional Commit(s), `feat` type scoped to `uuid`.
   - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4) — [PR #27](https://github.com/dipaneb/umbra/pull/27).
+
+### Review Findings
+
+- [x] [Review][Patch] Client-side count guard blocks `0` before it can round-trip to the server, contradicting the Dev Notes' explicit requirement that `0` "still round-trips to the command and renders the returned `ToolError`" [src/tools/uuid/UuidView.vue:510] — resolved (user decision, 2026-07-30): relax the guard from `count.value >= 1` to `count.value >= 0`, since `0` is a valid `u32` and the guard's stated purpose (blocking values that "can't serialize into a meaningful IPC call") never applied to it; this satisfies both Dev Notes bullets simultaneously.
+
+- [x] [Review][Patch] Version-switch race silently shows UUIDs from the previously selected version [src/tools/uuid/UuidView.vue:496,516] — `watch(version, …)` clears `results`/`error` on radio change, but `runLatestWins`'s supersede check only keys off a new call to `onGenerate`, not off `version` changing; a Generate click for v4 followed by a version switch to v7 before the response lands lets the stale v4 response repopulate `results.value`, defeating AC3 ("output matches the selected version") for exactly the case the version-clear watcher was meant to cover.
+
+- [x] [Review][Patch] Client-side count guard doesn't reject values above `u32::MAX` [src/tools/uuid/UuidView.vue:510] — the guard only checks `Number.isInteger(count.value) && count.value >= 1`, so a count like `5000000000` (a valid JS integer, invalid `u32`) passes the client guard and is sent to `invoke`, hitting a raw Tauri IPC deserialization failure instead of the clean inline message the guard exists to guarantee (same reasoning the Dev Notes already give for rejecting negatives/`NaN` applies equally here).
+
+- [x] [Review][Patch] `errorLocation`'s `LineCol`/`ByteOffset` branches are dead code [src/tools/uuid/UuidView.vue:480] — copied from `Base64View.vue`, where the equivalent branches are live (`base64.rs` does return `Some(Position::ByteOffset)`), but `crates/umbra-core/src/uuid.rs`'s `generate()` always returns `position: None`, so both branches can never execute for this view.
+
+- [x] [Review][Patch] No uniqueness assertion for v7 bulk output [crates/umbra-core/src/uuid.rs:114] — `generate_v7_bulk_is_already_sorted_ascending` only asserts `w[0] <= w[1]`, which a run of duplicate values would also satisfy; the v4 bulk test explicitly verifies 1000 unique values via `HashSet` but there's no equivalent for v7.
+
+- [x] [Review][Patch] v7 doc comment overstates the monotonicity guarantee's scope [crates/umbra-core/src/uuid.rs:51] — "a shared context keeps output strictly increasing" reads as an unqualified claim; the guarantee is per-batch only (a fresh `ContextV7` with a new randomized counter seed is created on every `generate()` call), so two separate Generate clicks have no ordering guarantee relative to each other. Worth a one-clause caveat so a future reader doesn't assume cross-call ordering.
+
+- [x] [Review][Patch] Stale client-side guard message isn't cleared on version switch [src/tools/uuid/UuidView.vue:496] — `watch(version, …)` clears `results.value` and `error.value` but not `clientError.value`; triggering the "Enter a whole number of at least 1." guard and then flipping the v4/v7 radio leaves the stale message on screen.
+
+- [x] [Review][Defer] `map_join_error` duplicated a third time across command files [src-tauri/src/commands/uuid.rs:11] — deferred, pre-existing (identical boilerplate already exists in `commands/json.rs` and `commands/base64.rs`; this story followed established convention rather than introducing the duplication).
+
+- [x] [Review][Defer] Alert styling (`p[role="alert"] { color: #b00020; }`) duplicated a third time [src/tools/uuid/UuidView.vue:184] — deferred, pre-existing (identical block already exists in `JsonView.vue` and `Base64View.vue`).
+
+- [x] [Review][Defer] Clipboard failures degrade to raw JS error text via `toToolError`'s `"unknown"` fallback [src/tools/uuid/UuidView.vue:528,537] — deferred, pre-existing (`Base64View.vue`'s `onCopy` has the identical gap).
+
+- [x] [Review][Defer] `CommandPalette.spec.ts`'s wrap-around assertion depends on `uuid` being the last entry in `TOOLS` [src/shell/CommandPalette.spec.ts:273] — deferred, pre-existing (the test already depended on array order before this story; nothing documents the ordering as a contract).
+
+- [x] [Review][Defer] No `aria-live`/`role="status"` announcement when a new UUID batch renders [src/tools/uuid/UuidView.vue:608] — deferred, pre-existing (no tool in this codebase announces successful results to assistive tech yet; errors get `role="alert"`, successes don't, app-wide).
+
+- [x] [Review][Defer] No in-flight/loading state on the Generate button [src/tools/uuid/UuidView.vue:584] — deferred, pre-existing (`Base64View.vue`'s `onEncode`/`onDecode` have the same gap; only the file-based `onDecodeToFile` action guards against rapid re-clicks).
+
+- [x] [Review][Defer] Concurrent Copy/Copy all clicks aren't wrapped in a latest-wins runner [src/tools/uuid/UuidView.vue:528,537] — deferred, pre-existing (`Base64View.vue`'s `onCopy` has the identical unguarded pattern).
 
 ## Dev Notes
 

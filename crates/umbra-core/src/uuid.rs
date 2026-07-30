@@ -16,7 +16,10 @@ const MAX_COUNT: u32 = 1000;
 /// batch rather than via bare `Uuid::now_v7()` calls: the `uuid` crate warns
 /// that repeated `now_v7()` calls are not guaranteed monotonic if the system
 /// clock doesn't advance between calls, which a sub-millisecond bulk loop
-/// would hit routinely — a shared context keeps output strictly increasing.
+/// would hit routinely — a shared context keeps output strictly increasing
+/// within this call. Separate `generate()` calls each get a fresh context
+/// with a new randomized counter seed, so there's no ordering guarantee
+/// across two separate calls.
 pub fn generate(version: UuidVersion, count: u32) -> Result<Vec<String>, ToolError> {
     if count == 0 {
         return Err(ToolError {
@@ -79,6 +82,13 @@ mod tests {
         let results = generate(UuidVersion::V7, 1000).unwrap();
         assert_eq!(results.len(), 1000);
         assert!(results.windows(2).all(|w| w[0] <= w[1]));
+    }
+
+    #[test]
+    fn generate_v7_bulk_returns_unique_strings() {
+        let results = generate(UuidVersion::V7, 1000).unwrap();
+        let unique: std::collections::HashSet<_> = results.iter().collect();
+        assert_eq!(unique.len(), 1000);
     }
 
     #[test]

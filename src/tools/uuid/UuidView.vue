@@ -6,6 +6,8 @@ import { createLatestWinsRunner } from "../../shell/invoke";
 import { toToolError, type ToolError } from "../../shell/toolError";
 import type { UuidVersion } from "./uuidVersion";
 
+const MAX_COUNT = 4294967295; // u32::MAX — mirrors umbra-core's u32 command parameter
+
 const version = ref<UuidVersion>("v4");
 const count = ref(1);
 const results = ref<string[]>([]);
@@ -14,17 +16,8 @@ const clientError = ref<string | null>(null);
 
 const runLatestWins = createLatestWinsRunner();
 
-const errorLocation = computed(() => {
-  const position = error.value?.position;
-  if (position?.kind === "LineCol") {
-    return `(line ${position.line}, column ${position.column})`;
-  }
-  if (position?.kind === "ByteOffset") {
-    return `(offset ${position.offset})`;
-  }
-  return null;
-});
-
+// uuid.rs's generate() always returns position: None, so there's no
+// LineCol/ByteOffset case to render here (unlike JsonView/Base64View).
 const alertMessage = computed(() => clientError.value ?? error.value?.message ?? null);
 
 // A stale list generated under the previous version no longer "matches the
@@ -33,6 +26,7 @@ const alertMessage = computed(() => clientError.value ?? error.value?.message ??
 watch(version, () => {
   results.value = [];
   error.value = null;
+  clientError.value = null;
 });
 
 async function onGenerate() {
@@ -41,24 +35,28 @@ async function onGenerate() {
 
   // Client-side input-shape guard, distinct from the server-side count == 0
   // / count > 1000 business rules: a cleared/non-numeric field produces NaN,
-  // and a typed negative number can't serialize into the command's u32
-  // parameter — neither should round-trip to `invoke` only to surface a raw
-  // IPC error instead of a clean inline message.
-  if (!Number.isInteger(count.value) || count.value < 1) {
-    clientError.value = "Enter a whole number of at least 1.";
+  // and a typed negative or over-u32::MAX number can't serialize into the
+  // command's u32 parameter — neither should round-trip to `invoke` only to
+  // surface a raw IPC error instead of a clean inline message. 0 itself is a
+  // valid u32, so it's allowed through to hit the server's own rejection.
+  if (!Number.isInteger(count.value) || count.value < 0 || count.value > MAX_COUNT) {
+    clientError.value = "Enter a whole number between 0 and 4294967295.";
     return;
   }
 
+  const requestedVersion = version.value;
   try {
     const result = await runLatestWins(() =>
       invoke<string[]>("uuid_generate", { version: version.value, count: count.value }),
     );
-    if (!result.superseded) {
+    if (!result.superseded && version.value === requestedVersion) {
       results.value = result.value;
     }
   } catch (err) {
-    results.value = [];
-    error.value = toToolError(err);
+    if (version.value === requestedVersion) {
+      results.value = [];
+      error.value = toToolError(err);
+    }
   }
 }
 
@@ -137,9 +135,7 @@ async function onCopyAll() {
       v-if="alertMessage"
       role="alert"
     >
-      {{ alertMessage }}<template v-if="errorLocation">
-        {{ errorLocation }}
-      </template>
+      {{ alertMessage }}
     </p>
 
     <ul
