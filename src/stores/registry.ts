@@ -62,6 +62,14 @@ const TOOLS: ToolRegistryEntry[] = [
     // accepts, not yet used for actual filtering (no story needs it yet).
     drop: { acceptedMimeTypes: [], handler: "base64_encode_file" },
   },
+  {
+    id: "uuid",
+    name: "UUID",
+    aliases: ["uuid", "guid"],
+    route: "/tools/uuid",
+    icon: "ID",
+    component: () => import("../tools/uuid/UuidView.vue"),
+  },
 ];
 
 assertUniqueToolIds(TOOLS);
