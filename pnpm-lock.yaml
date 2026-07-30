@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@tanstack/vue-virtual':
-        specifier: ^3.13.34
-        version: 3.13.34(vue@3.5.40(typescript@5.6.3))
+        specifier: ^3.13.35
+        version: 3.13.35(vue@3.5.40(typescript@5.6.3))
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1
@@ -563,11 +563,11 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@tanstack/virtual-core@3.17.6':
-    resolution: {integrity: sha512-h0/Ebo18CkOrChlQIhNtQkM5ySUnh/GumQ/D1st3hG2HWUPEF+ILUc2k29UtivCi/9G7w7G3/f7Xyd5cCFbKBw==}
+  '@tanstack/virtual-core@3.17.7':
+    resolution: {integrity: sha512-bp+v10y65sp2H7WpWfIMyxTNfl8ZVfxFTLRjPIFRryi6FV/J33z4IS53WO4pTk36KlvJ4iLiQz+oaydDC1xbcA==}
 
-  '@tanstack/vue-virtual@3.13.34':
-    resolution: {integrity: sha512-CBqbCcnVsKpl9IJ7frPnbBmAqmc7JttSySg04kgLYJ4yYuC8JsAbtUHP0yLtWGLyByjihN3SwaDCgHQ+Z4iPoA==}
+  '@tanstack/vue-virtual@3.13.35':
+    resolution: {integrity: sha512-lOfSPvgPdlaH6Qy+CyIc3XpycitaSQ9GECndGpTuDiu+uDA1am+90yWXwzDSd/20ZM196ggWJLS+Qb6WjVd/OA==}
     peerDependencies:
       vue: ^2.7.0 || ^3.0.0
 
@@ -2069,11 +2069,11 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@tanstack/virtual-core@3.17.6': {}
+  '@tanstack/virtual-core@3.17.7': {}
 
-  '@tanstack/vue-virtual@3.13.34(vue@3.5.40(typescript@5.6.3))':
+  '@tanstack/vue-virtual@3.13.35(vue@3.5.40(typescript@5.6.3))':
     dependencies:
-      '@tanstack/virtual-core': 3.17.6
+      '@tanstack/virtual-core': 3.17.7
       vue: 3.5.40(typescript@5.6.3)
 
   '@tauri-apps/api@2.11.1': {}
