@@ -13,3 +13,4 @@ serde = { version = "1", features = ["derive"] }
 # a style choice — see json.rs's key-order regression tests.
 serde_json = { version = "1", features = ["preserve_order"] }
 base64 = "0.23"
+uuid = { version = "1.24", features = ["v4", "v7", "std"] }

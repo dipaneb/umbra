@@ -140,11 +140,11 @@ describe("CommandPalette", () => {
     dispatch({ key: "k", metaKey: true });
     await wrapper.vm.$nextTick();
 
-    // Default empty query lists both registry entries (JSON, then Base64).
+    // Default empty query lists all registry entries (JSON, Base64, UUID).
     // ArrowUp from index 0 should wrap to the last item, not go negative.
     dispatch({ key: "ArrowUp" });
     await wrapper.vm.$nextTick();
-    expect(wrapper.find("li.active").text()).toContain("Base64");
+    expect(wrapper.find("li.active").text()).toContain("UUID");
 
     // ArrowDown from the last item should wrap back to the first.
     dispatch({ key: "ArrowDown" });
