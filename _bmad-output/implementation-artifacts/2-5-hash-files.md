@@ -152,10 +152,10 @@ so that I can verify downloads and artifacts locally.
 - [ ] **Task 8: Manual verification (deferred to the user)**
   - [ ] `pnpm tauri dev`, per this project's established precedent (Stories 1.10, 2.1, 2.2, 2.3, 2.4 — the dev agent cannot visually drive a native Tauri window): drop a file onto the Hash tool and confirm all four digests display (matching what Story 2.4's text-input path produces for the same content, if convenient to compare); drop a large file and confirm the UI stays responsive during hashing; drop two files in quick succession and confirm the result reflects only the later drop; drop an unreadable/deleted-mid-flight file and confirm a structured inline error; drop onto a tool with no drop support (e.g. JSON) and confirm the existing no-op notice still appears (regression check on Task 4's dispatcher changes); confirm dropping onto Base64 still works end-to-end (regression check on the `dropResult` type widening).
 
-- [ ] **Task 9: Commit and open a PR**
-  - [ ] Branch: `feat/story-2-5-<slug>` (e.g. `feat/story-2-5-hash-files`).
-  - [ ] Conventional Commit(s), `feat` type scoped to `hash` (consider a separate commit for Task 4's shared `DropZone`/`registry` fixes if that reads more clearly, mirroring Story 2.2's precedent of splitting shared-infra commits from tool-specific ones — use judgment).
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+- [x] **Task 9: Commit and open a PR**
+  - [x] Branch: `feat/story-2-5-<slug>` (e.g. `feat/story-2-5-hash-files`).
+  - [x] Conventional Commit(s), `feat` type scoped to `hash` (consider a separate commit for Task 4's shared `DropZone`/`registry` fixes if that reads more clearly, mirroring Story 2.2's precedent of splitting shared-infra commits from tool-specific ones — use judgment). Kept as a single commit, mirroring Story 2.2's own initial-implementation commit (the split-commit precedent there was actually its post-review fix commit, not its initial one).
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4) — [PR #29](https://github.com/dipaneb/umbra/pull/29).
 
 ## Dev Notes
 
