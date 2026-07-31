@@ -4,7 +4,7 @@ baseline_commit: e391345
 
 # Story 2.5: Hash files
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -156,6 +156,19 @@ so that I can verify downloads and artifacts locally.
   - [x] Branch: `feat/story-2-5-<slug>` (e.g. `feat/story-2-5-hash-files`).
   - [x] Conventional Commit(s), `feat` type scoped to `hash` (consider a separate commit for Task 4's shared `DropZone`/`registry` fixes if that reads more clearly, mirroring Story 2.2's precedent of splitting shared-infra commits from tool-specific ones — use judgment). Kept as a single commit, mirroring Story 2.2's own initial-implementation commit (the split-commit precedent there was actually its post-review fix commit, not its initial one).
   - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4) — [PR #29](https://github.com/dipaneb/umbra/pull/29).
+
+### Review Findings
+
+- [x] [Review][Patch] Cross-mechanism and cross-tool latest-wins races violate AD-16/AC2 [`src/shell/DropZone.vue:12,49-52`, `src/tools/hash/HashView.vue:14,31-44`] — `DropZone.vue` shares one global `runLatestWins` instance across every tool (a drop on tool B falsely supersedes an in-flight drop on tool A), and `HashView.vue` keeps a separate, uncoordinated runner for `onCompute`/`onPaste` — so a manual "Compute" and a file drop, both writing to the same `digests`/`error` state, can resolve out of order with no guaranteed latest-wins. AD-16 exists to prevent "a stale result from a superseded request overwriting a newer one," and AC2 explicitly requires "a newer drop supersedes an in-flight computation." Fix: host one shared, per-toolId `runLatestWins` instance in the registry store (paralleling the existing `dropArgsProviders` pattern from AD-14) and route both `DropZone.vue`'s drop dispatch and `HashView.vue`'s `onCompute`/`onPaste` through it. **Fixed:** added `getLatestWinsRunner(toolId)` to the registry store; `DropZone.vue` and `HashView.vue` now share one per-tool runner. Regression tests added in `registry.spec.ts` and `dropZone.spec.ts`, confirmed to fail against the pre-fix code.
+- [x] [Review][Patch] Drop results for a since-unmounted view are neither discarded (per AD-16) nor reliably delivered [`src/tools/hash/HashView.vue:20-31`, `src/shell/DropZone.vue:49-52`] — `HashView.vue`'s `watch(() => registry.dropResult, ...)` has no `{ immediate: true }`; if the user drops a file and navigates away before `hash_compute_file` resolves, the watcher is torn down, `DropZone.vue` still writes the result into the store, and remounting Hash later won't retroactively fire a non-immediate watcher. AD-16 states "results for unmounted views are discarded on arrival" — the current behavior is neither a clean discard nor a delivery; the result silently rots in the store. Fix: at resolve time in `DropZone.vue`, check whether the active route still matches the dispatched `toolId` before writing `dropResult`, discarding otherwise. **Fixed:** `DropZone.vue` now checks `resolveActiveTool(route.path, registry.tools)?.id === toolId` before writing `dropResult` on both the success and error paths. Regression test added in `dropZone.spec.ts`, confirmed to fail against the pre-fix code.
+- [x] [Review][Defer] TOCTOU gap between `check_file_size`'s metadata check and the later file read [`src-tauri/src/commands/hash.rs:26-40`] — deferred, pre-existing (copied verbatim from `base64.rs`'s Story 2.2 `check_file_size`; fixing only `hash.rs` would leave `base64.rs` equally exposed — candidate for a shared bounded-read helper in `fs_helper.rs`)
+- [x] [Review][Defer] `check_file_size` duplicates `commands/base64.rs`'s function of the same name [`src-tauri/src/commands/hash.rs:26-40`] — deferred, pre-existing (deliberate per the spec's explicit direction to mirror base64's shape; candidate for consolidation alongside the TOCTOU fix above)
+- [x] [Review][Defer] `acceptedMimeTypes: []` remains dead configuration [`src/stores/registry.ts:14,78`] — deferred, pre-existing (declared and populated since Story 2.2, never read anywhere; this story just extends the same inert shape)
+- [x] [Review][Defer] Multi-file drops silently hash only the first file, no notice the rest were ignored [`src/shell/DropZone.vue:47`] — deferred, pre-existing (Story 2.2 `DropZone`/`routeDrop` behavior, not changed by this diff, though newly more relevant given hashing's "verify a batch of downloads" use case)
+- [x] [Review][Defer] Directory drops surface a raw OS error string instead of a friendly message [`src-tauri/src/fs_helper.rs:17-19`] — deferred, pre-existing (`read_file_bytes`/`check_file_size` behavior, not introduced by this diff)
+- [x] [Review][Defer] Test temp files leak on assertion failure [`src-tauri/src/commands/hash.rs` test module] — deferred, pre-existing (cleanup runs as a trailing statement in `base64.rs`'s/`fs_helper.rs`'s tests too; this story's new tests mirror the same established convention)
+- [x] [Review][Defer] No loading/progress feedback while a dropped file is hashing [`src/tools/hash/HashView.vue`] — deferred, pre-existing (`onCompute`'s manual text-hash path has the same gap; this story extends it to file drops rather than introducing it)
+- [x] [Review][Defer] No indication of which input (typed text vs. dropped file) the displayed digests belong to [`src/tools/hash/HashView.vue`] — deferred, pre-existing UX gap, compounded by but distinct from the race above
 
 ## Dev Notes
 

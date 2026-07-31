@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assertUniqueToolIds, type ToolRegistryEntry } from "./registry";
+import { createPinia, setActivePinia } from "pinia";
+import { assertUniqueToolIds, useRegistryStore, type ToolRegistryEntry } from "./registry";
 
 function entry(id: string): ToolRegistryEntry {
   return {
@@ -38,5 +39,48 @@ describe("assertUniqueToolIds", () => {
 
   it("does not throw for an empty registry", () => {
     expect(() => assertUniqueToolIds([])).not.toThrow();
+  });
+});
+
+describe("getLatestWinsRunner", () => {
+  it("returns the same runner instance for repeated calls with the same toolId", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+    expect(registry.getLatestWinsRunner("hash")).toBe(registry.getLatestWinsRunner("hash"));
+  });
+
+  it("returns independent runners for different toolIds (no cross-tool supersession)", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+    expect(registry.getLatestWinsRunner("hash")).not.toBe(registry.getLatestWinsRunner("base64"));
+  });
+
+  it("shares one latest-wins sequence across independent callers for the same tool, so a manual invoke and a file drop can't overwrite each other out of order", async () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+
+    let resolveManualCompute: (value: string) => void;
+    const manualCompute = new Promise<string>((resolve) => {
+      resolveManualCompute = resolve;
+    });
+    let resolveDrop: (value: string) => void;
+    const drop = new Promise<string>((resolve) => {
+      resolveDrop = resolve;
+    });
+
+    // Simulates HashView's onCompute() call site...
+    const manualResultPromise = registry.getLatestWinsRunner("hash")(() => manualCompute);
+    // ...and DropZone.vue's drop-dispatch call site, obtained independently.
+    const dropResultPromise = registry.getLatestWinsRunner("hash")(() => drop);
+
+    // The drop (dispatched second) resolves first...
+    resolveDrop!("drop-result");
+    // ...then the manual compute (dispatched first) resolves after it.
+    resolveManualCompute!("manual-result");
+
+    const [manualResult, dropResult] = await Promise.all([manualResultPromise, dropResultPromise]);
+
+    expect(manualResult).toEqual({ superseded: true });
+    expect(dropResult).toEqual({ superseded: false, value: "drop-result" });
   });
 });

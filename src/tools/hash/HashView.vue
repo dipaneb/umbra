@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
-import { createLatestWinsRunner } from "../../shell/invoke";
 import { toToolError, type ToolError } from "../../shell/toolError";
 import { useRegistryStore } from "../../stores/registry";
 import type { HashDigests } from "./hashDigests";
@@ -22,7 +21,10 @@ const caseMode = ref<CaseMode>("lower");
 const error = ref<ToolError | null>(null);
 
 const registry = useRegistryStore();
-const runLatestWins = createLatestWinsRunner();
+// AD-16: shared with `DropZone.vue`'s file-drop dispatch for this same
+// "hash" tool, so a manual Compute/Paste and an in-flight file drop
+// participate in one latest-wins sequence instead of two uncoordinated ones.
+const runLatestWins = registry.getLatestWinsRunner("hash");
 
 // AD-14: `DropZone.vue` is the shell's single generic dispatcher and
 // invokes `hash_compute_file` itself; this view only consumes the outcome

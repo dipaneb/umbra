@@ -104,7 +104,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function setupDropZone(routePath: string): Promise<{ wrapper: VueWrapper; pinia: Pinia }> {
+async function setupDropZone(
+  routePath: string,
+): Promise<{ wrapper: VueWrapper; pinia: Pinia; router: ReturnType<typeof createAppRouter> }> {
   onDragDropEventMock.mockImplementation((callback: DragDropCallback) => {
     capturedCallback = callback;
     return Promise.resolve(unlistenMock);
@@ -118,7 +120,7 @@ async function setupDropZone(routePath: string): Promise<{ wrapper: VueWrapper; 
   wrapper = mount(DropZone, { global: { plugins: [pinia, router] } });
   await flushPromises();
 
-  return { wrapper, pinia };
+  return { wrapper, pinia, router };
 }
 
 describe("DropZone", () => {
@@ -232,5 +234,71 @@ describe("DropZone", () => {
       toolId: "hash",
       value: { sha256: "second", sha512: "s", md5: "s", sha1: "s" },
     });
+  });
+
+  it("does not let a drop for one tool supersede an unrelated in-flight drop for a different tool (AD-16 cross-tool fix)", async () => {
+    let resolveBase64: (value: unknown) => void;
+    const base64Promise = new Promise((resolve) => {
+      resolveBase64 = resolve;
+    });
+    let resolveHash: (value: unknown) => void;
+    const hashPromise = new Promise((resolve) => {
+      resolveHash = resolve;
+    });
+    invokeMock.mockReturnValueOnce(base64Promise).mockReturnValueOnce(hashPromise);
+
+    const { pinia, router } = await setupDropZone("/tools/base64");
+    const registry = useRegistryStore(pinia);
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/a.bin"] } });
+    await flushPromises();
+
+    // The user switches to Hash and drops there before base64's invoke
+    // resolves. Under the old shared-runner bug, this dispatch would bump
+    // one component-wide counter and wrongly mark base64's in-flight
+    // request "superseded" even though it targets an unrelated tool.
+    await router.push("/tools/hash");
+    await flushPromises();
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/b.bin"] } });
+    await flushPromises();
+
+    // ...then switches back to Base64 before its invoke resolves, so its
+    // view is active again by the time the result arrives.
+    await router.push("/tools/base64");
+    await flushPromises();
+
+    resolveBase64!("//base64result==");
+    await flushPromises();
+    expect(registry.dropResult).toEqual({ toolId: "base64", value: "//base64result==" });
+
+    // The stale hash drop resolving afterwards must not overwrite it, and
+    // (per the discard-on-unmount fix) is itself discarded since Hash is no
+    // longer the active tool.
+    resolveHash!({ sha256: "hash-value", sha512: "x", md5: "x", sha1: "x" });
+    await flushPromises();
+    expect(registry.dropResult).toEqual({ toolId: "base64", value: "//base64result==" });
+  });
+
+  it("discards a drop's result once its tool is no longer active by the time invoke() resolves (AD-16: results for unmounted views are discarded on arrival)", async () => {
+    let resolveInvoke: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      resolveInvoke = resolve;
+    });
+    invokeMock.mockReturnValueOnce(pending);
+
+    const { pinia, router } = await setupDropZone("/tools/hash");
+    const registry = useRegistryStore(pinia);
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/big.bin"] } });
+    await flushPromises();
+
+    // The user navigates away from Hash before the invoke resolves.
+    await router.push("/tools/base64");
+    await flushPromises();
+
+    resolveInvoke!({ sha256: "late", sha512: "x", md5: "x", sha1: "x" });
+    await flushPromises();
+
+    expect(registry.dropResult).toBeNull();
   });
 });
