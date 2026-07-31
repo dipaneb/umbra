@@ -77,6 +77,7 @@ const TOOLS: ToolRegistryEntry[] = [
     route: "/tools/hash",
     icon: "#",
     component: () => import("../tools/hash/HashView.vue"),
+    drop: { acceptedMimeTypes: [], handler: "hash_compute_file" },
   },
 ];
 
@@ -120,7 +121,7 @@ export const useRegistryStore = defineStore("registry", () => {
   // `DropZone.vue` after it invokes `activeTool.drop.handler`, consumed
   // (watched, then cleared) by the tool view that registered the provider
   // above.
-  const dropResult = ref<{ toolId: string; value: string } | { toolId: string; error: ToolError } | null>(null);
+  const dropResult = ref<{ toolId: string; value: unknown } | { toolId: string; error: ToolError } | null>(null);
 
   return { tools, routes, dropArgsProviders, setDropArgsProvider, dropResult };
 });

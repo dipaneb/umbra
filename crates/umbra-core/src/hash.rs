@@ -14,18 +14,20 @@ pub struct HashDigests {
 // Same rationale as base64.rs's own MAX_INPUT_BYTES (CWE-400 unbounded
 // allocation from arbitrarily large pasted text). Each tool module owns its
 // own constant rather than sharing another module's, per that file's
-// existing convention.
-const MAX_INPUT_BYTES: usize = 100 * 1024 * 1024;
+// existing convention. `pub` so src-tauri's command layer can reuse it for
+// the file-size guard (Story 2.5) instead of duplicating the value.
+pub const MAX_INPUT_BYTES: usize = 100 * 1024 * 1024;
 
 fn to_hex_lower(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Computes SHA-256, SHA-512, MD5, and SHA-1 digests of `input` simultaneously.
+/// Computes SHA-256, SHA-512, MD5, and SHA-1 digests of `bytes` simultaneously.
 /// Output is always lowercase hex — case is a presentation concern (AD-1),
-/// so core produces exactly one canonical output per algorithm.
-pub fn compute(input: &str) -> Result<HashDigests, ToolError> {
-    let bytes = input.as_bytes();
+/// so core produces exactly one canonical output per algorithm. This is the
+/// single hash implementation — `compute` is a thin wrapper over it for the
+/// text-input case.
+pub fn compute_bytes(bytes: &[u8]) -> Result<HashDigests, ToolError> {
     if bytes.len() > MAX_INPUT_BYTES {
         return Err(ToolError {
             code: "hash-input-too-large".to_string(),
@@ -44,6 +46,11 @@ pub fn compute(input: &str) -> Result<HashDigests, ToolError> {
         md5: to_hex_lower(&Md5::digest(bytes)),
         sha1: to_hex_lower(&Sha1::digest(bytes)),
     })
+}
+
+/// Computes SHA-256, SHA-512, MD5, and SHA-1 digests of `input`'s UTF-8 bytes.
+pub fn compute(input: &str) -> Result<HashDigests, ToolError> {
+    compute_bytes(input.as_bytes())
 }
 
 #[cfg(test)]
@@ -117,5 +124,28 @@ mod tests {
     fn compute_succeeds_at_exact_max_size_boundary() {
         let input = "A".repeat(MAX_INPUT_BYTES);
         assert!(compute(&input).is_ok());
+    }
+
+    #[test]
+    fn compute_bytes_matches_compute_for_the_same_utf8_content() {
+        assert_eq!(compute_bytes("".as_bytes()).unwrap(), compute("").unwrap());
+        assert_eq!(
+            compute_bytes("abc".as_bytes()).unwrap(),
+            compute("abc").unwrap()
+        );
+    }
+
+    #[test]
+    fn compute_bytes_rejects_input_over_max_size() {
+        let bytes = vec![0u8; MAX_INPUT_BYTES + 1];
+        let err = compute_bytes(&bytes).unwrap_err();
+        assert_eq!(err.code, "hash-input-too-large");
+        assert_eq!(err.position, None);
+    }
+
+    #[test]
+    fn compute_bytes_succeeds_at_exact_max_size_boundary() {
+        let bytes = vec![0u8; MAX_INPUT_BYTES];
+        assert!(compute_bytes(&bytes).is_ok());
     }
 }

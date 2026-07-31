@@ -188,4 +188,49 @@ describe("DropZone", () => {
 
     expect(invokeMock).not.toHaveBeenCalled();
   });
+
+  it("invokes hash_compute_file with path only (no dropArgsProvider registered for hash) (AC1)", async () => {
+    const sampleDigests = { sha256: "aaa", sha512: "bbb", md5: "ccc", sha1: "ddd" };
+    invokeMock.mockResolvedValueOnce(sampleDigests);
+    const { pinia } = await setupDropZone("/tools/hash");
+    const registry = useRegistryStore(pinia);
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/report.pdf"] } });
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("hash_compute_file", { path: "/tmp/report.pdf" });
+    expect(registry.dropResult).toEqual({ toolId: "hash", value: sampleDigests });
+  });
+
+  it("latest-wins: a newer drop's outcome survives even when the older drop's invoke() resolves later (AC2, AD-16)", async () => {
+    let resolveFirst: (value: unknown) => void;
+    let resolveSecond: (value: unknown) => void;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+    invokeMock.mockReturnValueOnce(firstPromise).mockReturnValueOnce(secondPromise);
+
+    const { pinia } = await setupDropZone("/tools/hash");
+    const registry = useRegistryStore(pinia);
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/first.bin"] } });
+    await flushPromises();
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/second.bin"] } });
+    await flushPromises();
+
+    // The second (later-dispatched) drop resolves first...
+    resolveSecond!({ sha256: "second", sha512: "s", md5: "s", sha1: "s" });
+    await flushPromises();
+    // ...then the first (older) drop resolves after it.
+    resolveFirst!({ sha256: "first", sha512: "f", md5: "f", sha1: "f" });
+    await flushPromises();
+
+    expect(registry.dropResult).toEqual({
+      toolId: "hash",
+      value: { sha256: "second", sha512: "s", md5: "s", sha1: "s" },
+    });
+  });
 });

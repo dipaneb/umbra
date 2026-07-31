@@ -6,9 +6,11 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useRegistryStore } from "../stores/registry";
 import { toToolError } from "./toolError";
 import { resolveActiveTool, routeDrop } from "./dropZone";
+import { createLatestWinsRunner } from "./invoke";
 
 const route = useRoute();
 const registry = useRegistryStore();
+const runLatestWins = createLatestWinsRunner();
 
 const noticeMessage = ref<string | null>(null);
 let noticeTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -43,8 +45,10 @@ onMounted(async () => {
     const path = routing.paths![0];
     const extraArgs = registry.dropArgsProviders[toolId]?.() ?? {};
     try {
-      const value = await invoke<string>(activeTool!.drop!.handler, { path, ...extraArgs });
-      registry.dropResult = { toolId, value };
+      const result = await runLatestWins(() =>
+        invoke<unknown>(activeTool!.drop!.handler, { path, ...extraArgs }),
+      );
+      if (!result.superseded) registry.dropResult = { toolId, value: result.value };
     } catch (err) {
       registry.dropResult = { toolId, error: toToolError(err) };
     }
