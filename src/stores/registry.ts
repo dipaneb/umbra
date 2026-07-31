@@ -80,6 +80,14 @@ const TOOLS: ToolRegistryEntry[] = [
     component: () => import("../tools/hash/HashView.vue"),
     drop: { acceptedMimeTypes: [], handler: "hash_compute_file" },
   },
+  {
+    id: "jwt",
+    name: "JWT",
+    aliases: ["jwt", "token", "decode"],
+    route: "/tools/jwt",
+    icon: "JWT",
+    component: () => import("../tools/jwt/JwtView.vue"),
+  },
 ];
 
 assertUniqueToolIds(TOOLS);
