@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
-import { createLatestWinsRunner } from "../../shell/invoke";
 import { toToolError, type ToolError } from "../../shell/toolError";
+import { useRegistryStore } from "../../stores/registry";
 import type { HashDigests } from "./hashDigests";
 
 type CaseMode = "lower" | "upper";
@@ -20,7 +20,30 @@ const digests = ref<HashDigests | null>(null);
 const caseMode = ref<CaseMode>("lower");
 const error = ref<ToolError | null>(null);
 
-const runLatestWins = createLatestWinsRunner();
+const registry = useRegistryStore();
+// AD-16: shared with `DropZone.vue`'s file-drop dispatch for this same
+// "hash" tool, so a manual Compute/Paste and an in-flight file drop
+// participate in one latest-wins sequence instead of two uncoordinated ones.
+const runLatestWins = registry.getLatestWinsRunner("hash");
+
+// AD-14: `DropZone.vue` is the shell's single generic dispatcher and
+// invokes `hash_compute_file` itself; this view only consumes the outcome
+// via `registry.dropResult` — no `dropArgsProvider` is needed since
+// `hash_compute_file` takes only `path`.
+watch(
+  () => registry.dropResult,
+  (result) => {
+    if (!result || result.toolId !== "hash") return;
+    registry.dropResult = null; // one-shot signal
+    if ("error" in result) {
+      digests.value = null;
+      error.value = result.error;
+    } else {
+      error.value = null;
+      digests.value = result.value as HashDigests;
+    }
+  },
+);
 
 // A pure view-side re-render, never a new `hash_compute` call — `compute()`
 // always returns lowercase hex (AD-1: case is presentation, not core logic).
@@ -72,6 +95,10 @@ async function onCopyOne(value: string) {
 <template>
   <section>
     <h1>Hash</h1>
+
+    <p class="drop-hint">
+      Drop a file anywhere in the window to hash it.
+    </p>
 
     <div class="field">
       <label for="hash-input">Text input</label>
@@ -148,6 +175,15 @@ async function onCopyOne(value: string) {
 </template>
 
 <style scoped>
+.drop-hint {
+  color: #666;
+  font-size: 0.9em;
+  border: 1px dashed #ccc;
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  margin-bottom: 1em;
+}
+
 .field {
   display: flex;
   flex-direction: column;

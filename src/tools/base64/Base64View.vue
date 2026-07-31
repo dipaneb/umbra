@@ -79,7 +79,7 @@ watch(
       error.value = result.error;
     } else {
       error.value = null;
-      output.value = result.value;
+      output.value = result.value as string;
     }
   },
 );

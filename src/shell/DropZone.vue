@@ -42,11 +42,25 @@ onMounted(async () => {
     const toolId = routing.toolId!;
     const path = routing.paths![0];
     const extraArgs = registry.dropArgsProviders[toolId]?.() ?? {};
+    const runLatestWins = registry.getLatestWinsRunner(toolId);
+
+    // AD-16: a result only reaches the store if its tool is still the
+    // active one when the invoke resolves — otherwise the consuming view
+    // has unmounted and the result is discarded, per AD-16, rather than
+    // left to rot in `dropResult` for a watcher that will never fire again.
+    function isStillActive(): boolean {
+      return resolveActiveTool(route.path, registry.tools)?.id === toolId;
+    }
+
     try {
-      const value = await invoke<string>(activeTool!.drop!.handler, { path, ...extraArgs });
-      registry.dropResult = { toolId, value };
+      const result = await runLatestWins(() =>
+        invoke<unknown>(activeTool!.drop!.handler, { path, ...extraArgs }),
+      );
+      if (!result.superseded && isStillActive()) {
+        registry.dropResult = { toolId, value: result.value };
+      }
     } catch (err) {
-      registry.dropResult = { toolId, error: toToolError(err) };
+      if (isStillActive()) registry.dropResult = { toolId, error: toToolError(err) };
     }
   });
 });

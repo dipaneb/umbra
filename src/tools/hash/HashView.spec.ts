@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { createPinia, type Pinia } from "pinia";
 import HashView from "./HashView.vue";
+import { useRegistryStore } from "../../stores/registry";
 
 const { invokeMock, readTextMock, writeTextMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -26,6 +28,7 @@ const SAMPLE_DIGESTS = {
 };
 
 let wrapper: VueWrapper | undefined;
+let pinia: Pinia;
 
 afterEach(() => {
   wrapper?.unmount();
@@ -36,7 +39,8 @@ afterEach(() => {
 });
 
 function mountView() {
-  wrapper = mount(HashView);
+  pinia = createPinia();
+  wrapper = mount(HashView, { global: { plugins: [pinia] } });
   return wrapper;
 }
 
@@ -146,6 +150,78 @@ describe("HashView", () => {
     await flushPromises();
 
     expect((wrapper!.find("#hash-input").element as HTMLTextAreaElement).value).toBe("pasted text");
+    expect(resultRows(wrapper!)).toHaveLength(0);
+  });
+
+  // AD-14: DropZone.vue is the shell's single generic dispatcher and calls
+  // `invoke()` itself; HashView.vue's only job on the drop path is to
+  // consume the outcome via `registry.dropResult`. These tests exercise
+  // that contract directly rather than going through a real DropZone.vue +
+  // Tauri event mock.
+
+  it("consumes a successful drop result into all four digest rows and clears the signal (AC1)", async () => {
+    mountView();
+    const registry = useRegistryStore(pinia);
+    await flushPromises();
+
+    registry.dropResult = { toolId: "hash", value: SAMPLE_DIGESTS };
+    await flushPromises();
+
+    const rows = resultRows(wrapper!);
+    expect(rows).toHaveLength(4);
+    expect(rows[0].text()).toContain(SAMPLE_DIGESTS.sha256);
+    expect(registry.dropResult).toBeNull();
+  });
+
+  it("ignores a drop result routed to a different tool", async () => {
+    mountView();
+    const registry = useRegistryStore(pinia);
+    await flushPromises();
+
+    registry.dropResult = { toolId: "base64", value: "irrelevant" };
+    await flushPromises();
+
+    expect(resultRows(wrapper!)).toHaveLength(0);
+  });
+
+  it("renders a file-read ToolError from a failed drop result and clears any prior digests (AC3)", async () => {
+    mountView();
+    const registry = useRegistryStore(pinia);
+    await computeSample(wrapper!);
+    expect(resultRows(wrapper!)).toHaveLength(4);
+
+    registry.dropResult = {
+      toolId: "hash",
+      error: {
+        code: "file-read-error",
+        message: "/tmp/missing.bin: No such file or directory (os error 2)",
+        position: null,
+        context: null,
+      },
+    };
+    await flushPromises();
+
+    expect(wrapper!.find("[role='alert']").text()).toContain("No such file or directory");
+    expect(resultRows(wrapper!)).toHaveLength(0);
+  });
+
+  it("renders a hash-input-too-large ToolError from a failed drop result (AC3)", async () => {
+    mountView();
+    const registry = useRegistryStore(pinia);
+    await flushPromises();
+
+    registry.dropResult = {
+      toolId: "hash",
+      error: {
+        code: "hash-input-too-large",
+        message: "file is 104857601 bytes, which exceeds the 104857600-byte limit",
+        position: null,
+        context: null,
+      },
+    };
+    await flushPromises();
+
+    expect(wrapper!.find("[role='alert']").text()).toContain("exceeds the 104857600-byte limit");
     expect(resultRows(wrapper!)).toHaveLength(0);
   });
 });

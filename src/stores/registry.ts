@@ -1,6 +1,7 @@
 import { computed, ref, type Component } from "vue";
 import { defineStore } from "pinia";
 import type { RouteRecordRaw } from "vue-router";
+import { createLatestWinsRunner } from "../shell/invoke";
 import type { ToolError } from "../shell/toolError";
 
 export interface ToolRegistryEntry {
@@ -77,6 +78,7 @@ const TOOLS: ToolRegistryEntry[] = [
     route: "/tools/hash",
     icon: "#",
     component: () => import("../tools/hash/HashView.vue"),
+    drop: { acceptedMimeTypes: [], handler: "hash_compute_file" },
   },
 ];
 
@@ -120,7 +122,24 @@ export const useRegistryStore = defineStore("registry", () => {
   // `DropZone.vue` after it invokes `activeTool.drop.handler`, consumed
   // (watched, then cleared) by the tool view that registered the provider
   // above.
-  const dropResult = ref<{ toolId: string; value: string } | { toolId: string; error: ToolError } | null>(null);
+  const dropResult = ref<{ toolId: string; value: unknown } | { toolId: string; error: ToolError } | null>(null);
 
-  return { tools, routes, dropArgsProviders, setDropArgsProvider, dropResult };
+  // AD-16: latest-wins must be scoped per tool, not per component instance —
+  // otherwise a drop dispatched by `DropZone.vue`'s single shared dispatcher
+  // and a manual invoke made by the tool's own view (e.g. Hash's "Compute"
+  // button) race independently and can overwrite each other out of order,
+  // and a drop for one tool can wrongly supersede an in-flight drop for a
+  // different tool. One runner per `toolId`, lazily created and reused by
+  // every caller for that tool, closes both gaps.
+  const latestWinsRunners = new Map<string, ReturnType<typeof createLatestWinsRunner>>();
+  function getLatestWinsRunner(toolId: string): ReturnType<typeof createLatestWinsRunner> {
+    let runner = latestWinsRunners.get(toolId);
+    if (!runner) {
+      runner = createLatestWinsRunner();
+      latestWinsRunners.set(toolId, runner);
+    }
+    return runner;
+  }
+
+  return { tools, routes, dropArgsProviders, setDropArgsProvider, dropResult, getLatestWinsRunner };
 });
