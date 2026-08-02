@@ -143,6 +143,31 @@ describe("JwtView", () => {
     expect(wrapper!.text()).toContain("Signatures are not verified");
   });
 
+  it("clears stale decoded output when a decode following a prior success fails (AC3)", async () => {
+    mountView();
+    await decodeToken(wrapper!, {
+      header: { alg: "HS256", typ: "JWT" },
+      payload: { sub: "1234567890" },
+      exp: null,
+      iat: null,
+      nbf: null,
+    });
+    expect(wrapper!.text()).toContain('"sub": "1234567890"');
+
+    invokeMock.mockRejectedValueOnce({
+      code: "jwt-malformed",
+      message: "expected 3 dot-separated segments (header.payload.signature), found 2",
+      position: null,
+      context: "segment: structure",
+    });
+    await wrapper!.find("#jwt-token-input").setValue("a.b");
+    await clickButton(wrapper!, "Decode");
+    await flushPromises();
+
+    expect(wrapper!.text()).not.toContain('"sub": "1234567890"');
+    expect(wrapper!.find("[role='alert']").exists()).toBe(true);
+  });
+
   it("paste populates the token field from a mocked readClipboardText", async () => {
     mountView();
     readTextMock.mockResolvedValueOnce("pasted.jwt.token");

@@ -129,6 +129,18 @@ mod tests {
     }
 
     #[test]
+    fn decode_trims_surrounding_whitespace_before_splitting_segments() {
+        let header = json!({"alg": "HS256", "typ": "JWT"});
+        let payload = json!({"sub": "x"});
+        let jwt = format!("  {}\n", token(&header, &payload, "sig"));
+
+        let decoded = decode(&jwt).unwrap();
+
+        assert_eq!(decoded.header, header);
+        assert_eq!(decoded.payload, payload);
+    }
+
+    #[test]
     fn decode_wrong_segment_count_too_few_returns_jwt_malformed() {
         let err = decode("a.b").unwrap_err();
         assert_eq!(err.code, "jwt-malformed");
@@ -186,5 +198,17 @@ mod tests {
         let err = decode(&jwt).unwrap_err();
 
         assert_eq!(err.code, "jwt-invalid-header");
+    }
+
+    #[test]
+    fn decode_payload_non_object_json_returns_jwt_invalid_payload() {
+        let header = json!({"alg": "HS256", "typ": "JWT"});
+        let non_object_payload = encode_bytes(b"null", true).unwrap();
+        let jwt = format!("{}.{}.sig", segment(&header), non_object_payload);
+
+        let err = decode(&jwt).unwrap_err();
+
+        assert_eq!(err.code, "jwt-invalid-payload");
+        assert_eq!(err.context, Some("segment: payload".to_string()));
     }
 }

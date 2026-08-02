@@ -4,7 +4,7 @@ baseline_commit: 3a6ff61
 
 # Story 2.6: Decode JWTs offline
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -207,6 +207,15 @@ so that I can inspect real tokens without sending them anywhere.
   - [ ] Branch: `feat/story-2-6-<slug>` (e.g. `feat/story-2-6-decode-jwts-offline`), created from an up-to-date `main` (this story's `baseline_commit`, `3a6ff61`, is `origin/main`'s tip as of story creation).
   - [ ] Conventional Commit(s), `feat` type scoped to `jwt`.
   - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+
+### Review Findings
+
+- [x] [Review][Defer] Malformed-but-present timestamp claims are indistinguishable from absent claims [crates/umbra-core/src/jwt.rs:68-71] — deferred, needs product input on whether a wrong-type registered claim should error or stay silent; not decided unilaterally by this code review.
+- [x] [Review][Patch] `"decode"` alias collided with Base64 in ⌘K search [src/stores/registry.ts:57] — fixed by adding `"decode"` to Base64's aliases too; stable sort on the tied rank preserves Base64's earlier list position, so it now ranks above JWT on an exact "decode" match while both remain reachable.
+- [x] [Review][Patch] No test verifies `decode()`'s `token.trim()` handling [crates/umbra-core/src/jwt.rs:14] — fixed, added `decode_trims_surrounding_whitespace_before_splitting_segments`.
+- [x] [Review][Patch] `decode_segment`'s "must decode to a JSON object" rejection was untested for the payload segment [crates/umbra-core/src/jwt.rs:57] — fixed, added `decode_payload_non_object_json_returns_jwt_invalid_payload`.
+- [x] [Review][Patch] No test verified stale `decoded` output is cleared after a decode that follows a prior success and then fails [src/tools/jwt/JwtView.spec.ts] — fixed, added a success-then-failure sequence test.
+- [x] [Review][Defer] `formatClaim`/`isExpired` can silently render "Invalid Date" for `exp`/`iat`/`nbf` values near the outer edge of `i64` [src/tools/jwt/JwtView.vue:18-22] — legal per the Rust type and RFC 7519's `NumericDate`, but `* 1000` exceeds `Number.MAX_SAFE_INTEGER` at that extreme. Degrades gracefully (no crash), only reachable via an adversarial-but-technically-legal claim value — deferred, pre-existing display-layer polish gap, not a functional defect introduced by this story.
 
 ## Dev Notes
 

@@ -54,7 +54,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "base64",
     name: "Base64",
-    aliases: ["base64", "b64"],
+    aliases: ["base64", "b64", "decode"],
     route: "/tools/base64",
     icon: "64",
     component: () => import("../tools/base64/Base64View.vue"),
