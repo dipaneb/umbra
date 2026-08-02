@@ -4,6 +4,7 @@ mod fs_helper;
 use commands::base64::{base64_decode, base64_decode_to_file, base64_encode, base64_encode_file};
 use commands::hash::{hash_compute, hash_compute_file};
 use commands::json::{json_format, json_minify, json_parse};
+use commands::jwt::jwt_decode;
 use commands::uuid::uuid_generate;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -30,7 +31,8 @@ pub fn run() {
             base64_decode_to_file,
             uuid_generate,
             hash_compute,
-            hash_compute_file
+            hash_compute_file,
+            jwt_decode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

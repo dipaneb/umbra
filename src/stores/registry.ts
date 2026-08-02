@@ -54,7 +54,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "base64",
     name: "Base64",
-    aliases: ["base64", "b64"],
+    aliases: ["base64", "b64", "decode"],
     route: "/tools/base64",
     icon: "64",
     component: () => import("../tools/base64/Base64View.vue"),
@@ -79,6 +79,14 @@ const TOOLS: ToolRegistryEntry[] = [
     icon: "#",
     component: () => import("../tools/hash/HashView.vue"),
     drop: { acceptedMimeTypes: [], handler: "hash_compute_file" },
+  },
+  {
+    id: "jwt",
+    name: "JWT",
+    aliases: ["jwt", "token", "decode"],
+    route: "/tools/jwt",
+    icon: "JWT",
+    component: () => import("../tools/jwt/JwtView.vue"),
   },
 ];
 
