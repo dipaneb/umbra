@@ -88,6 +88,14 @@ const TOOLS: ToolRegistryEntry[] = [
     icon: "JWT",
     component: () => import("../tools/jwt/JwtView.vue"),
   },
+  {
+    id: "cron",
+    name: "Cron",
+    aliases: ["cron", "crontab", "schedule"],
+    route: "/tools/cron",
+    icon: "CRON",
+    component: () => import("../tools/cron/CronView.vue"),
+  },
 ];
 
 assertUniqueToolIds(TOOLS);

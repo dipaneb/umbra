@@ -4,7 +4,7 @@ baseline_commit: 0d93b08
 
 # Story 3.1: Read a cron expression in plain English
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,17 +22,17 @@ so that I can verify schedules without a cron cheat-sheet website.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Add and verify the `croner` dependency (AC: 1, 2)**
-  - [ ] Add to `crates/umbra-core/Cargo.toml`: `croner = "3"` and `chrono = "0.4"` (croner 3.0.1 itself requires `chrono ^0.4.42` as a normal, non-optional dependency — confirmed directly against the crates.io API this session; `chrono` must also be added as `umbra-core`'s own direct dependency to construct/consume `DateTime<Tz>` values in this crate's own code, not merely rely on croner's internal re-export). Default features are sufficient for both — no `serde` feature needed on either crate for this story (no `Cron`/`DateTime` value crosses `serde` serialization directly; only derived `i64` epoch seconds do, via the existing `ToolError`/struct-serialize pattern every other module already uses).
-  - [ ] **Verify the actual API by writing and running one throwaway sanity test before building the full module** — do not trust this story's secondhand API research (below) as gospel. This session confirmed via `crates.io`'s dependency API that `croner` 3.0.1 matches the architecture spine's "3.x, unchanged" pin, and confirmed via `docs.rs` that:
+- [x] **Task 1: Add and verify the `croner` dependency (AC: 1, 2)**
+  - [x] Add to `crates/umbra-core/Cargo.toml`: `croner = "3"` and `chrono = "0.4"` (croner 3.0.1 itself requires `chrono ^0.4.42` as a normal, non-optional dependency — confirmed directly against the crates.io API this session; `chrono` must also be added as `umbra-core`'s own direct dependency to construct/consume `DateTime<Tz>` values in this crate's own code, not merely rely on croner's internal re-export). Default features are sufficient for both — no `serde` feature needed on either crate for this story (no `Cron`/`DateTime` value crosses `serde` serialization directly; only derived `i64` epoch seconds do, via the existing `ToolError`/struct-serialize pattern every other module already uses).
+  - [x] **Verify the actual API by writing and running one throwaway sanity test before building the full module** — do not trust this story's secondhand API research (below) as gospel. This session confirmed via `crates.io`'s dependency API that `croner` 3.0.1 matches the architecture spine's "3.x, unchanged" pin, and confirmed via `docs.rs` that:
     - `Cron::from_str(s: &str) -> Result<Cron, CronError>` (via `FromStr`) parses cron expressions with an **optional leading seconds field** — a plain 5-field expression like `"0 9 * * 1"` (minute hour day-of-month month day-of-week) parses as a standard cron pattern with seconds omitted, matching AC1's "5-field" wording directly.
     - `Cron::find_next_occurrence<Tz: TimeZone>(&self, start_time: &DateTime<Tz>, inclusive: bool) -> Result<DateTime<Tz>, CronError>` and `Cron::iter_after<Tz: TimeZone>(&self, start_after: DateTime<Tz>) -> CronIterator<Tz>` (where `CronIterator` implements `Iterator<Item = DateTime<Tz>>`) both exist — prefer `iter_after(now).take(3)` over three manual `find_next_occurrence` calls; it's the more idiomatic form the crate's own examples favor for "give me the next N runs."
     - **One piece of this session's research directly contradicted itself and must not be trusted uncritically:** an initial fetch claimed `Cron` has a public `pattern: CronPattern` field exposing structured per-field data, but a follow-up fetch of the crate's full public item index (`docs.rs/croner/3.0.1/croner/all.html`) does **not** list `CronPattern` anywhere, at any module path. Do not build the description templater assuming structured field access exists on `Cron` — verify directly (`cargo doc --open -p croner` or the crate's actual source) before relying on it, and if it turns out not to be cleanly public, fall back to the string-splitting approach in Task 2 below (which does not depend on this either way, and is the safer default to build against first).
     - `CronError` variants observed: `EmptyPattern`, `InvalidDate`, `InvalidTime`, `TimeSearchLimitExceeded`, `InvalidPattern(String)`, `IllegalCharacters(String)`, `ComponentError(String)` — none carry a clean machine-readable field-index enum; the three string variants carry a human-readable `Display` message that may name the offending field/value in prose (e.g. "position X is out of bounds for range Y-Z" was observed for `ComponentError`), but there's no structured `field: CronField` you can match on. Map by variant to a stable `ToolError.code` (Task 2), and use croner's own `Display` text for `message` — do not attempt to fabricate a synthetic `Position` (no natural line/col or byte offset exists for a cron field the way JSON has for text; same reasoning `jwt.rs` already used for "which segment failed" — `context`, not `position`, carries the human-facing detail).
-  - [ ] Do **not** add `croner-rs` or any similarly-named crate — `croner` is the correct crate id. Do not confuse it with the unrelated JS npm package of the same name (10.x, by the same author "hexagon" but a different language and implementation) — this exact confusion is called out by name in `ARCHITECTURE-SPINE.md`'s Stack table.
+  - [x] Do **not** add `croner-rs` or any similarly-named crate — `croner` is the correct crate id. Do not confuse it with the unrelated JS npm package of the same name (10.x, by the same author "hexagon" but a different language and implementation) — this exact confusion is called out by name in `ARCHITECTURE-SPINE.md`'s Stack table.
 
-- [ ] **Task 2: `umbra-core::cron` — explain a cron expression (AC: 1, 2)**
-  - [ ] Create `crates/umbra-core/src/cron.rs`. Define:
+- [x] **Task 2: `umbra-core::cron` — explain a cron expression (AC: 1, 2)**
+  - [x] Create `crates/umbra-core/src/cron.rs`. Define:
     ```rust
     #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct CronExplanation {
@@ -49,16 +49,16 @@ so that I can verify schedules without a cron cheat-sheet website.
     }
     ```
     (Exact signatures are illustrative, not gospel — validate against the real crate per Task 1's sanity test; adjust if `iter_after`'s bound or `Cron::from_str`'s exact `Self`/error type differ from this session's research.)
-  - [ ] Implement `map_cron_error(err: croner::errors::CronError) -> ToolError`, one `code` per variant (all stable kebab-case, following the existing `jwt.rs`/`base64.rs`/`hash.rs` convention of hardcoded string literals — never `format!` a dynamic value into `code`, only into `message`/`context`): e.g. `"cron-empty-pattern"`, `"cron-invalid-date"`, `"cron-invalid-time"`, `"cron-search-limit-exceeded"`, `"cron-invalid-pattern"`, `"cron-illegal-characters"`, `"cron-component-error"`. `message` is croner's own `Display` text (`err.to_string()`); `position: None` on every branch (no natural line/col — see Task 1); `context` may repeat/extract the field-naming detail from the message if trivially available, otherwise `None` — do not over-engineer field-position extraction beyond what AC2's literal wording needs ("explains which field is invalid and why" is satisfied by a clear `message`, since croner's own error text already names the problem in prose).
-  - [ ] **Implement `describe(expression: &str) -> String` as a hand-written templater — do not call `croner::Cron::describe()`/`describe_lang()`.** This is the single most important architectural decision in this story, and it's easy to get wrong by reaching for the crate's own built-in description as a shortcut:
+  - [x] Implement `map_cron_error(err: croner::errors::CronError) -> ToolError`, one `code` per variant (all stable kebab-case, following the existing `jwt.rs`/`base64.rs`/`hash.rs` convention of hardcoded string literals — never `format!` a dynamic value into `code`, only into `message`/`context`): e.g. `"cron-empty-pattern"`, `"cron-invalid-date"`, `"cron-invalid-time"`, `"cron-search-limit-exceeded"`, `"cron-invalid-pattern"`, `"cron-illegal-characters"`, `"cron-component-error"`. `message` is croner's own `Display` text (`err.to_string()`); `position: None` on every branch (no natural line/col — see Task 1); `context` may repeat/extract the field-naming detail from the message if trivially available, otherwise `None` — do not over-engineer field-position extraction beyond what AC2's literal wording needs ("explains which field is invalid and why" is satisfied by a clear `message`, since croner's own error text already names the problem in prose).
+  - [x] **Implement `describe(expression: &str) -> String` as a hand-written templater — do not call `croner::Cron::describe()`/`describe_lang()`.** This is the single most important architectural decision in this story, and it's easy to get wrong by reaching for the crate's own built-in description as a shortcut:
     - The epic's AC1 wording is explicit: "description templating in `umbra-core::cron`" is called out separately from "cron parsing/next-occurrence computation uses `croner`" — these are deliberately two different responsibilities assigned to two different places.
     - **Why this matters beyond this story:** Story 3.2 (natural language → cron, not yet built) must round-trip every result through *this story's* cron→English direction before displaying it (AD-9's honesty bar) — the round-trip only proves anything if Story 3.2's NL grammar and this story's `describe()` speak the *same* deterministic vocabulary. `croner`'s built-in `describe()` uses its own internal phrasing (via `croner::describe::lang::english::English`) that this project does not control and cannot guarantee stays stable across croner versions or matches whatever grammar Story 3.2 ends up building. Using it here would silently couple Story 3.2's correctness to an external crate's wording choices — exactly the kind of hidden coupling this workflow exists to prevent.
     - Build `describe()` by parsing the expression's own whitespace-separated fields (5 or 6 depending on whether a leading seconds field is present) directly as strings — independent of whatever `Cron`'s internal representation turns out to be (see Task 1's caveat about `CronPattern`'s uncertain public accessibility). Handle, at minimum, the field syntaxes needed to cover this project's PRD demo phrase and Story 3.3's eventual corpus: `*` (wildcard), a single specific value, a comma-separated list, a `a-b` range, and a `*/n` or `a-b/n` step. Recommended minimal shape: derive a time-of-day clause from the minute+hour fields (e.g. "at 9:00 AM" for fixed values, "every 15 minutes" for a minute step with hour `*`) and a day clause from day-of-month/month/day-of-week (e.g. "every Monday", "every weekday" for a Mon–Fri day-of-week range, "on the 1st" for a fixed day-of-month), then join them (e.g. "Every Monday, at 9:00 AM" for `0 9 * * 1` — deliberately close to the PRD's own demo phrase, "every Monday at 9am", so the round-trip in Story 3.2 has the least distance to cover).
     - **Do not build support for `croner`'s extended non-standard syntax** (`L`, `W`, `#`/nth-weekday, or combined range+step forms beyond the simple cases above) — FR19/FR21/FR22 scope the whole NL↔cron feature to a corpus of common, everyday scheduling phrases (Story 3.3), not exotic cron extensions; supporting them here would be speculative scope beyond what any planned story actually demos or tests.
     - **Record the exact vocabulary and field-syntax coverage you implement in this story's own Completion Notes / Dev Notes before finishing** (see the template's `## Dev Notes` and `## Dev Agent Record` sections) — Story 3.2's own `create-story` pass will read this file as "previous story intelligence" and needs the exact phrasing rules to build a matching grammar, not just this story's stated intent.
 
-- [ ] **Task 3: Tauri command `cron_explain` (AC: 1, 2)**
-  - [ ] Create `src-tauri/src/commands/cron.rs`, mirroring `commands/jwt.rs`'s/`commands/uuid.rs`'s shape exactly (pure text-in-struct-out, no file I/O):
+- [x] **Task 3: Tauri command `cron_explain` (AC: 1, 2)**
+  - [x] Create `src-tauri/src/commands/cron.rs`, mirroring `commands/jwt.rs`'s/`commands/uuid.rs`'s shape exactly (pure text-in-struct-out, no file I/O):
     ```rust
     use umbra_core::ToolError;
     use umbra_core::cron::{CronExplanation, explain};
@@ -80,13 +80,13 @@ so that I can verify schedules without a cron cheat-sheet website.
     }
     ```
     Note: `map_join_error` is a near-identical duplicate of the one in every other `commands/*.rs` file (this will be its 6th copy) — this is a pre-existing, already-deferred pattern (`deferred-work.md`; flagged again explicitly in Story 2.6's Dev Notes), continue it rather than unilaterally extracting a shared helper as part of this story.
-  - [ ] `src-tauri/src/commands/mod.rs`: add `pub mod cron;`.
-  - [ ] `src-tauri/src/lib.rs`: add `use commands::cron::cron_explain;` and add `cron_explain` to the `generate_handler![...]` list (after `jwt_decode`).
-  - [ ] `crates/umbra-core/src/lib.rs`: add `pub mod cron;`.
-  - [ ] **No `capabilities/default.json` change** — no filesystem access, no network capability needed (pure computation, same reasoning as every prior text-in/text-out command).
+  - [x] `src-tauri/src/commands/mod.rs`: add `pub mod cron;`.
+  - [x] `src-tauri/src/lib.rs`: add `use commands::cron::cron_explain;` and add `cron_explain` to the `generate_handler![...]` list (after `jwt_decode`).
+  - [x] `crates/umbra-core/src/lib.rs`: add `pub mod cron;`.
+  - [x] **No `capabilities/default.json` change** — no filesystem access, no network capability needed (pure computation, same reasoning as every prior text-in/text-out command).
 
-- [ ] **Task 4: Tool Registry — register the `cron` tool (AC: 1, 3)**
-  - [ ] `src/stores/registry.ts`: add a **new** entry to `TOOLS` (this is a new tool, no existing entry is being extended):
+- [x] **Task 4: Tool Registry — register the `cron` tool (AC: 1, 3)**
+  - [x] `src/stores/registry.ts`: add a **new** entry to `TOOLS` (this is a new tool, no existing entry is being extended):
     ```ts
     {
       id: "cron",
@@ -98,11 +98,11 @@ so that I can verify schedules without a cron cheat-sheet website.
     },
     ```
     `"schedule"` is included deliberately even though this story only builds the cron→English half — Epic 3's overview and Story 3.2's acceptance criteria describe this as **one tool covering both directions**, built across two stories against the same registry entry and (per Task 5 below) the same view file. Do not create a second registry entry when Story 3.2 lands; that story extends this one.
-  - [ ] **No `drop` field.** Cron expressions are pasted text, not dropped files — same drop-less precedent as JSON/UUID/JWT.
-  - [ ] This is the only registry change; sidebar, ⌘K palette, and route table all regenerate from this one entry (AD-5) — do not hand-edit `src/router/index.ts` or `src/shell/AppSidebar.vue`.
+  - [x] **No `drop` field.** Cron expressions are pasted text, not dropped files — same drop-less precedent as JSON/UUID/JWT.
+  - [x] This is the only registry change; sidebar, ⌘K palette, and route table all regenerate from this one entry (AD-5) — do not hand-edit `src/router/index.ts` or `src/shell/AppSidebar.vue`.
 
-- [ ] **Task 5: `src/tools/cron/CronView.vue` — paste, submit, render (AC: 1, 2, 3)**
-  - [ ] Create `src/tools/cron/cronExplanation.ts`, mirroring `jwtDecoded.ts`'s hand-maintained-mirror convention:
+- [x] **Task 5: `src/tools/cron/CronView.vue` — paste, submit, render (AC: 1, 2, 3)**
+  - [x] Create `src/tools/cron/cronExplanation.ts`, mirroring `jwtDecoded.ts`'s hand-maintained-mirror convention:
     ```ts
     // Mirrors `CronExplanation` in crates/umbra-core/src/cron.rs — keep in sync by hand.
     export interface CronExplanation {
@@ -111,46 +111,46 @@ so that I can verify schedules without a cron cheat-sheet website.
     }
     ```
     Note the Rust struct field is `next_runs` (snake_case); confirm at implementation time whether `serde`'s default (de)serialization on this struct needs `#[serde(rename_all = "camelCase")]` or whether the project's existing structs (e.g. `JwtDecoded`) already rely on Tauri's IPC layer passing snake_case through as-is and the TS side just mirrors `next_runs` verbatim — check `jwtDecoded.ts`'s actual field naming (`exp`/`iat`/`nbf`, not renamed) before deciding; **do not introduce a renaming convention this codebase doesn't already use elsewhere.**
-  - [ ] Create `src/tools/cron/CronView.vue`, following `JwtView.vue`'s/`UuidView.vue`'s established structure:
+  - [x] Create `src/tools/cron/CronView.vue`, following `JwtView.vue`'s/`UuidView.vue`'s established structure:
     - **Use a local `createLatestWinsRunner()` instance, not `registry.getLatestWinsRunner("cron")`.** This tool has exactly one write-trigger to its own state (the explicit "Explain" submit action) — no drop handler, no re-firing selector like UUID's version radio. The epic-2 retrospective's Action Item #1 (documenting `registry.getLatestWinsRunner` as required) applies specifically to tools with **more than one** write-trigger to the same state; applying it here would be scope creep for a tool that doesn't have that race condition, exactly the kind of tool JWT already set the precedent for (JWT also uses a local runner, for the same reason).
     - State: `expression = ref("")`, `explanation = ref<CronExplanation | null>(null)`, `error = ref<ToolError | null>(null)`.
     - `onExplain()`: `runLatestWins(() => invoke<CronExplanation>("cron_explain", { expression: expression.value }))`; on success set `explanation.value` and clear `error`; on failure clear `explanation` and set `error` — same shape as `JwtView.vue::onDecode`/`HashView.vue::onCompute`.
     - `onPaste()`: reuse `readClipboardText()` from `../../shell/clipboard` (FR4/AD-14) to populate `expression`, clearing any stale `explanation`/`error` — same shape as every other tool's paste handler.
     - Render `explanation.description` as plain text, and `explanation.nextRuns` as a list of local datetimes: `new Date(epochSeconds * 1000).toLocaleString()` — **multiply by 1000**, same epoch-seconds-to-milliseconds conversion `JwtView.vue::formatClaim` already established (core's epoch values are unix seconds, never milliseconds, per the Consistency Conventions table).
     - A copy-to-clipboard action per FR4 — this tool's natural "output" is the description text (unlike JWT, which has no single output string); copy the `description` via `writeClipboardText`.
-  - [ ] Keyboard/accessibility (NFR5): label the expression `<textarea>` or `<input>` (`<label for="cron-expression-input">`), use native `<button>` elements for Explain/Paste/Copy (inherits visible focus for free) — no new keyboard-handling code needed; this tool registers no shortcuts or drop listeners.
+  - [x] Keyboard/accessibility (NFR5): label the expression `<textarea>` or `<input>` (`<label for="cron-expression-input">`), use native `<button>` elements for Explain/Paste/Copy (inherits visible focus for free) — no new keyboard-handling code needed; this tool registers no shortcuts or drop listeners.
 
-- [ ] **Task 6: Fix the anticipated registry-count ripple (same pattern as Stories 2.3/2.4/2.6)**
-  - [ ] `src/router/index.spec.ts:55`: `expect(registry.tools).toHaveLength(5)` → `toHaveLength(6)`.
-  - [ ] `src/shell/CommandPalette.spec.ts:143-147`: the ArrowUp-wrap test's comment ("Default empty query lists all registry entries (JSON, Base64, UUID, Hash, JWT)") and its assertion `expect(wrapper.find("li.active").text()).toContain("JWT")` both currently rely on "JWT" being the *last* entry in `TOOLS`. Since `cron` is appended after `jwt`, update the comment to include Cron and change the assertion's expected text to `"Cron"`. This is AD-5's single-registry design working as intended — the same ripple every new-tool story has hit since 2.3 (`deferred-work.md` flags this test as implicitly ordering-dependent, not a new problem).
-  - [ ] No `dropZone.spec.ts` change — this tool has no `drop` field.
+- [x] **Task 6: Fix the anticipated registry-count ripple (same pattern as Stories 2.3/2.4/2.6)**
+  - [x] `src/router/index.spec.ts:55`: `expect(registry.tools).toHaveLength(5)` → `toHaveLength(6)`.
+  - [x] `src/shell/CommandPalette.spec.ts:143-147`: the ArrowUp-wrap test's comment ("Default empty query lists all registry entries (JSON, Base64, UUID, Hash, JWT)") and its assertion `expect(wrapper.find("li.active").text()).toContain("JWT")` both currently rely on "JWT" being the *last* entry in `TOOLS`. Since `cron` is appended after `jwt`, update the comment to include Cron and change the assertion's expected text to `"Cron"`. This is AD-5's single-registry design working as intended — the same ripple every new-tool story has hit since 2.3 (`deferred-work.md` flags this test as implicitly ordering-dependent, not a new problem).
+  - [x] No `dropZone.spec.ts` change — this tool has no `drop` field.
 
-- [ ] **Task 7: Tests**
-  - [ ] `crates/umbra-core/src/cron.rs`:
+- [x] **Task 7: Tests**
+  - [x] `crates/umbra-core/src/cron.rs`:
     - Happy path: a fixed-time, fixed-weekday expression (e.g. `"0 9 * * 1"`) returns a non-empty `description` and exactly 3 strictly-increasing `next_runs` epoch values, each actually matching the pattern (assert via `croner`'s own `is_time_matching` on the returned timestamps, or by re-parsing — don't just assert the count).
     - Every-minute (`"* * * * *"`) and every-day-at-midnight (`"0 0 * * *"`) cases, to exercise wildcard handling in the templater.
     - A step expression (e.g. `"*/15 * * * *"`, "every 15 minutes") if your templater implements step support per Task 2.
     - Invalid input cases mapped to each `CronError` variant you can trigger deterministically (e.g. too many/too few fields → whichever variant croner actually returns — confirm empirically, don't assume from this story's research alone; an out-of-range field value; illegal characters) — assert the resulting `ToolError.code` matches the variant-specific code chosen in Task 2, and that `message` is non-empty.
     - Empty/whitespace-only input.
-  - [ ] `src-tauri/src/commands/cron.rs`: thin smoke tests mirroring `commands/uuid.rs`'s proportions — one happy-path explain, one invalid-expression case.
-  - [ ] `src/tools/cron/CronView.spec.ts` (mirroring `JwtView.spec.ts`'s conventions):
+  - [x] `src-tauri/src/commands/cron.rs`: thin smoke tests mirroring `commands/uuid.rs`'s proportions — one happy-path explain, one invalid-expression case.
+  - [x] `src/tools/cron/CronView.spec.ts` (mirroring `JwtView.spec.ts`'s conventions):
     - Successful explain renders the description and 3 formatted local datetimes.
     - An explain error renders via the existing `role="alert"` pattern with the backend's `message`.
     - Paste populates the expression field from a mocked `readClipboardText`.
     - Copy calls `writeClipboardText` with the description.
     - A stale result from a superseded call is discarded (mirroring the success-then-failure sequence test Story 2.6's review added for `JwtView.spec.ts`) — this tool's local `runLatestWins` needs the same coverage, not just the shared helper's own existing unit tests.
 
-- [ ] **Task 8: Full verification pass**
-  - [ ] `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
-  - [ ] `pnpm lint`, `pnpm test`, `pnpm build`, `vue-tsc --noEmit`.
+- [x] **Task 8: Full verification pass**
+  - [x] `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
+  - [x] `pnpm lint`, `pnpm test`, `pnpm build`, `vue-tsc --noEmit`.
 
 - [ ] **Task 9: Manual verification (deferred to the user)**
   - [ ] `pnpm tauri dev`, per this project's established precedent (dev agent cannot visually drive a native Tauri window): paste a valid cron expression (e.g. `0 9 * * 1`) and confirm a plain-English description and 3 upcoming local-datetime run times render; paste an invalid expression (e.g. `99 * * * *` or garbage text) and confirm a precise inline error; confirm paste-from-clipboard and copy-to-clipboard both work in one action; confirm ⌘K finds the tool via "cron", "crontab", and "schedule" aliases; confirm the sidebar shows "Cron" alongside the other five tools.
 
-- [ ] **Task 10: Commit and open a PR**
-  - [ ] Branch: `feat/story-3-1-<slug>` (e.g. `feat/story-3-1-read-a-cron-expression-in-plain-english`), created from an up-to-date `main` (this story's `baseline_commit`, `0d93b08`, is `origin/main`'s tip as of story creation — this includes the epic-2 retrospective commit, so `main` has no pending Epic 2 work left).
-  - [ ] Conventional Commit(s), `feat` type scoped to `cron`.
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+- [x] **Task 10: Commit and open a PR**
+  - [x] Branch: `feat/story-3-1-<slug>` (e.g. `feat/story-3-1-read-a-cron-expression-in-plain-english`), created from an up-to-date `main` (this story's `baseline_commit`, `0d93b08`, is `origin/main`'s tip as of story creation — this includes the epic-2 retrospective commit, so `main` has no pending Epic 2 work left).
+  - [x] Conventional Commit(s), `feat` type scoped to `cron`.
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
 
 ## Dev Notes
 
@@ -223,13 +223,46 @@ so that I can verify schedules without a cron cheat-sheet website.
 ## Change Log
 
 - 2026-08-03: Story drafted via `bmad-create-story`, as the first story of Epic 3 (auto-discovered from `sprint-status.yaml`'s backlog). Epic 3 status updated `backlog` → `in-progress`. Confirmed via the epic-2 retrospective that no shared-infrastructure prep work is needed. Confirmed `croner` is not yet a dependency anywhere in the codebase (a genuinely new addition, unlike every Epic 2 dependency which was independently verified against crates.io per this project's standing discipline). Live-fetched `croner` 3.0.1's actual `docs.rs` pages rather than relying on training-data knowledge of the crate; found one internally contradictory claim about a public `CronPattern` field, which is flagged explicitly in Dev Notes as a "verify before relying on" item rather than silently trusted. Identified and scoped the story's central architectural decision: the plain-English description must be hand-templated in `umbra-core`, not delegated to `croner::Cron::describe()`, because Story 3.2's AD-9 round-trip validation depends on this story's templater vocabulary being a project-controlled contract, not an external crate's wording.
+- 2026-08-03: Implemented via `bmad-dev-story`. Added `croner = "3"` (resolved 3.0.1) and `chrono = "0.4"` (resolved 0.4.45, satisfying croner's `^0.4.42` requirement) to `crates/umbra-core/Cargo.toml`. Instead of a throwaway scratch test, read the vendored crate source directly (`~/.cargo/registry/src/.../croner-3.0.1/src/{lib,errors,parser}.rs`) to resolve the story's flagged API uncertainty with ground truth rather than a second round of docs.rs fetches: confirmed `Cron.pattern: CronPattern` actually is a public field (the story's caveat was conservative but the point is moot — `describe()` was hand-written per Task 2's own instruction regardless), confirmed the exact 7 `CronError` variants and their `Display` text, and confirmed `CronParser`'s default `Seconds::Optional` behavior (a 5-field input gets `"0"` inserted at position 0, i.e. `"0 9 * * 1"` parses as minute=0 hour=9 dow=1). Built `umbra-core::cron` with a hand-written `describe()` templater (never calls `croner::Cron::describe()`), implemented all 7 `CronError` → `ToolError.code` mappings, and wrote 11 unit tests — all passed on the first run. Added the `cron_explain` Tauri command mirroring `commands/jwt.rs` exactly. Registered the `cron` tool in `src/stores/registry.ts` and built `CronView.vue` with a local `createLatestWinsRunner()`, paste, and copy-to-clipboard. Updated the two registry-count-ripple assertions in `router/index.spec.ts` and `CommandPalette.spec.ts`. Full verification pass: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` (81 tests) all clean; `pnpm test` (165 tests), `pnpm build` (`vue-tsc --noEmit` + `vite build`) all clean. `pnpm lint` fails only on a pre-existing untracked file (`.claude/workflows/scan-of-the-end-of-the-second-epic.js`, present before this session started and unrelated to this story); `npx eslint src` scoped to the actual source tree is clean. Status moved to `review`; Task 9 (manual `pnpm tauri dev` verification) intentionally left unchecked per this project's standing precedent (dev agent cannot drive a native window).
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
+claude-sonnet-5
+
 ### Debug Log References
+
+None — no failing test or blocking error required debugging; all Rust and TS tests passed on first run after implementation.
 
 ### Completion Notes List
 
+- **`describe()` templater vocabulary (for Story 3.2's round-trip grammar — see AD-9 in Dev Notes):** parses the expression's own whitespace-separated fields (drops a leading 6th seconds field if present) into one of 5 field shapes: wildcard (`*`), single value (`N`), comma list (`N,N,...`), range (`A-B`), step (`*/N` or `A-B/N`). Builds two clauses and joins them as `"{Day clause}, {time clause}"` with the first letter capitalized:
+  - **Time clause** (from minute+hour fields): fixed/fixed → `"at H:MM AM/PM"` (12-hour, e.g. `"at 9:00 AM"`, `"at 12:00 AM"` for midnight); wildcard/wildcard → `"every minute"`; minute-step + hour-wildcard → `"every N minutes"`; hour-step + fixed minute → `"every N hours"` (or `"every N hours at :MM"` if minute ≠ 0). Any other minute/hour combination is **not** recognized.
+  - **Day clause** (from day-of-month/month/day-of-week fields, month must currently be wildcard except in the last bullet): all wildcard → `"every day"`; dow fixed → `"every {Weekday}"`; dow range 1-5 → `"every weekday"`; dow range (other) → `"every {WeekdayA} through {WeekdayB}"`; dow list → `"every {A}, {B}, and {C}"`; dom fixed + month/dow wildcard → `"on the {Nth}"`; dom fixed + month fixed + dow wildcard → `"on {Month} {Nth}"`. Any other dom/month/dow combination is **not** recognized.
+  - **Day-of-week numbering**: 0 and 7 both mean Sunday, 1-6 mean Monday-Saturday (croner/Vixie-cron convention). **Only numeric field values are recognized** — alpha weekday/month names (`MON`, `JAN`, etc.), even though `croner` itself accepts and normalizes them for parsing/evaluation, are **not** understood by this templater and fall through to the fallback below. This was a deliberate scope call (Task 2 asked for wildcard/value/list/range/step support, not alpha-name normalization) — Story 3.2's NL→cron generator should therefore only ever need to produce numeric-field cron strings for the round-trip to succeed.
+  - **Fallback:** any expression that parses successfully via `croner` but whose fields fall outside the shapes above (including any use of `L`, `W`, `#`, alpha weekday/month names, or an unsupported field-count) renders as `Runs on schedule "{original trimmed expression}"` rather than a wrong or partial description. This is the honesty-preserving default AD-9 needs — never a best-effort guess.
+  - Not implemented (deliberately, per Task 2's explicit non-goals): `L` (last), `W` (nearest weekday), `#`/nth-weekday, combined range+step forms, and any month-field value other than a single fixed number paired with a single fixed day-of-month.
+- **Error mapping:** all 7 `croner::errors::CronError` variants mapped 1:1 to a stable kebab-case `ToolError.code` (`cron-empty-pattern`, `cron-invalid-date`, `cron-invalid-time`, `cron-search-limit-exceeded`, `cron-invalid-pattern`, `cron-illegal-characters`, `cron-component-error`), plus `cron-internal` at the command layer for a `spawn_blocking` join failure. `message` is always croner's own `Display` text; `position` is always `None` (no natural line/col for a cron field); `context` is always `None` (croner's message text already names the problem in prose, per Task 2's guidance not to over-engineer this).
+- **`next_runs` field name intentionally not renamed** on the TS side (`cronExplanation.ts` mirrors `next_runs` verbatim, matching `jwtDecoded.ts`'s existing precedent of not introducing a camelCase renaming convention Tauri's IPC layer doesn't otherwise use).
+- `pnpm lint` (the bare `eslint .` invocation) fails only due to a pre-existing untracked file at `.claude/workflows/scan-of-the-end-of-the-second-epic.js` that predates this story's work and is unrelated to it (not part of the git tree, not part of `src/`); `npx eslint src` confirms the actual application source is fully lint-clean. This is flagged here rather than silently worked around — no change was made to `eslint.config.js` or the untracked file, since fixing that is outside this story's scope.
+- Manual `pnpm tauri dev` verification (Task 9) is deferred to the user per this project's standing precedent since Story 1.7 (the dev agent cannot drive a native Tauri window).
+
 ### File List
+
+- **New:**
+  - `crates/umbra-core/src/cron.rs`
+  - `src-tauri/src/commands/cron.rs`
+  - `src/tools/cron/CronView.vue`
+  - `src/tools/cron/cronExplanation.ts`
+  - `src/tools/cron/CronView.spec.ts`
+- **Modified:**
+  - `crates/umbra-core/Cargo.toml` (+`croner = "3"`, +`chrono = "0.4"`)
+  - `crates/umbra-core/src/lib.rs` (+`pub mod cron;`)
+  - `src-tauri/src/commands/mod.rs` (+`pub mod cron;`)
+  - `src-tauri/src/lib.rs` (+`use commands::cron::cron_explain;`, +`cron_explain` in `generate_handler!`)
+  - `src/stores/registry.ts` (+1 `TOOLS` entry)
+  - `src/router/index.spec.ts` (tool count 5 → 6)
+  - `src/shell/CommandPalette.spec.ts` (ArrowUp-wrap assertion/comment "JWT" → "Cron")
+  - `_bmad-output/implementation-artifacts/sprint-status.yaml` (status transitions: `ready-for-dev` → `in-progress`)
+  - `Cargo.lock` (regenerated for the new `croner`/`chrono` dependency tree)

@@ -42,6 +42,8 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-03
+# note: story 3.1 moved to review 2026-08-03 (implementation complete; manual pnpm tauri dev check outstanding, deferred to user)
+# note: story 3.1 moved to in-progress 2026-08-03
 # note: story 3.1 created 2026-08-03
 # note: epic-2 retrospective completed 2026-08-03
 # note: story 2.6 moved to done 2026-08-02 (code review complete; manual pnpm tauri dev check still outstanding, deferred to user)
@@ -116,7 +118,7 @@ development_status:
   epic-2-retrospective: done
 
   epic-3: in-progress
-  3-1-read-a-cron-expression-in-plain-english: ready-for-dev
+  3-1-read-a-cron-expression-in-plain-english: review
   3-2-type-a-schedule-get-a-cron-expression: backlog
   3-3-the-phrase-corpus-as-an-automated-acceptance-gate: backlog
   epic-3-retrospective: optional
