@@ -41,7 +41,8 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-02
+last_updated: 2026-08-03
+# note: epic-2 retrospective completed 2026-08-03
 # note: story 2.6 moved to done 2026-08-02 (code review complete; manual pnpm tauri dev check still outstanding, deferred to user)
 # note: story 2.6 moved to review 2026-07-31
 # note: story 2.6 moved to in-progress 2026-07-31
@@ -111,7 +112,7 @@ development_status:
   2-4-hash-text: done
   2-5-hash-files: done
   2-6-decode-jwts-offline: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   epic-3: backlog
   3-1-read-a-cron-expression-in-plain-english: backlog
@@ -170,8 +171,19 @@ action_items:
   - epic: 1
     action: "Add a 'gate the write, not just the read' check to the dev/review checklist for async toggle state"
     owner: "Amelia"
-    status: open
+    status: done
+    # closed 2026-08-03 at epic-2 retrospective: never effectively enforced (the
+    # same async-race bug shape recurred in Story 2.3 and Story 2.5 anyway).
+    # Superseded by a structural fix instead of a checklist item - see the
+    # epic-2 action item below (registry.getLatestWinsRunner).
   - epic: 1
     action: "Require a manual production-build smoke check on any story touching routing/rendering before marking it done"
     owner: "Amelia"
+    status: done
+    # closed 2026-08-03 at epic-2 retrospective: confirmed by the developer
+    # that all 6 Epic 2 stories (2.1-2.6) have been manually verified in the
+    # real pnpm tauri dev window.
+  - epic: 2
+    action: "Document registry.getLatestWinsRunner(toolId) as the required pattern (not a local createLatestWinsRunner()) for any tool with more than one write-trigger to the same state, in ARCHITECTURE-SPINE.md's AD-16 section"
+    owner: "Charlie"
     status: open
