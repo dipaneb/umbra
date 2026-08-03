@@ -12,14 +12,35 @@ pub struct CronExplanation {
 }
 
 pub fn explain(expression: &str) -> Result<CronExplanation, ToolError> {
+    explain_at(chrono::Local::now(), expression)
+}
+
+// Takes `now` as a parameter (rather than reading `chrono::Local::now()` directly) so this
+// function's output is reproducible in tests — Story 3.2/3.3 depend on this module's output
+// being a stable, controllable contract, per this story's Dev Notes.
+fn explain_at(
+    now: chrono::DateTime<chrono::Local>,
+    expression: &str,
+) -> Result<CronExplanation, ToolError> {
     let trimmed = expression.trim();
-    let cron = Cron::from_str(trimmed).map_err(map_cron_error)?;
-    let now = chrono::Local::now();
+    let cron = Cron::from_str(trimmed).map_err(|err| map_cron_error(err, trimmed))?;
     let next_runs: Vec<i64> = cron
         .iter_after(now)
         .take(3)
         .map(|dt| dt.timestamp())
         .collect();
+    // A day-of-month/month combination that can never occur (e.g. February 30th) parses
+    // successfully but never matches — `iter_after` just ends with no items, rather than
+    // erroring (confirmed against croner 3.0.1's source). Silently describing a schedule
+    // that will never run would undercut this tool's whole purpose, so treat it as an error.
+    if next_runs.is_empty() {
+        return Err(ToolError {
+            code: "cron-no-upcoming-runs".to_string(),
+            message: "This expression has no upcoming occurrences — the date it specifies may never exist (e.g. February 30th).".to_string(),
+            position: None,
+            context: None,
+        });
+    }
     let description = describe(trimmed);
     Ok(CronExplanation {
         description,
@@ -27,7 +48,57 @@ pub fn explain(expression: &str) -> Result<CronExplanation, ToolError> {
     })
 }
 
-fn map_cron_error(err: CronError) -> ToolError {
+const FIELD_RANGES: [(&str, u32, u32); 5] = [
+    ("minute", 0, 59),
+    ("hour", 0, 23),
+    ("day of month", 1, 31),
+    ("month", 1, 12),
+    ("day of week", 0, 7),
+];
+
+// Best-effort identification of which field/value made `Cron::from_str` fail with a
+// `ComponentError` — croner's own message for this case is a bare literal ("Number out of
+// bounds.") with no field name, confirmed against croner 3.0.1's `component.rs`. Re-parses
+// the raw expression against the five standard field ranges to name the offending field;
+// returns `None` if the expression's shape doesn't match what's expected here (wrong field
+// count, non-numeric tokens) rather than guessing.
+fn find_out_of_range_field(expression: &str) -> Option<String> {
+    let fields: Vec<&str> = expression.split_whitespace().collect();
+    let standard: &[&str] = match fields.len() {
+        5 => &fields,
+        6 => &fields[1..],
+        _ => return None,
+    };
+    for (raw, (name, min, max)) in standard.iter().zip(FIELD_RANGES.iter()) {
+        for token in raw.split(',') {
+            let base = token.split('/').next().unwrap_or(token);
+            let candidates: Vec<&str> = match base.split_once('-') {
+                Some((lo, hi)) => vec![lo, hi],
+                None if base == "*" => vec![],
+                None => vec![base],
+            };
+            for candidate in candidates {
+                if let Ok(value) = candidate.parse::<u32>() {
+                    if value < *min || value > *max {
+                        return Some(format!(
+                            "{name} field: {value} is out of range ({min}-{max})"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+// `InvalidDate` and `TimeSearchLimitExceeded` originate from `Cron`'s time-search methods
+// (`iter_after`/`find_next_occurrence`), not from `Cron::from_str` parsing — confirmed
+// against croner 3.0.1's source (`iterator.rs`, `pattern.rs::day_match`). `explain_at` never
+// routes those into this function (its `iter_after` call is a plain iterator that silently
+// ends instead of surfacing the error — see the `next_runs.is_empty()` check above), so
+// those two arms are unreachable from any real `explain_at` call today; kept for exhaustive
+// `CronError` coverage in case a future caller uses a different `croner` entry point.
+fn map_cron_error(err: CronError, expression: &str) -> ToolError {
     let code = match &err {
         CronError::EmptyPattern => "cron-empty-pattern",
         CronError::InvalidDate => "cron-invalid-date",
@@ -37,11 +108,15 @@ fn map_cron_error(err: CronError) -> ToolError {
         CronError::IllegalCharacters(_) => "cron-illegal-characters",
         CronError::ComponentError(_) => "cron-component-error",
     };
+    let context = match &err {
+        CronError::ComponentError(_) => find_out_of_range_field(expression),
+        _ => None,
+    };
     ToolError {
         code: code.to_string(),
         message: err.to_string(),
         position: None,
-        context: None,
+        context,
     }
 }
 
@@ -157,10 +232,13 @@ fn time_clause(minute: &FieldSpec, hour: &FieldSpec) -> Option<String> {
             } else {
                 format!("{step} minutes")
             };
+            // An hour range is inclusive of the whole final hour (e.g. `9-17` matches up to
+            // 5:59 PM, not stopping at 5:00 PM sharp) — describe the end boundary as one hour
+            // later than the last matching hour so the phrase reflects the actual window.
             Some(format!(
                 "every {step_phrase}, from {} to {}",
                 format_time_of_day(*h1, 0),
-                format_time_of_day(*h2, 0)
+                format_time_of_day((*h2 + 1) % 24, 0)
             ))
         }
         _ => None,
@@ -319,9 +397,18 @@ mod tests {
         let result = explain("*/5 9-17 * * 1-5").unwrap();
         assert_eq!(
             result.description,
-            "Every weekday, every 5 minutes, from 9:00 AM to 5:00 PM"
+            "Every weekday, every 5 minutes, from 9:00 AM to 6:00 PM"
         );
         assert_eq!(result.next_runs.len(), 3);
+    }
+
+    #[test]
+    fn explain_hour_range_ending_at_23_wraps_end_boundary_to_midnight() {
+        let result = explain("*/5 18-23 * * *").unwrap();
+        assert_eq!(
+            result.description,
+            "Every day, every 5 minutes, from 6:00 PM to 12:00 AM"
+        );
     }
 
     #[test]
@@ -351,10 +438,23 @@ mod tests {
     }
 
     #[test]
-    fn explain_out_of_range_field_value_returns_cron_component_error() {
+    fn explain_out_of_range_field_value_returns_cron_component_error_naming_the_field() {
         let err = explain("* 60 * * *").unwrap_err();
         assert_eq!(err.code, "cron-component-error");
         assert!(!err.message.is_empty());
+        assert_eq!(
+            err.context.as_deref(),
+            Some("hour field: 60 is out of range (0-23)")
+        );
+    }
+
+    #[test]
+    fn explain_out_of_range_day_of_month_names_the_field() {
+        let err = explain("0 9 40 * *").unwrap_err();
+        assert_eq!(
+            err.context.as_deref(),
+            Some("day of month field: 40 is out of range (1-31)")
+        );
     }
 
     #[test]
@@ -364,33 +464,56 @@ mod tests {
     }
 
     #[test]
+    fn explain_calendrically_impossible_date_returns_cron_no_upcoming_runs() {
+        let err = explain("0 0 30 2 *").unwrap_err();
+        assert_eq!(err.code, "cron-no-upcoming-runs");
+        assert!(!err.message.is_empty());
+    }
+
+    #[test]
+    fn explain_at_uses_the_provided_now_instead_of_the_system_clock() {
+        let now = chrono::Local
+            .with_ymd_and_hms(2026, 6, 15, 12, 0, 0)
+            .unwrap();
+        let result = explain_at(now, "0 9 * * 1").unwrap();
+
+        let cron = Cron::from_str("0 9 * * 1").unwrap();
+        let expected: Vec<i64> = cron
+            .iter_after(now)
+            .take(3)
+            .map(|dt| dt.timestamp())
+            .collect();
+        assert_eq!(result.next_runs, expected);
+    }
+
+    #[test]
     fn map_cron_error_covers_every_variant_with_a_stable_code() {
         assert_eq!(
-            map_cron_error(CronError::EmptyPattern).code,
+            map_cron_error(CronError::EmptyPattern, "").code,
             "cron-empty-pattern"
         );
         assert_eq!(
-            map_cron_error(CronError::InvalidDate).code,
+            map_cron_error(CronError::InvalidDate, "").code,
             "cron-invalid-date"
         );
         assert_eq!(
-            map_cron_error(CronError::InvalidTime).code,
+            map_cron_error(CronError::InvalidTime, "").code,
             "cron-invalid-time"
         );
         assert_eq!(
-            map_cron_error(CronError::TimeSearchLimitExceeded).code,
+            map_cron_error(CronError::TimeSearchLimitExceeded, "").code,
             "cron-search-limit-exceeded"
         );
         assert_eq!(
-            map_cron_error(CronError::InvalidPattern("x".to_string())).code,
+            map_cron_error(CronError::InvalidPattern("x".to_string()), "").code,
             "cron-invalid-pattern"
         );
         assert_eq!(
-            map_cron_error(CronError::IllegalCharacters("x".to_string())).code,
+            map_cron_error(CronError::IllegalCharacters("x".to_string()), "").code,
             "cron-illegal-characters"
         );
         assert_eq!(
-            map_cron_error(CronError::ComponentError("x".to_string())).code,
+            map_cron_error(CronError::ComponentError("x".to_string()), "* 60 * * *").code,
             "cron-component-error"
         );
     }

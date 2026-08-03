@@ -10,10 +10,13 @@ const expression = ref("");
 const explanation = ref<CronExplanation | null>(null);
 const error = ref<ToolError | null>(null);
 
-// This tool has exactly one write-trigger to its own state (the Explain
-// action) — no drop handler, no re-firing selector — so a local runner is
-// correct here, same reasoning JWT's view already established.
-const runLatestWins = createLatestWinsRunner();
+// Explain and Paste are independent write-triggers to this view's state — a
+// shared runner would wrongly mark one action's in-flight result as
+// "superseded" just because the other action started, even though they
+// don't race on the same state. Each gets its own runner instance, mirroring
+// the per-action-not-shared pattern the registry store uses per-tool.
+const runExplain = createLatestWinsRunner();
+const runPaste = createLatestWinsRunner();
 
 // Core returns unix-seconds epoch values (never milliseconds), same
 // convention JwtView.vue::formatClaim already established.
@@ -24,7 +27,7 @@ function formatRun(epochSeconds: number): string {
 async function onExplain() {
   error.value = null;
   try {
-    const result = await runLatestWins(() =>
+    const result = await runExplain(() =>
       invoke<CronExplanation>("cron_explain", { expression: expression.value }),
     );
     if (!result.superseded) {
@@ -39,7 +42,7 @@ async function onExplain() {
 async function onPaste() {
   error.value = null;
   try {
-    const result = await runLatestWins(() => readClipboardText());
+    const result = await runPaste(() => readClipboardText());
     if (!result.superseded) {
       expression.value = result.value;
       explanation.value = null;

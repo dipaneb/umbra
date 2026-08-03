@@ -122,6 +122,28 @@ describe("CronView", () => {
     expect(wrapper!.text()).not.toContain("first result (stale)");
   });
 
+  it("an in-flight explain still resolves after an unrelated paste completes (independent latest-wins runners)", async () => {
+    mountView();
+    let resolveExplain: (value: unknown) => void = () => {};
+    invokeMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveExplain = resolve;
+        }),
+    );
+    await wrapper!.find("#cron-expression-input").setValue("0 9 * * 1");
+    await clickButton(wrapper!, "Explain");
+
+    readTextMock.mockResolvedValueOnce("0 0 * * *");
+    await clickButton(wrapper!, "Paste from clipboard");
+    await flushPromises();
+
+    resolveExplain({ description: "Every Monday, at 9:00 AM", next_runs: [1735714800] });
+    await flushPromises();
+
+    expect(wrapper!.text()).toContain("Every Monday, at 9:00 AM");
+  });
+
   it("paste populates the expression field from a mocked readClipboardText", async () => {
     mountView();
     readTextMock.mockResolvedValueOnce("0 0 * * *");

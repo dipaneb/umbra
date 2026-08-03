@@ -93,7 +93,7 @@ const TOOLS: ToolRegistryEntry[] = [
     name: "Cron",
     aliases: ["cron", "crontab", "schedule"],
     route: "/tools/cron",
-    icon: "CRON",
+    icon: "CRN",
     component: () => import("../tools/cron/CronView.vue"),
   },
 ];
