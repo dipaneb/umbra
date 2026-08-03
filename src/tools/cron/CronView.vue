@@ -4,11 +4,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { toToolError, type ToolError } from "../../shell/toolError";
-import type { CronExplanation } from "./cronExplanation";
+import type { CronExplanation, ScheduleParseResult } from "./cronExplanation";
 
 const expression = ref("");
 const explanation = ref<CronExplanation | null>(null);
 const error = ref<ToolError | null>(null);
+
+const phrase = ref("");
+const parseResult = ref<ScheduleParseResult | null>(null);
+const parseError = ref<ToolError | null>(null);
 
 // Explain and Paste are independent write-triggers to this view's state — a
 // shared runner would wrongly mark one action's in-flight result as
@@ -17,6 +21,13 @@ const error = ref<ToolError | null>(null);
 // the per-action-not-shared pattern the registry store uses per-tool.
 const runExplain = createLatestWinsRunner();
 const runPaste = createLatestWinsRunner();
+
+// A third, independent write-trigger to this view's state (the NL->cron
+// section operates on `phrase`/`parseResult`, not `expression`/`explanation`)
+// — same reasoning as runExplain/runPaste above, so it gets its own runners
+// rather than reusing theirs.
+const runParse = createLatestWinsRunner();
+const runPasteSchedule = createLatestWinsRunner();
 
 // Core returns unix-seconds epoch values (never milliseconds), same
 // convention JwtView.vue::formatClaim already established.
@@ -61,63 +72,168 @@ async function onCopy() {
     error.value = toToolError(err);
   }
 }
+
+async function onParseSchedule() {
+  parseError.value = null;
+  try {
+    const result = await runParse(() =>
+      invoke<ScheduleParseResult>("cron_parse_schedule", { phrase: phrase.value }),
+    );
+    if (!result.superseded) {
+      parseResult.value = result.value;
+    }
+  } catch (err) {
+    parseResult.value = null;
+    parseError.value = toToolError(err);
+  }
+}
+
+async function onPasteSchedule() {
+  parseError.value = null;
+  try {
+    const result = await runPasteSchedule(() => readClipboardText());
+    if (!result.superseded) {
+      phrase.value = result.value;
+      parseResult.value = null;
+    }
+  } catch (err) {
+    parseError.value = toToolError(err);
+  }
+}
+
+async function onCopySchedule() {
+  if (!parseResult.value) return;
+  parseError.value = null;
+  try {
+    await writeClipboardText(parseResult.value.expression);
+  } catch (err) {
+    parseError.value = toToolError(err);
+  }
+}
 </script>
 
 <template>
   <section>
     <h1>Cron</h1>
 
-    <div class="field">
-      <label for="cron-expression-input">Cron expression</label>
-      <textarea
-        id="cron-expression-input"
-        v-model="expression"
-        rows="2"
-      />
-    </div>
+    <div class="explain-section">
+      <div class="field">
+        <label for="cron-expression-input">Cron expression</label>
+        <textarea
+          id="cron-expression-input"
+          v-model="expression"
+          rows="2"
+        />
+      </div>
 
-    <div class="actions">
-      <button
-        type="button"
-        @click="onExplain"
-      >
-        Explain
-      </button>
-      <button
-        type="button"
-        @click="onPaste"
-      >
-        Paste from clipboard
-      </button>
-      <button
-        v-if="explanation"
-        type="button"
-        @click="onCopy"
-      >
-        Copy description
-      </button>
-    </div>
+      <div class="actions">
+        <button
+          type="button"
+          @click="onExplain"
+        >
+          Explain
+        </button>
+        <button
+          type="button"
+          @click="onPaste"
+        >
+          Paste from clipboard
+        </button>
+        <button
+          v-if="explanation"
+          type="button"
+          @click="onCopy"
+        >
+          Copy description
+        </button>
+      </div>
 
-    <p
-      v-if="error"
-      role="alert"
-    >
-      {{ error.message }}
-    </p>
-
-    <div v-if="explanation">
-      <p class="description">
-        {{ explanation.description }}
+      <p
+        v-if="error"
+        role="alert"
+      >
+        {{ error.message }}
       </p>
 
-      <ul class="runs">
-        <li
-          v-for="(run, index) in explanation.next_runs"
-          :key="index"
+      <div v-if="explanation">
+        <p class="description">
+          {{ explanation.description }}
+        </p>
+
+        <ul class="runs">
+          <li
+            v-for="(run, index) in explanation.next_runs"
+            :key="index"
+          >
+            {{ formatRun(run) }}
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="schedule-section">
+      <h2>Schedule to cron</h2>
+
+      <div class="field">
+        <label for="cron-schedule-phrase-input">Schedule, in plain English</label>
+        <textarea
+          id="cron-schedule-phrase-input"
+          v-model="phrase"
+          rows="2"
+        />
+      </div>
+
+      <div class="actions">
+        <button
+          type="button"
+          @click="onParseSchedule"
         >
-          {{ formatRun(run) }}
-        </li>
-      </ul>
+          Convert
+        </button>
+        <button
+          type="button"
+          @click="onPasteSchedule"
+        >
+          Paste from clipboard
+        </button>
+        <button
+          v-if="parseResult"
+          type="button"
+          @click="onCopySchedule"
+        >
+          Copy expression
+        </button>
+      </div>
+
+      <p
+        v-if="parseError"
+        role="alert"
+      >
+        {{ parseError.message }}
+        <template v-if="parseError.context">
+          {{ parseError.context }}
+        </template>
+      </p>
+
+      <div v-if="parseResult">
+        <p class="expression">
+          {{ parseResult.expression }}
+        </p>
+        <p class="description">
+          {{ parseResult.description }}
+        </p>
+
+        <ul class="runs">
+          <li
+            v-for="(run, index) in parseResult.next_runs"
+            :key="index"
+          >
+            {{ formatRun(run) }}
+          </li>
+        </ul>
+      </div>
     </div>
   </section>
 </template>
@@ -145,6 +261,11 @@ p[role="alert"] {
 }
 
 .description {
+  font-weight: 600;
+}
+
+.expression {
+  font-family: monospace;
   font-weight: 600;
 }
 

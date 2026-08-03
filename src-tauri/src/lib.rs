@@ -2,7 +2,7 @@ mod commands;
 mod fs_helper;
 
 use commands::base64::{base64_decode, base64_decode_to_file, base64_encode, base64_encode_file};
-use commands::cron::cron_explain;
+use commands::cron::{cron_explain, cron_parse_schedule};
 use commands::hash::{hash_compute, hash_compute_file};
 use commands::json::{json_format, json_minify, json_parse};
 use commands::jwt::jwt_decode;
@@ -34,7 +34,8 @@ pub fn run() {
             hash_compute,
             hash_compute_file,
             jwt_decode,
-            cron_explain
+            cron_explain,
+            cron_parse_schedule
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
