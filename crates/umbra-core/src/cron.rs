@@ -149,6 +149,20 @@ fn time_clause(minute: &FieldSpec, hour: &FieldSpec) -> Option<String> {
                 Some(format!("every {step} hours at :{m:02}"))
             }
         }
+        (FieldSpec::Step { base, step }, FieldSpec::Range(h1, h2))
+            if **base == FieldSpec::Wildcard =>
+        {
+            let step_phrase = if *step == 1 {
+                "minute".to_string()
+            } else {
+                format!("{step} minutes")
+            };
+            Some(format!(
+                "every {step_phrase}, from {} to {}",
+                format_time_of_day(*h1, 0),
+                format_time_of_day(*h2, 0)
+            ))
+        }
         _ => None,
     }
 }
@@ -297,6 +311,16 @@ mod tests {
     fn explain_step_minutes_returns_every_n_minutes_description() {
         let result = explain("*/15 * * * *").unwrap();
         assert_eq!(result.description, "Every day, every 15 minutes");
+        assert_eq!(result.next_runs.len(), 3);
+    }
+
+    #[test]
+    fn explain_step_minutes_with_hour_range_and_weekday_range_returns_business_hours_description() {
+        let result = explain("*/5 9-17 * * 1-5").unwrap();
+        assert_eq!(
+            result.description,
+            "Every weekday, every 5 minutes, from 9:00 AM to 5:00 PM"
+        );
         assert_eq!(result.next_runs.len(), 3);
     }
 
