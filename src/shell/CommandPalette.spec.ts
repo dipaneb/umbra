@@ -140,11 +140,11 @@ describe("CommandPalette", () => {
     dispatch({ key: "k", metaKey: true });
     await wrapper.vm.$nextTick();
 
-    // Default empty query lists all registry entries (JSON, Base64, UUID, Hash, JWT).
+    // Default empty query lists all registry entries (JSON, Base64, UUID, Hash, JWT, Cron).
     // ArrowUp from index 0 should wrap to the last item, not go negative.
     dispatch({ key: "ArrowUp" });
     await wrapper.vm.$nextTick();
-    expect(wrapper.find("li.active").text()).toContain("JWT");
+    expect(wrapper.find("li.active").text()).toContain("Cron");
 
     // ArrowDown from the last item should wrap back to the first.
     dispatch({ key: "ArrowDown" });
