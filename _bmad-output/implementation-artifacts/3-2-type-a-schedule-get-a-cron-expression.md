@@ -139,10 +139,10 @@ so that I never deploy a silently wrong schedule.
 - [ ] **Task 9: Manual verification (deferred to the user)**
   - [ ] `pnpm tauri dev`: type "every weekday at 8:30am" (or the PRD's own demo phrase, "every Monday at 9am") in the new section and confirm the correct cron expression, a matching description, and 3 upcoming local-datetime run times render; type "at 9" and confirm an honest, specific inline error naming the AM/PM ambiguity; type a French phrase and confirm an honest error stating English-only v1 scope; confirm copy-to-clipboard copies the generated expression; confirm the existing cron→English section (Story 3.1) still works unaffected side-by-side in the same view.
 
-- [ ] **Task 10: Commit and open a PR**
-  - [ ] Branch: `feat/story-3-2-<slug>`, created from this story's `baseline_commit` (`50e3fbf`, this branch's current tip — includes all of Story 3.1's implementation and its code-review patches).
-  - [ ] Conventional Commit(s), `feat` type scoped to `cron`.
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+- [x] **Task 10: Commit and open a PR**
+  - [x] Branch: `feat/story-3-2-<slug>`, created from this story's `baseline_commit` (`50e3fbf`, this branch's current tip — includes all of Story 3.1's implementation and its code-review patches).
+  - [x] Conventional Commit(s), `feat` type scoped to `cron`.
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4). PR: https://github.com/dipaneb/umbra/pull/33
 
 ## Dev Notes
 
