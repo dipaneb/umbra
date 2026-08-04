@@ -42,6 +42,9 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-04
+# note: story 4.1 moved to review 2026-08-04 (implementation complete; manual pnpm tauri dev
+# check outstanding, deferred to user — same pattern as every prior story)
+# note: story 4.1 moved to in-progress 2026-08-04
 # note: story 4.1 created 2026-08-04 (first story of Epic 4, epic-4 moved backlog -> in-progress.
 # No same-epic previous story existed, so intelligence was drawn from the epic-3 retrospective's
 # "Epic 4 Preview" section instead. The AD-16 runner-scoping amendment it names as critical prep was
@@ -145,7 +148,7 @@ development_status:
   epic-3-retrospective: done
 
   epic-4: in-progress
-  4-1-drag-an-image-in-get-its-text: ready-for-dev
+  4-1-drag-an-image-in-get-its-text: review
   4-2-paste-a-screenshot-copy-the-text: backlog
   4-3-the-bucket-never-bluffs: backlog
   epic-4-retrospective: optional

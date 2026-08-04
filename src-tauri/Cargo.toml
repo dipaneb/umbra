@@ -32,4 +32,9 @@ umbra-core = { path = "../crates/umbra-core" }
 # Only #[tokio::test] needs an executor to run async #[tauri::command] fns
 # directly in tests; the app itself uses Tauri's own runtime, not tokio.
 tokio = { version = "1", features = ["macros", "rt"] }
+# `bucket_extract_text` (Story 4.1) is this codebase's first command needing an `AppHandle` —
+# every prior command's tests call the plain async fn directly (no Tauri context needed). A real
+# `AppHandle` can only come from a built app, so its tests go through `tauri::test`'s mock
+# IPC round trip instead (`mock_builder()` + `get_ipc_response`).
+tauri = { version = "2", features = ["test"] }
 

@@ -52,6 +52,6 @@ describe("router", () => {
     expect(matched[0].components?.default).toBe(SettingsView);
 
     const registry = useRegistryStore(pinia);
-    expect(registry.tools).toHaveLength(6);
+    expect(registry.tools).toHaveLength(7);
   });
 });

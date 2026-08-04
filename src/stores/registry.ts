@@ -96,6 +96,15 @@ const TOOLS: ToolRegistryEntry[] = [
     icon: "CRN",
     component: () => import("../tools/cron/CronView.vue"),
   },
+  {
+    id: "bucket",
+    name: "Bucket",
+    aliases: ["bucket", "ocr", "screenshot"],
+    route: "/tools/bucket",
+    icon: "OCR",
+    component: () => import("../tools/bucket/BucketView.vue"),
+    drop: { acceptedMimeTypes: [], handler: "bucket_extract_text" },
+  },
 ];
 
 assertUniqueToolIds(TOOLS);
