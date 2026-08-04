@@ -117,7 +117,7 @@ so that FR21 is enforced by CI, not by good intentions.
 - [x] **Task 8: Commit and open a PR**
   - [x] Branch: `feat/story-3-3-the-phrase-corpus-as-an-automated-acceptance-gate`, created from this story's `baseline_commit` (`f8c2577`). Unlike Story 3.2 (which had to stack on an unmerged Story 3.1 branch), PRs #32 and #33 (Stories 3.1 and 3.2) are both merged to `main` as of this story's creation — `main`'s tip **is** `f8c2577`, no stacking needed. The branch and this story's first commit (`docs(story-3.3): create story context for the phrase corpus acceptance gate`) already exist as of this story's creation.
   - [x] Conventional Commit(s), `test` type scoped to `cron` (this story adds no new production code path, only tests — `test(cron): ...` is more accurate than `feat(cron): ...`).
-  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4). PR: https://github.com/dipaneb/umbra/pull/34
 
 ## Dev Notes
 
