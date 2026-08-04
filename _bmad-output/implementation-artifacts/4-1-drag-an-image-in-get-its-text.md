@@ -96,9 +96,9 @@ so that screenshots of errors and documents become copyable text without touchin
   - [ ] `src/tools/bucket/BucketView.spec.ts`: mirror `HashView.spec.ts`'s structure — drop-result success path, drop-result error path, confirm `registry.getLatestWinsRunner("bucket")` is what's actually used (not a local runner).
   - [ ] Full verification pass: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm lint`, `pnpm test`, `pnpm build`, `vue-tsc --noEmit`.
 
-- [ ] **Task 11: Commit and open a PR**
-  - [ ] Conventional Commit(s), `feat` type scoped to `bucket` (new tool + new core capability — the first Epic 4 commit).
-  - [ ] PR against `main`.
+- [x] **Task 11: Commit and open a PR**
+  - [x] Conventional Commit, `feat` type scoped to `bucket` (new tool + new core capability — the first Epic 4 commit): `80fe164`.
+  - [x] PR against `main`: https://github.com/dipaneb/umbra/pull/36.
 
 ## Dev Notes
 
