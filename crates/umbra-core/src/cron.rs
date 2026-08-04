@@ -391,24 +391,12 @@ fn parse_schedule_at(
         return result;
     }
 
-    // The strict grammar didn't produce a convertible schedule. Run a couple
-    // of cheap diagnostic passes so the failure can name what it *did*
-    // understand, per FR21, instead of a single catch-all message.
+    // try_parse_full only returns None when no day clause matched at all —
+    // run a cheap diagnostic pass for a bare ambiguous time with no day
+    // clause (e.g. FR21's own named example, "at 9") before the generic
+    // catch-all.
     if let Some(context) = detect_ambiguous_time(&lower) {
         return Err(ambiguous_time_error_with_context(context));
-    }
-
-    if let Some((dow, _rest)) = parse_day_clause(&lower) {
-        let understood = day_clause(&FieldSpec::Wildcard, &FieldSpec::Wildcard, &dow)
-            .unwrap_or_else(|| "part of a schedule".to_string());
-        return Err(ToolError {
-            code: "cron-nl-unrecognized".to_string(),
-            message: unrecognized_message(),
-            position: None,
-            context: Some(format!(
-                "Understood '{understood}', but no time of day was given."
-            )),
-        });
     }
 
     Err(ToolError {
@@ -434,17 +422,32 @@ fn ambiguous_time_error_with_context(context: String) -> ToolError {
     }
 }
 
-fn ambiguous_time_error(hour: u32, minute: u32) -> ToolError {
+// Builds an honest-failure error that names what the day clause was
+// understood as, per FR21's "shows what it did understand." Used for every
+// failure downstream of a recognized day clause so that context is never
+// silently dropped, whatever comes after it.
+fn day_understood_error(understood_day: &str, detail: &str) -> ToolError {
+    ToolError {
+        code: "cron-nl-unrecognized".to_string(),
+        message: unrecognized_message(),
+        position: None,
+        context: Some(format!("Understood '{understood_day}', but {detail}")),
+    }
+}
+
+fn ambiguous_time_error_with_day(understood_day: &str, hour: u32, minute: u32) -> ToolError {
     ambiguous_time_error_with_context(format!(
-        "Understood a time of {hour}:{minute:02}, but couldn't tell whether it means AM or PM \
-         — say '{hour}am' or '{hour}pm'."
+        "Understood '{understood_day}', at a time of {hour}:{minute:02} — but couldn't tell \
+         whether it means AM or PM — say '{hour}am' or '{hour}pm'."
     ))
 }
 
-// Attempts the full `<day clause> <time clause>` grammar. `None` means the
-// input's shape didn't match at all (caller runs diagnostics for a more
-// specific honest-failure message); `Some(Err(_))` means the shape matched
-// far enough to name a specific problem (e.g. an ambiguous time).
+// Attempts the full `<day clause> <time clause>` grammar. `None` means no
+// day clause and no bare step-time phrase matched at all (caller runs a
+// global diagnostic pass for a more specific honest-failure message in that
+// case). Once a day clause IS recognized, this always returns `Some(...)` —
+// Ok on success, or an honest failure that names the day clause understood,
+// whatever went wrong with the rest of the phrase.
 fn try_parse_full(
     now: chrono::DateTime<chrono::Local>,
     lower: &str,
@@ -454,33 +457,45 @@ fn try_parse_full(
         if let Some(after_comma) = rest.strip_prefix(',') {
             rest = after_comma.trim_start();
         }
+        let understood_day = || {
+            day_clause(&FieldSpec::Wildcard, &FieldSpec::Wildcard, &dow)
+                .unwrap_or_else(|| "part of a schedule".to_string())
+        };
 
         if let Some(after_at) = rest.strip_prefix("at ") {
             return Some(match parse_time_fixed(after_at.trim_start()) {
                 FixedTimeOutcome::Ok(minute, hour) => build_result(now, dow, minute, hour),
-                FixedTimeOutcome::AmbiguousNoAmPm(h, m) => Err(ambiguous_time_error(h, m)),
-                FixedTimeOutcome::NoMatch => Err(ToolError {
-                    code: "cron-nl-unrecognized".to_string(),
-                    message: unrecognized_message(),
-                    position: None,
-                    context: None,
-                }),
+                FixedTimeOutcome::AmbiguousNoAmPm(h, m) => {
+                    Err(ambiguous_time_error_with_day(&understood_day(), h, m))
+                }
+                FixedTimeOutcome::NoMatch => Err(day_understood_error(
+                    &understood_day(),
+                    "the time wasn't recognized.",
+                )),
             });
         }
 
         if let Some(after_every) = rest.strip_prefix("every ") {
             return Some(match parse_time_step(after_every.trim_start()) {
                 Some((minute, hour)) => build_result(now, dow, minute, hour),
-                None => Err(ToolError {
-                    code: "cron-nl-unrecognized".to_string(),
-                    message: unrecognized_message(),
-                    position: None,
-                    context: None,
-                }),
+                None => Err(day_understood_error(
+                    &understood_day(),
+                    "the step schedule wasn't recognized.",
+                )),
             });
         }
 
-        return None;
+        if rest.is_empty() {
+            return Some(Err(day_understood_error(
+                &understood_day(),
+                "no time of day was given.",
+            )));
+        }
+
+        return Some(Err(day_understood_error(
+            &understood_day(),
+            "the rest of this schedule wasn't recognized.",
+        )));
     }
 
     // No explicit day clause. A bare step-time phrase ("every 15 minutes",
@@ -620,7 +635,9 @@ fn parse_weekday_name(s: &str) -> Option<(u32, &str)> {
 }
 
 // "<Weekday>" | "<Weekday> and <Weekday>" | "<Weekday>, <Weekday>, and <Weekday>"
-// (2+ items) — comma-and-joined, order preserved as typed.
+// (2+ items) — comma-and-joined, order preserved as typed. Repeats (e.g.
+// "Monday and Monday") collapse to one entry rather than producing a
+// redundant cron field/description.
 fn parse_weekday_list(s: &str) -> Option<(Vec<u32>, &str)> {
     let (first, mut rest) = parse_weekday_name(s.trim_start())?;
     let mut days = vec![first];
@@ -630,18 +647,24 @@ fn parse_weekday_list(s: &str) -> Option<(Vec<u32>, &str)> {
             let after_comma = after_comma.trim_start();
             if let Some(after_and) = starts_with_word(after_comma, "and") {
                 let (d, r) = parse_weekday_name(after_and.trim_start())?;
-                days.push(d);
+                if !days.contains(&d) {
+                    days.push(d);
+                }
                 rest = r;
                 break;
             }
             let (d, r) = parse_weekday_name(after_comma)?;
-            days.push(d);
+            if !days.contains(&d) {
+                days.push(d);
+            }
             rest = r;
             continue;
         }
         if let Some(after_and) = starts_with_word(trimmed, "and") {
             let (d, r) = parse_weekday_name(after_and.trim_start())?;
-            days.push(d);
+            if !days.contains(&d) {
+                days.push(d);
+            }
             rest = r;
             break;
         }
@@ -735,7 +758,12 @@ fn parse_time_step(s: &str) -> Option<(FieldSpec, FieldSpec)> {
         .strip_prefix("minutes")
         .or_else(|| rest.strip_prefix("minute"))
     {
-        if after.trim().is_empty() {
+        // Minute field range is 0-59 — a step outside that range (e.g. "every
+        // 90 minutes") would silently produce a cron expression whose real
+        // recurrence doesn't match the phrase (croner accepts */90 without
+        // error, but a value never has 90 subtracted from it, so it only
+        // ever matches minute 0 — an hourly schedule, not a 90-minute one).
+        if after.trim().is_empty() && n <= 59 {
             return Some((
                 FieldSpec::Step {
                     base: Box::new(FieldSpec::Wildcard),
@@ -750,7 +778,10 @@ fn parse_time_step(s: &str) -> Option<(FieldSpec, FieldSpec)> {
         .strip_prefix("hours")
         .or_else(|| rest.strip_prefix("hour"))
     {
-        if after.trim().is_empty() {
+        // Hour field range is 0-23 — same reasoning as the minute branch
+        // above (e.g. "every 30 hours" would actually fire daily, not every
+        // 30 hours).
+        if after.trim().is_empty() && n <= 23 {
             return Some((
                 FieldSpec::Single(0),
                 FieldSpec::Step {
@@ -767,16 +798,29 @@ fn parse_time_step(s: &str) -> Option<(FieldSpec, FieldSpec)> {
 // Scans for an "at <digits>[:mm]" time expression with no trailing am/pm
 // marker, anywhere in the phrase — this fires even when no day clause is
 // present at all (e.g. the bare phrase "at 9", FR21's own named example).
+// Requires a word boundary before "at" (whitespace/comma/start-of-string) so
+// this doesn't spuriously fire inside words like "chat"/"format"/"combat" —
+// and keeps scanning past a false match so a genuine ambiguity later in the
+// phrase is still found.
 fn detect_ambiguous_time(lower: &str) -> Option<String> {
-    let idx = lower.find("at ")?;
-    let after = lower[idx + "at ".len()..].trim_start();
-    match parse_time_fixed(after) {
-        FixedTimeOutcome::AmbiguousNoAmPm(hour, minute) => Some(format!(
-            "Understood a time of {hour}:{minute:02}, but couldn't tell whether it means AM or \
-             PM — say '{hour}am' or '{hour}pm'."
-        )),
-        _ => None,
+    for (idx, _) in lower.match_indices("at ") {
+        let at_word_boundary = idx == 0
+            || lower[..idx]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_whitespace() || c == ',');
+        if !at_word_boundary {
+            continue;
+        }
+        let after = lower[idx + "at ".len()..].trim_start();
+        if let FixedTimeOutcome::AmbiguousNoAmPm(hour, minute) = parse_time_fixed(after) {
+            return Some(format!(
+                "Understood a time of {hour}:{minute:02}, but couldn't tell whether it means AM \
+                 or PM — say '{hour}am' or '{hour}pm'."
+            ));
+        }
     }
+    None
 }
 
 #[cfg(test)]
@@ -1037,12 +1081,16 @@ mod tests {
     fn parse_schedule_out_of_scope_vocabulary_returns_cron_nl_unrecognized() {
         let err = parse_schedule("every third Friday of the month").unwrap_err();
         assert_eq!(err.code, "cron-nl-unrecognized");
+        assert!(!err.message.is_empty());
+        assert!(!err.message.contains("* *"));
     }
 
     #[test]
     fn parse_schedule_garbage_input_returns_cron_nl_unrecognized() {
         let err = parse_schedule("asdfasdf").unwrap_err();
         assert_eq!(err.code, "cron-nl-unrecognized");
+        assert!(!err.message.is_empty());
+        assert!(!err.message.contains("* *"));
     }
 
     #[test]
@@ -1053,5 +1101,90 @@ mod tests {
             err.context.as_deref(),
             Some("Understood 'every weekday', but no time of day was given.")
         );
+    }
+
+    #[test]
+    fn parse_schedule_word_ending_in_at_does_not_trigger_a_fabricated_ambiguous_time() {
+        // Regression test: `detect_ambiguous_time` used to do an unanchored
+        // substring search for "at ", so "chat 9"/"format 9" would falsely
+        // report an understood-but-ambiguous time that was never present.
+        for phrase in ["chat 9", "format 9", "combat 9"] {
+            let err = parse_schedule(phrase).unwrap_err();
+            assert_eq!(
+                err.code, "cron-nl-unrecognized",
+                "phrase {phrase:?} should be unrecognized, not a fabricated ambiguous time"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_schedule_ambiguous_time_still_detected_after_an_earlier_false_match() {
+        // A false "at " match earlier in the phrase must not stop the scan
+        // from finding a real ambiguous time later on.
+        let err = parse_schedule("chat at 9").unwrap_err();
+        assert_eq!(err.code, "cron-nl-ambiguous-time");
+    }
+
+    #[test]
+    fn parse_schedule_step_minutes_out_of_field_range_is_rejected() {
+        // Regression test: the minute field only spans 0-59, so "every 90
+        // minutes" used to silently generate "*/90 * * * *" — which croner
+        // accepts, but which actually only ever matches minute 0, i.e. an
+        // hourly schedule, not a 90-minute one.
+        let err = parse_schedule("every 90 minutes").unwrap_err();
+        assert_eq!(err.code, "cron-nl-unrecognized");
+    }
+
+    #[test]
+    fn parse_schedule_step_hours_out_of_field_range_is_rejected() {
+        // Same reasoning as the minutes case above, for the hour field's
+        // 0-23 range ("every 30 hours" would actually fire daily).
+        let err = parse_schedule("every 30 hours").unwrap_err();
+        assert_eq!(err.code, "cron-nl-unrecognized");
+    }
+
+    #[test]
+    fn parse_schedule_step_minutes_at_the_field_boundary_still_converts() {
+        let result = parse_schedule("every 59 minutes").unwrap();
+        assert_eq!(result.expression, "*/59 * * * *");
+    }
+
+    #[test]
+    fn parse_schedule_malformed_trailing_time_still_names_the_understood_day() {
+        let err = parse_schedule("every weekday at 25:00").unwrap_err();
+        assert_eq!(err.code, "cron-nl-unrecognized");
+        assert_eq!(
+            err.context.as_deref(),
+            Some("Understood 'every weekday', but the time wasn't recognized.")
+        );
+    }
+
+    #[test]
+    fn parse_schedule_ambiguous_time_after_a_day_clause_names_the_understood_day() {
+        let err = parse_schedule("every weekday at 8:30").unwrap_err();
+        assert_eq!(err.code, "cron-nl-ambiguous-time");
+        let context = err.context.expect("context should be present");
+        assert!(context.contains("every weekday"));
+        assert!(context.contains("8:30"));
+    }
+
+    #[test]
+    fn parse_schedule_unrecognized_trailing_text_does_not_falsely_claim_no_time_was_given() {
+        // Regression test: trailing text after a recognized day clause that
+        // isn't in the "at "/"every " shape used to be silently discarded,
+        // producing a false "no time of day was given" even when the
+        // trailing text actually contained a time.
+        let err = parse_schedule("every weekday sometime at 9am").unwrap_err();
+        assert_eq!(err.code, "cron-nl-unrecognized");
+        let context = err.context.expect("context should be present");
+        assert!(context.contains("every weekday"));
+        assert!(!context.contains("no time of day was given"));
+    }
+
+    #[test]
+    fn parse_schedule_duplicate_weekday_in_list_is_deduplicated() {
+        let result = parse_schedule("every Monday and Monday at 9am").unwrap();
+        assert_eq!(result.expression, "0 9 * * 1");
+        assert_eq!(result.description, "Every Monday, at 9:00 AM");
     }
 }
