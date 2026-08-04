@@ -4,7 +4,7 @@ baseline_commit: f8c2577
 
 # Story 3.3: The phrase corpus as an automated acceptance gate
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -23,13 +23,13 @@ so that FR21 is enforced by CI, not by good intentions.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Confirm scope before writing anything (AC: all)**
-  - [ ] This is a **test-only story**. No new `pub` function, no new `ToolError` code, no new Tauri command, no `CronView.vue` change, no registry change, no `Cargo.toml` change. Everything this story needs — `parse_schedule`, `describe`, all `cron-nl-*` error codes — already exists in `crates/umbra-core/src/cron.rs` after Story 3.2. Re-confirm this by reading that file in full before starting (Task 2 depends on knowing its exact current grammar and existing test coverage).
-  - [ ] Confirm AD-11's existing CI wiring already covers this story's gate with zero changes: `.github/workflows/ci.yml`'s `cargo test --workspace` step runs on `ubuntu-latest`, `windows-latest`, and `macos-latest`, all three as required status checks. `cargo test -p umbra-core` (the AC's own wording) is a subset of `cargo test --workspace` — the corpus becomes a required CI gate automatically the moment it exists as `#[test]` functions in `crates/umbra-core/src/cron.rs`. **Do not add a new CI job, workflow step, or separate `cargo test -p umbra-core` invocation** — that would be redundant with what already runs, and no story before this one has needed a story-specific CI change for a plain `#[test]` addition.
+- [x] **Task 1: Confirm scope before writing anything (AC: all)**
+  - [x] This is a **test-only story**. No new `pub` function, no new `ToolError` code, no new Tauri command, no `CronView.vue` change, no registry change, no `Cargo.toml` change. Everything this story needs — `parse_schedule`, `describe`, all `cron-nl-*` error codes — already exists in `crates/umbra-core/src/cron.rs` after Story 3.2. Re-confirm this by reading that file in full before starting (Task 2 depends on knowing its exact current grammar and existing test coverage).
+  - [x] Confirm AD-11's existing CI wiring already covers this story's gate with zero changes: `.github/workflows/ci.yml`'s `cargo test --workspace` step runs on `ubuntu-latest`, `windows-latest`, and `macos-latest`, all three as required status checks. `cargo test -p umbra-core` (the AC's own wording) is a subset of `cargo test --workspace` — the corpus becomes a required CI gate automatically the moment it exists as `#[test]` functions in `crates/umbra-core/src/cron.rs`. **Do not add a new CI job, workflow step, or separate `cargo test -p umbra-core` invocation** — that would be redundant with what already runs, and no story before this one has needed a story-specific CI change for a plain `#[test]` addition.
 
-- [ ] **Task 2: The must-convert corpus (AC: 1) — ≥30 phrases, every grammar branch covered at least once**
-  - [ ] Add a data table (a `const`/`static` array of `(phrase, expected_expression, expected_description)` tuples, or one array per column — either is fine) inside `crates/umbra-core/src/cron.rs`'s existing `#[cfg(test)] mod tests` block. Do not create a new file or module outside `cron.rs` — every other cron test lives in this one file/module, and this corpus is not an exception.
-  - [ ] **Cover every branch of Story 3.2's Task 3 grammar at least once** — the grammar is deliberately narrow (see Previous Story Intelligence below for the exact scope boundary), so the corpus is finite and enumerable, not a sample of an open-ended space:
+- [x] **Task 2: The must-convert corpus (AC: 1) — ≥30 phrases, every grammar branch covered at least once**
+  - [x] Add a data table (a `const`/`static` array of `(phrase, expected_expression, expected_description)` tuples, or one array per column — either is fine) inside `crates/umbra-core/src/cron.rs`'s existing `#[cfg(test)] mod tests` block. Do not create a new file or module outside `cron.rs` — every other cron test lives in this one file/module, and this corpus is not an exception.
+  - [x] **Cover every branch of Story 3.2's Task 3 grammar at least once** — the grammar is deliberately narrow (see Previous Story Intelligence below for the exact scope boundary), so the corpus is finite and enumerable, not a sample of an open-ended space:
     - Every individual weekday name, fixed time, both AM and PM (7 phrases minimum: one per weekday).
     - `"every day"` and `"every weekday"`, each with a fixed time.
     - A 2-item weekday list (`"and"`-joined, no comma) and a 3+-item weekday list (comma + `"and"`-joined) — both at a fixed time.
@@ -38,7 +38,7 @@ so that FR21 is enforced by CI, not by good intentions.
     - Both minute-step and hour-step forms, including the `step == 1` special-case wording (`"every hour"`, not `"every 1 hours"`).
     - Midnight/noon boundaries (`12am` → hour 0, `12pm` → hour 12 — a classic off-by-12 bug class).
     - The `am`/`pm` marker variants: with and without a leading space, and the dotted `a.m.`/`p.m.` forms — all four are accepted by `parse_ampm` and must each appear at least once.
-  - [ ] **Illustrative starter set (31 phrases — adjust freely, but do not drop below 30 or skip a bullet above).** Verify each by hand-tracing `crates/umbra-core/src/cron.rs`'s actual parsing/describing functions before trusting it, the same way Story 3.1/3.2's own illustrative snippets required verification — this list was traced against the code as of this story's creation but is not a substitute for running `cargo test` yourself:
+  - [x] **Illustrative starter set (31 phrases — adjust freely, but do not drop below 30 or skip a bullet above).** Verify each by hand-tracing `crates/umbra-core/src/cron.rs`'s actual parsing/describing functions before trusting it, the same way Story 3.1/3.2's own illustrative snippets required verification — this list was traced against the code as of this story's creation but is not a substitute for running `cargo test` yourself:
 
     | Phrase | Expected expression | Expected description |
     | --- | --- | --- |
@@ -74,12 +74,12 @@ so that FR21 is enforced by CI, not by good intentions.
     | `"every Monday at 6 a.m."` (dotted marker) | `0 6 * * 1` | `Every Monday, at 6:00 AM` |
     | `"every Tuesday at 9 p.m."` (dotted marker) | `0 21 * * 2` | `Every Tuesday, at 9:00 PM` |
 
-  - [ ] For each row, the test must assert **both** the exact `expression` and the exact `description` returned by `parse_schedule(phrase)` — not just that the call succeeded. A wrong-but-plausible cron expression with a correct-looking description (or vice versa) is exactly the failure mode AD-9 exists to catch; asserting only one field would let the other silently drift.
+  - [x] For each row, the test must assert **both** the exact `expression` and the exact `description` returned by `parse_schedule(phrase)` — not just that the call succeeded. A wrong-but-plausible cron expression with a correct-looking description (or vice versa) is exactly the failure mode AD-9 exists to catch; asserting only one field would let the other silently drift.
 
-- [ ] **Task 3: The must-honestly-fail corpus (AC: 2) — ≥10 phrases, each with its expected `ToolError.code`**
-  - [ ] Add a second data table, same location, of `(phrase, expected_code)` pairs (or `(phrase, expected_code, must_not_contain)` if you want a per-row custom leak-check string — a shared default like `"* *"` is enough for most rows).
-  - [ ] **Every phrase must be genuinely inexpressible or ambiguous under the grammar** — not just something the current parser happens not to handle. Story 3.2's Task 3 explicitly scoped these vocabulary categories **out of the grammar** (re-read that story's Dev Notes if you need the full reasoning): business-hours compounds (minute-step + hour-range, e.g. "every 5 minutes from 9 to 5" — `describe()` can render this shape from a raw cron string, but Story 3.2 deliberately built no NL parsing for it), day-of-month/month phrases ("on the 1st", "on January 1st"), and any `L`/`W`/`#`-equivalent English ("last Friday of the month", "the 3rd Tuesday"). Phrases from these categories are the corpus's core content, not edge cases.
-  - [ ] **Illustrative starter set (13 phrases — includes both examples epics.md names explicitly, which must appear verbatim):**
+- [x] **Task 3: The must-honestly-fail corpus (AC: 2) — ≥10 phrases, each with its expected `ToolError.code`**
+  - [x] Add a second data table, same location, of `(phrase, expected_code)` pairs (or `(phrase, expected_code, must_not_contain)` if you want a per-row custom leak-check string — a shared default like `"* *"` is enough for most rows).
+  - [x] **Every phrase must be genuinely inexpressible or ambiguous under the grammar** — not just something the current parser happens not to handle. Story 3.2's Task 3 explicitly scoped these vocabulary categories **out of the grammar** (re-read that story's Dev Notes if you need the full reasoning): business-hours compounds (minute-step + hour-range, e.g. "every 5 minutes from 9 to 5" — `describe()` can render this shape from a raw cron string, but Story 3.2 deliberately built no NL parsing for it), day-of-month/month phrases ("on the 1st", "on January 1st"), and any `L`/`W`/`#`-equivalent English ("last Friday of the month", "the 3rd Tuesday"). Phrases from these categories are the corpus's core content, not edge cases.
+  - [x] **Illustrative starter set (13 phrases — includes both examples epics.md names explicitly, which must appear verbatim):**
 
     | Phrase | Expected `ToolError.code` |
     | --- | --- |
@@ -97,27 +97,27 @@ so that FR21 is enforced by CI, not by good intentions.
     | `"every weekday"` (day clause with no time) | `cron-nl-unrecognized` |
     | `"asdfasdf"` (garbage) | `cron-nl-unrecognized` |
 
-  - [ ] For each row, assert the exact `code`, that `message` is non-empty, and — reusing the existing convention already established in Story 3.2's tests (e.g. `parse_schedule_non_english_input_returns_cron_nl_unrecognized`) — that neither `message` nor `context` contains a literal cron-looking string (`"* *"` is the existing project convention for this check). This is the concrete test for AC2's "silent approximations... explicitly fail the test" — a `cron-nl-unrecognized`/`cron-nl-ambiguous-time` result structurally carries no `expression` field at all (`ScheduleParseResult` is never constructed on the `Err` path), so the real risk this guards against is a leaked partial expression inside the *message text* of an otherwise-honest failure, not a returned `Ok` with a wrong value.
+  - [x] For each row, assert the exact `code`, that `message` is non-empty, and — reusing the existing convention already established in Story 3.2's tests (e.g. `parse_schedule_non_english_input_returns_cron_nl_unrecognized`) — that neither `message` nor `context` contains a literal cron-looking string (`"* *"` is the existing project convention for this check). This is the concrete test for AC2's "silent approximations... explicitly fail the test" — a `cron-nl-unrecognized`/`cron-nl-ambiguous-time` result structurally carries no `expression` field at all (`ScheduleParseResult` is never constructed on the `Err` path), so the real risk this guards against is a leaked partial expression inside the *message text* of an otherwise-honest failure, not a returned `Ok` with a wrong value.
 
-- [ ] **Task 4: The round-trip test (AC: 3)**
-  - [ ] Generalize Story 3.2's existing single-phrase test (`parse_schedule_result_expression_re_describes_to_the_same_description`, currently only covering `"every weekday at 8:30am"`) into a loop over Task 2's full must-convert corpus: for every `(phrase, expected_expression, expected_description)` row, assert `describe(&expected_expression) == expected_description` (or equivalently, re-derive it from the `parse_schedule(phrase)` result already computed in Task 2's test — do not call `parse_schedule` twice per row if Task 2 and Task 4 can share one loop/test function). This is the test that actually catches a future regression where the NL parser and `describe()` drift apart — Task 2's per-row `description` assertion alone would not catch a bug where both sides drifted identically.
-  - [ ] You may keep Story 3.2's original single-phrase test as-is (redundant but harmless) or fold it into the corpus loop — either is fine, but don't delete test coverage without replacing it.
+- [x] **Task 4: The round-trip test (AC: 3)**
+  - [x] Generalize Story 3.2's existing single-phrase test (`parse_schedule_result_expression_re_describes_to_the_same_description`, currently only covering `"every weekday at 8:30am"`) into a loop over Task 2's full must-convert corpus: for every `(phrase, expected_expression, expected_description)` row, assert `describe(&expected_expression) == expected_description` (or equivalently, re-derive it from the `parse_schedule(phrase)` result already computed in Task 2's test — do not call `parse_schedule` twice per row if Task 2 and Task 4 can share one loop/test function). This is the test that actually catches a future regression where the NL parser and `describe()` drift apart — Task 2's per-row `description` assertion alone would not catch a bug where both sides drifted identically.
+  - [x] You may keep Story 3.2's original single-phrase test as-is (redundant but harmless) or fold it into the corpus loop — either is fine, but don't delete test coverage without replacing it.
 
-- [ ] **Task 5: Document the corpus-growth maintenance rule (AC: 4)**
-  - [ ] Add a doc comment directly above the corpus data (not buried in a test function body, since this is a standing process rule future contributors need to see when they open the file) stating: this corpus is the acceptance basis for FR21/AD-9; when a user-reported phrase converts incorrectly or fails to convert when it should, add it to the appropriate table here as a new red test *before* fixing the parser — the corpus is the executable definition of "correct," not a snapshot to update after the fact.
-  - [ ] No new CI file/step needed (Task 1) — this AC's "the build fails" clause is satisfied automatically by the corpus living in `#[cfg(test)]`, already covered by AD-11's existing `cargo test --workspace` required check.
+- [x] **Task 5: Document the corpus-growth maintenance rule (AC: 4)**
+  - [x] Add a doc comment directly above the corpus data (not buried in a test function body, since this is a standing process rule future contributors need to see when they open the file) stating: this corpus is the acceptance basis for FR21/AD-9; when a user-reported phrase converts incorrectly or fails to convert when it should, add it to the appropriate table here as a new red test *before* fixing the parser — the corpus is the executable definition of "correct," not a snapshot to update after the fact.
+  - [x] No new CI file/step needed (Task 1) — this AC's "the build fails" clause is satisfied automatically by the corpus living in `#[cfg(test)]`, already covered by AD-11's existing `cargo test --workspace` required check.
 
-- [ ] **Task 6: Full verification pass**
-  - [ ] `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` — confirm the new corpus tests appear in the output and pass, and confirm the total passed-test count increased by roughly the number of new `#[test]` functions/assertions added (sanity check that the loop-based tests aren't silently no-ops over an empty array).
-  - [ ] No frontend changes in this story — `pnpm lint`/`pnpm test`/`pnpm build`/`vue-tsc --noEmit` are not expected to show any diff-related output, but running them costs nothing and confirms nothing else regressed.
+- [x] **Task 6: Full verification pass**
+  - [x] `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` — confirm the new corpus tests appear in the output and pass, and confirm the total passed-test count increased by roughly the number of new `#[test]` functions/assertions added (sanity check that the loop-based tests aren't silently no-ops over an empty array).
+  - [x] No frontend changes in this story — `pnpm lint`/`pnpm test`/`pnpm build`/`vue-tsc --noEmit` are not expected to show any diff-related output, but running them costs nothing and confirms nothing else regressed.
 
-- [ ] **Task 7: No manual `pnpm tauri dev` verification needed for this story**
-  - [ ] Deliberate scope note, deviating from the "manual verification" task present in every prior story since 1.7: this story adds zero user-facing surface (no new command, no UI change, no new error path a user could trigger that isn't already covered by Story 3.2's own manual verification). The corpus is proven entirely by `cargo test`. Do not add a Task 9-style manual-check placeholder that has nothing concrete for the user to click through — if you find yourself writing one, that's a signal this story's scope crept into something with an actual UI/command surface, which it should not.
+- [x] **Task 7: No manual `pnpm tauri dev` verification needed for this story**
+  - [x] Deliberate scope note, deviating from the "manual verification" task present in every prior story since 1.7: this story adds zero user-facing surface (no new command, no UI change, no new error path a user could trigger that isn't already covered by Story 3.2's own manual verification). The corpus is proven entirely by `cargo test`. Do not add a Task 9-style manual-check placeholder that has nothing concrete for the user to click through — if you find yourself writing one, that's a signal this story's scope crept into something with an actual UI/command surface, which it should not.
 
-- [ ] **Task 8: Commit and open a PR**
-  - [ ] Branch: `feat/story-3-3-the-phrase-corpus-as-an-automated-acceptance-gate`, created from this story's `baseline_commit` (`f8c2577`). Unlike Story 3.2 (which had to stack on an unmerged Story 3.1 branch), PRs #32 and #33 (Stories 3.1 and 3.2) are both merged to `main` as of this story's creation — `main`'s tip **is** `f8c2577`, no stacking needed. The branch and this story's first commit (`docs(story-3.3): create story context for the phrase corpus acceptance gate`) already exist as of this story's creation.
-  - [ ] Conventional Commit(s), `test` type scoped to `cron` (this story adds no new production code path, only tests — `test(cron): ...` is more accurate than `feat(cron): ...`).
-  - [ ] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
+- [x] **Task 8: Commit and open a PR**
+  - [x] Branch: `feat/story-3-3-the-phrase-corpus-as-an-automated-acceptance-gate`, created from this story's `baseline_commit` (`f8c2577`). Unlike Story 3.2 (which had to stack on an unmerged Story 3.1 branch), PRs #32 and #33 (Stories 3.1 and 3.2) are both merged to `main` as of this story's creation — `main`'s tip **is** `f8c2577`, no stacking needed. The branch and this story's first commit (`docs(story-3.3): create story context for the phrase corpus acceptance gate`) already exist as of this story's creation.
+  - [x] Conventional Commit(s), `test` type scoped to `cron` (this story adds no new production code path, only tests — `test(cron): ...` is more accurate than `feat(cron): ...`).
+  - [x] Push via a PR against `main` (branch protection + required CI checks enforced since Story 1.4).
 
 ## Dev Notes
 
@@ -166,13 +166,26 @@ so that FR21 is enforced by CI, not by good intentions.
 ## Change Log
 
 - 2026-08-04: Story drafted via `bmad-create-story`, auto-discovered from `sprint-status.yaml`'s backlog as the first `backlog`-status story in file order (Epic 3 already `in-progress` since Story 3.1, no epic-status transition needed). Read Story 3.2 in full for its exact grammar scope, existing provisional test coverage, and its explicit hand-off note that Story 3.3 owns building the real corpus. Re-confirmed (rather than re-searched) that the addendum.md source cited by epics.md/FR21 does not exist in this repository, per Story 3.2's own prior search. Read the current `crates/umbra-core/src/cron.rs` directly and hand-traced ~44 candidate phrases against its actual parsing/describing logic to produce a pre-verified illustrative corpus (31 must-convert, 13 must-honestly-fail) covering every grammar branch, rather than leaving corpus construction entirely to the dev agent. Confirmed AD-11's existing CI wiring (`cargo test --workspace` on all 3 OS runners) already gates this story's test suite with zero CI changes needed, keeping this story's scope to a single file. An independent fresh-context validation pass (per `checklist.md`) re-traced every table row against the real code and caught one error in the initial draft — `"every Monday, every 2 hours"` (comma before "every") does not actually parse, because a comma directly after a *single* weekday name requires another weekday name (or "and" + weekday) to follow, unlike the `"weekday"`/`"day"` keyword forms; fixed to the no-comma phrasing (`"every Monday every 2 hours"`, same expected expression/description) and documented the underlying grammar gotcha in Previous Story Intelligence so a dev agent adding further corpus phrases doesn't hit the same trap. All other rows and technical claims (CI wiring, baseline_commit, branch state) were confirmed correct by that pass.
+- 2026-08-04: Implemented. Re-read `crates/umbra-core/src/cron.rs` in full and independently hand-traced all 31 must-convert and 13 must-honestly-fail rows in the story's illustrative tables against the actual parsing/describing code (`parse_day_clause`, `parse_weekday_list`, `parse_time_fixed`, `parse_time_step`, `build_result`, `describe`, `time_clause`, `day_clause`) before writing any test code — all 44 rows traced correctly on the first pass, confirming the story's own prior validation pass. Added `MUST_CONVERT` and `MUST_HONESTLY_FAIL` corpus tables plus 3 new loop-based `#[test]` functions to `crates/umbra-core/src/cron.rs`'s existing `mod tests` block: one asserting expression+description per must-convert row (AC1), one asserting `describe(expected_expression) == expected_description` per must-convert row without re-invoking `parse_schedule` (AC3), and one asserting `code`/non-empty `message`/no leaked `"* *"` in `message` or `context` per must-honestly-fail row (AC2). Added the corpus-growth maintenance-rule doc comment directly above the corpus data (AC4). No CI changes made — confirmed `.github/workflows/ci.yml:51`'s `cargo test --workspace` already gates the new tests. `cargo test --workspace` passed-test count rose from 109 (Story 3.2 baseline) to 112, exactly matching the 3 new test functions added — confirms the loop-based tests genuinely execute over non-empty corpora rather than being silent no-ops. `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` both clean; `pnpm test` (172 tests) and `pnpm build`/`vue-tsc --noEmit` all pass with zero diff-related output, confirming no frontend regression. (`pnpm lint` reports 75 pre-existing errors in an untracked `.claude/workflows/scan-of-the-end-of-the-second-epic.js` file unrelated to this story's diff — present before this story started, out of scope, not touched.) No manual `pnpm tauri dev` check needed per Task 7 — this story adds zero user-facing surface.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+None — no failing test/lint/build iterations were needed; all 3 new test functions passed on first run, and `cargo fmt`/`cargo clippy --workspace --all-targets -- -D warnings` were clean after one `cargo fmt` auto-format pass for the new corpus tables' line-wrapping.
 
 ### Completion Notes List
 
+- All 44 corpus rows (31 must-convert, 13 must-honestly-fail) from the story's illustrative tables were used verbatim after independent hand-tracing against `crates/umbra-core/src/cron.rs` confirmed every row correct — no row needed correction in this session (the one error the story's own validation pass had already caught and fixed pre-session, the Monday/comma gotcha, was re-verified as correctly fixed).
+- Added exactly 3 new `#[test]` functions (not one per phrase) per Dev Notes' "roughly 2-4 new `#[test]` functions" guidance: `parse_schedule_corpus_must_convert_asserts_expression_and_description`, `parse_schedule_corpus_must_convert_round_trips_through_describe`, `parse_schedule_corpus_must_honestly_fail_asserts_code_and_no_leaked_expression`.
+- `cargo test --workspace`: 109 → 112 passed (+3, matching the 3 new test functions — sanity-checks that the loop bodies actually execute over the corpora rather than iterating an empty array).
+- No production code, `Cargo.toml`, Tauri command, or `CronView.vue` touched — scope stayed exactly to `crates/umbra-core/src/cron.rs`'s test module, as Task 1 required.
+- No CI workflow file changed — `.github/workflows/ci.yml`'s existing `cargo test --workspace` required check (all 3 OS runners) already gates the new tests.
+
 ### File List
+
+- `crates/umbra-core/src/cron.rs` (modified — added `MUST_CONVERT`/`MUST_HONESTLY_FAIL` corpus tables and 3 new `#[test]` functions to the existing `mod tests` block)
