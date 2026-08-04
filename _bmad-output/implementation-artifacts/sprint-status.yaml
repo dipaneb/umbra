@@ -42,6 +42,7 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-04
+# note: story 3.3 moved to done 2026-08-04 (code review complete: 0 decision-needed, 5 patches applied — minute-step step==1 corpus coverage, comma-gotcha regression pin, corpus min-size structural asserts, workspace-test-count wording fix, range-boundary rows — 1 item deferred to deferred-work.md; no manual pnpm tauri dev check needed, test-only story)
 # note: story 3.3 moved to review 2026-08-04 (implementation complete; no manual pnpm tauri dev check needed — test-only story, zero user-facing surface)
 # note: story 3.3 moved to in-progress 2026-08-04
 # note: story 3.3 created 2026-08-04 (addendum/phrase-corpus source file cited by FR21/epics.md confirmed absent again, per Story 3.2's prior search; corpus originated from Story 3.2's actual implemented grammar instead. Independent validation pass caught and fixed one bad illustrative example — see story's Change Log)
@@ -128,7 +129,7 @@ development_status:
   epic-3: in-progress
   3-1-read-a-cron-expression-in-plain-english: done
   3-2-type-a-schedule-get-a-cron-expression: done
-  3-3-the-phrase-corpus-as-an-automated-acceptance-gate: review
+  3-3-the-phrase-corpus-as-an-automated-acceptance-gate: done
   epic-3-retrospective: optional
 
   epic-4: backlog

@@ -1294,6 +1294,7 @@ mod tests {
             "Every day, every 30 minutes",
         ),
         ("every 1 hour", "0 */1 * * *", "Every day, every hour"),
+        ("every 1 minute", "*/1 * * * *", "Every day, every minute"),
         (
             "every 59 minutes",
             "*/59 * * * *",
@@ -1348,12 +1349,25 @@ mod tests {
         ("on January 1st", "cron-nl-unrecognized"),
         ("every 90 minutes", "cron-nl-unrecognized"),
         ("every 30 hours", "cron-nl-unrecognized"),
+        ("every 60 minutes", "cron-nl-unrecognized"),
+        ("every 24 hours", "cron-nl-unrecognized"),
         ("every weekday", "cron-nl-unrecognized"),
         ("asdfasdf", "cron-nl-unrecognized"),
+        // Comma directly after a *single* weekday name only continues parsing
+        // if a weekday name follows — this otherwise-equivalent no-comma
+        // phrase succeeds (see the corpus's "every Monday every 2 hours" row
+        // above). A real, narrow grammar boundary; pinned here so a future
+        // accidental fix or regression in either direction fails CI.
+        ("every Monday, every 2 hours", "cron-nl-unrecognized"),
     ];
 
     #[test]
     fn parse_schedule_corpus_must_convert_asserts_expression_and_description() {
+        assert!(
+            MUST_CONVERT.len() >= 30,
+            "MUST_CONVERT must retain at least 30 phrases per AC1 (has {})",
+            MUST_CONVERT.len()
+        );
         for &(phrase, expected_expression, expected_description) in MUST_CONVERT {
             let result = parse_schedule(phrase).unwrap_or_else(|err| {
                 panic!("phrase {phrase:?} should convert, got error: {err:?}")
@@ -1385,6 +1399,11 @@ mod tests {
 
     #[test]
     fn parse_schedule_corpus_must_honestly_fail_asserts_code_and_no_leaked_expression() {
+        assert!(
+            MUST_HONESTLY_FAIL.len() >= 10,
+            "MUST_HONESTLY_FAIL must retain at least 10 phrases per AC2 (has {})",
+            MUST_HONESTLY_FAIL.len()
+        );
         for &(phrase, expected_code) in MUST_HONESTLY_FAIL {
             let err = parse_schedule(phrase).expect_err(&format!(
                 "phrase {phrase:?} should be an honest failure, but it converted"
