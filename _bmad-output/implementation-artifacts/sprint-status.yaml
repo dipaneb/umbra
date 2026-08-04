@@ -42,6 +42,8 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-04
+# note: epic-3 retrospective completed 2026-08-04 (action item #1 from epic-2 closed by re-raising as
+# Epic 4 critical-path prep, owner Winston; one new low-priority doc-hygiene action item added, owner John)
 # note: story 3.3 moved to done 2026-08-04 (code review complete: 0 decision-needed, 5 patches applied — minute-step step==1 corpus coverage, comma-gotcha regression pin, corpus min-size structural asserts, workspace-test-count wording fix, range-boundary rows — 1 item deferred to deferred-work.md; no manual pnpm tauri dev check needed, test-only story)
 # note: story 3.3 moved to review 2026-08-04 (implementation complete; no manual pnpm tauri dev check needed — test-only story, zero user-facing surface)
 # note: story 3.3 moved to in-progress 2026-08-04
@@ -130,7 +132,7 @@ development_status:
   3-1-read-a-cron-expression-in-plain-english: done
   3-2-type-a-schedule-get-a-cron-expression: done
   3-3-the-phrase-corpus-as-an-automated-acceptance-gate: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   epic-4: backlog
   4-1-drag-an-image-in-get-its-text: backlog
@@ -198,4 +200,16 @@ action_items:
   - epic: 2
     action: "Document registry.getLatestWinsRunner(toolId) as the required pattern (not a local createLatestWinsRunner()) for any tool with more than one write-trigger to the same state, in ARCHITECTURE-SPINE.md's AD-16 section"
     owner: "Charlie"
+    status: done
+    # resolved 2026-08-04: added as an AD-16 amendment in ARCHITECTURE-SPINE.md, dated and citing the
+    # epic-3 retrospective. Verified against the actual code (registry.ts, invoke.ts, CronView.vue)
+    # rather than restating the retro's prose: the rule is "one runner per independent state", not
+    # "one runner per tool" or "one per action" - registry.getLatestWinsRunner(toolId) fits a tool with
+    # a single write-surface reachable from outside its view (Hash today; Bucket, Epic 4, next), while
+    # a tool with multiple independent state-groups in one view (Cron) should scope local runners per
+    # group instead. Also surfaced and logged (not fixed) a real instance of the exact race this rule
+    # targets, still open within CronView.vue's own groups - see deferred-work.md.
+  - epic: 3
+    action: "Update epics.md and the PRD's four 'addendum phrase corpus' references to point at the real corpus in crates/umbra-core/src/cron.rs (Story 3.3) instead of the non-existent addendum.md"
+    owner: "John"
     status: open
