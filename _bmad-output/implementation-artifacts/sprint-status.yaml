@@ -42,6 +42,7 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-04
+# note: story 3.3 created 2026-08-04 (addendum/phrase-corpus source file cited by FR21/epics.md confirmed absent again, per Story 3.2's prior search; corpus originated from Story 3.2's actual implemented grammar instead. Independent validation pass caught and fixed one bad illustrative example — see story's Change Log)
 # note: story 3.2 moved to done 2026-08-04 (code review complete: 1 decision-needed resolved, 5 patches applied, 2 items deferred to deferred-work.md; manual pnpm tauri dev check still outstanding, deferred to user)
 # note: story 3.2 moved to review 2026-08-04 (implementation complete; manual pnpm tauri dev check outstanding, deferred to user)
 # note: story 3.2 moved to in-progress 2026-08-03
@@ -125,7 +126,7 @@ development_status:
   epic-3: in-progress
   3-1-read-a-cron-expression-in-plain-english: done
   3-2-type-a-schedule-get-a-cron-expression: done
-  3-3-the-phrase-corpus-as-an-automated-acceptance-gate: backlog
+  3-3-the-phrase-corpus-as-an-automated-acceptance-gate: ready-for-dev
   epic-3-retrospective: optional
 
   epic-4: backlog
