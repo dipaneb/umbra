@@ -1187,4 +1187,246 @@ mod tests {
         assert_eq!(result.expression, "0 9 * * 1");
         assert_eq!(result.description, "Every Monday, at 9:00 AM");
     }
+
+    // --- Story 3.3: the phrase corpus (FR21/AD-9's acceptance gate) ------
+    //
+    // This corpus is the acceptance basis for FR21/AD-9: it is not a
+    // snapshot of what the parser happens to do today, but the executable
+    // definition of "correct." When a user-reported phrase converts
+    // incorrectly, or fails to convert when it should (or vice versa), add
+    // it to the appropriate table below as a new red test *before* touching
+    // the parser — the corpus grows with every phrasing bug report,
+    // permanently.
+
+    const MUST_CONVERT: &[(&str, &str, &str)] = &[
+        (
+            "every Monday at 9am",
+            "0 9 * * 1",
+            "Every Monday, at 9:00 AM",
+        ),
+        (
+            "every Tuesday at 10am",
+            "0 10 * * 2",
+            "Every Tuesday, at 10:00 AM",
+        ),
+        (
+            "every Wednesday at 2pm",
+            "0 14 * * 3",
+            "Every Wednesday, at 2:00 PM",
+        ),
+        (
+            "every Thursday at 11:30am",
+            "30 11 * * 4",
+            "Every Thursday, at 11:30 AM",
+        ),
+        (
+            "every Friday at 5pm",
+            "0 17 * * 5",
+            "Every Friday, at 5:00 PM",
+        ),
+        (
+            "every Saturday at 8am",
+            "0 8 * * 6",
+            "Every Saturday, at 8:00 AM",
+        ),
+        (
+            "every Sunday at 7pm",
+            "0 19 * * 0",
+            "Every Sunday, at 7:00 PM",
+        ),
+        ("every day at 9pm", "0 21 * * *", "Every day, at 9:00 PM"),
+        ("every day at 12am", "0 0 * * *", "Every day, at 12:00 AM"),
+        ("every day at 12pm", "0 12 * * *", "Every day, at 12:00 PM"),
+        (
+            "every weekday at 8:30am",
+            "30 8 * * 1-5",
+            "Every weekday, at 8:30 AM",
+        ),
+        (
+            "every weekday at 6:15pm",
+            "15 18 * * 1-5",
+            "Every weekday, at 6:15 PM",
+        ),
+        (
+            "every weekday at 12am",
+            "0 0 * * 1-5",
+            "Every weekday, at 12:00 AM",
+        ),
+        (
+            "every weekday at 12pm",
+            "0 12 * * 1-5",
+            "Every weekday, at 12:00 PM",
+        ),
+        (
+            "every Monday, Wednesday, and Friday at 6am",
+            "0 6 * * 1,3,5",
+            "Every Monday, Wednesday, and Friday, at 6:00 AM",
+        ),
+        (
+            "every Tuesday and Thursday at 7:45am",
+            "45 7 * * 2,4",
+            "Every Tuesday and Thursday, at 7:45 AM",
+        ),
+        (
+            "every Saturday and Sunday at 10am",
+            "0 10 * * 6,0",
+            "Every Saturday and Sunday, at 10:00 AM",
+        ),
+        (
+            "every Monday, Tuesday, Wednesday, and Thursday at 9am",
+            "0 9 * * 1,2,3,4",
+            "Every Monday, Tuesday, Wednesday, and Thursday, at 9:00 AM",
+        ),
+        (
+            "every 15 minutes",
+            "*/15 * * * *",
+            "Every day, every 15 minutes",
+        ),
+        ("every 2 hours", "0 */2 * * *", "Every day, every 2 hours"),
+        (
+            "every 5 minutes",
+            "*/5 * * * *",
+            "Every day, every 5 minutes",
+        ),
+        (
+            "every 30 minutes",
+            "*/30 * * * *",
+            "Every day, every 30 minutes",
+        ),
+        ("every 1 hour", "0 */1 * * *", "Every day, every hour"),
+        ("every 1 minute", "*/1 * * * *", "Every day, every minute"),
+        (
+            "every 59 minutes",
+            "*/59 * * * *",
+            "Every day, every 59 minutes",
+        ),
+        (
+            "every weekday, every 15 minutes",
+            "*/15 * * * 1-5",
+            "Every weekday, every 15 minutes",
+        ),
+        (
+            "every weekday every 10 minutes",
+            "*/10 * * * 1-5",
+            "Every weekday, every 10 minutes",
+        ),
+        (
+            "every day, every 30 minutes",
+            "*/30 * * * *",
+            "Every day, every 30 minutes",
+        ),
+        (
+            "every Monday every 2 hours",
+            "0 */2 * * 1",
+            "Every Monday, every 2 hours",
+        ),
+        (
+            "every Sunday at 3 pm",
+            "0 15 * * 0",
+            "Every Sunday, at 3:00 PM",
+        ),
+        (
+            "every Monday at 6 a.m.",
+            "0 6 * * 1",
+            "Every Monday, at 6:00 AM",
+        ),
+        (
+            "every Tuesday at 9 p.m.",
+            "0 21 * * 2",
+            "Every Tuesday, at 9:00 PM",
+        ),
+    ];
+
+    const MUST_HONESTLY_FAIL: &[(&str, &str)] = &[
+        ("", "cron-nl-empty-phrase"),
+        ("at 9", "cron-nl-ambiguous-time"),
+        ("every weekday at 8:30", "cron-nl-ambiguous-time"),
+        ("tous les lundis à 9h", "cron-nl-unrecognized"),
+        ("every third Friday of the month", "cron-nl-unrecognized"),
+        ("every 90 seconds", "cron-nl-unrecognized"),
+        ("every 5 minutes from 9 to 5", "cron-nl-unrecognized"),
+        ("on the 1st", "cron-nl-unrecognized"),
+        ("on January 1st", "cron-nl-unrecognized"),
+        ("every 90 minutes", "cron-nl-unrecognized"),
+        ("every 30 hours", "cron-nl-unrecognized"),
+        ("every 60 minutes", "cron-nl-unrecognized"),
+        ("every 24 hours", "cron-nl-unrecognized"),
+        ("every weekday", "cron-nl-unrecognized"),
+        ("asdfasdf", "cron-nl-unrecognized"),
+        // Comma directly after a *single* weekday name only continues parsing
+        // if a weekday name follows — this otherwise-equivalent no-comma
+        // phrase succeeds (see the corpus's "every Monday every 2 hours" row
+        // above). A real, narrow grammar boundary; pinned here so a future
+        // accidental fix or regression in either direction fails CI.
+        ("every Monday, every 2 hours", "cron-nl-unrecognized"),
+    ];
+
+    #[test]
+    fn parse_schedule_corpus_must_convert_asserts_expression_and_description() {
+        assert!(
+            MUST_CONVERT.len() >= 30,
+            "MUST_CONVERT must retain at least 30 phrases per AC1 (has {})",
+            MUST_CONVERT.len()
+        );
+        for &(phrase, expected_expression, expected_description) in MUST_CONVERT {
+            let result = parse_schedule(phrase).unwrap_or_else(|err| {
+                panic!("phrase {phrase:?} should convert, got error: {err:?}")
+            });
+            assert_eq!(
+                result.expression, expected_expression,
+                "expression mismatch for phrase {phrase:?}"
+            );
+            assert_eq!(
+                result.description, expected_description,
+                "description mismatch for phrase {phrase:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_schedule_corpus_must_convert_round_trips_through_describe() {
+        // Catches a future regression where the NL parser and `describe()`
+        // drift apart while still agreeing with each other — the risk the
+        // per-row description assertion above alone would not catch.
+        for &(phrase, expected_expression, expected_description) in MUST_CONVERT {
+            assert_eq!(
+                describe(expected_expression),
+                expected_description,
+                "describe(...) round-trip mismatch for phrase {phrase:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_schedule_corpus_must_honestly_fail_asserts_code_and_no_leaked_expression() {
+        assert!(
+            MUST_HONESTLY_FAIL.len() >= 10,
+            "MUST_HONESTLY_FAIL must retain at least 10 phrases per AC2 (has {})",
+            MUST_HONESTLY_FAIL.len()
+        );
+        for &(phrase, expected_code) in MUST_HONESTLY_FAIL {
+            let err = parse_schedule(phrase).expect_err(&format!(
+                "phrase {phrase:?} should be an honest failure, but it converted"
+            ));
+            assert_eq!(
+                err.code, expected_code,
+                "code mismatch for phrase {phrase:?}"
+            );
+            assert!(
+                !err.message.is_empty(),
+                "message should be non-empty for phrase {phrase:?}"
+            );
+            assert!(
+                !err.message.contains("* *"),
+                "message leaked a cron-looking string for phrase {phrase:?}: {}",
+                err.message
+            );
+            if let Some(context) = &err.context {
+                assert!(
+                    !context.contains("* *"),
+                    "context leaked a cron-looking string for phrase {phrase:?}: {context}"
+                );
+            }
+        }
+    }
 }
