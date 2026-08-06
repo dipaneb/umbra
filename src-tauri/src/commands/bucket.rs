@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use tauri::{Manager, Runtime, path::BaseDirectory};
+use tauri::Runtime;
+#[cfg(not(test))]
+use tauri::{Manager, path::BaseDirectory};
 use umbra_core::ToolError;
 use umbra_core::ocr::{MAX_INPUT_BYTES, OarOcrEngine, OcrEngine, OcrOutcome};
 
@@ -15,18 +17,38 @@ use umbra_core::ocr::{MAX_INPUT_BYTES, OarOcrEngine, OcrEngine, OcrOutcome};
 // equivalent.
 static OCR_ENGINE: OnceLock<Result<OarOcrEngine, ToolError>> = OnceLock::new();
 
+// Where the bundled OCR models live, split by build config rather than by a fifth
+// platform-conditional test hack (previously `ensure_bundled_models_are_discoverable`, which
+// hand-copied files into wherever `resource_dir()` resolved — and on Linux that resolves to
+// `/usr/lib/{app_name}`, unwritable outside a real install, which is what made every bucket
+// test fail there with `EACCES`; confirmed against `tauri-utils`'s own
+// `platform::resource_dir_from`). Production always resolves through Tauri's real bundle
+// resource lookup; tests always read straight from this crate's own `resources/models/`,
+// the exact directory `tauri.conf.json`'s `bundle.resources` ships and the same one
+// `umbra-core`'s own OCR tests already use directly — so both suites agree on where the
+// bundled models live, on every OS, with no per-platform special-casing.
+#[cfg(not(test))]
+fn models_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, ToolError> {
+    app.path()
+        .resolve("resources/models", BaseDirectory::Resource)
+        .map_err(|err| ToolError {
+            code: "bucket-engine-init-failed".to_string(),
+            message: format!("failed to resolve bundled models resource directory: {err}"),
+            position: None,
+            context: None,
+        })
+}
+
+#[cfg(test)]
+fn models_dir<R: Runtime>(_app: &tauri::AppHandle<R>) -> Result<PathBuf, ToolError> {
+    Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/models"))
+}
+
 fn resolve_model_path<R: Runtime>(
     app: &tauri::AppHandle<R>,
     file: &str,
 ) -> Result<PathBuf, ToolError> {
-    app.path()
-        .resolve(format!("resources/models/{file}"), BaseDirectory::Resource)
-        .map_err(|err| ToolError {
-            code: "bucket-engine-init-failed".to_string(),
-            message: format!("failed to resolve bundled model resource {file}: {err}"),
-            position: None,
-            context: None,
-        })
+    Ok(models_dir(app)?.join(file))
 }
 
 fn ocr_engine<R: Runtime>(app: &tauri::AppHandle<R>) -> &'static Result<OarOcrEngine, ToolError> {
@@ -99,7 +121,6 @@ fn map_join_error(err: tauri::Error) -> ToolError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tauri::Manager;
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     // This is the first command in the codebase needing a real `AppHandle`, so its tests are
@@ -123,47 +144,6 @@ mod tests {
             .clone()
     }
 
-    // `resource_dir()` resolves relative to the *running test binary's* own location, not
-    // `src-tauri/target/debug/umbra` (verified empirically: the dev-mode "cargo output
-    // directory" fast path in `tauri-utils`'s `platform::resource_dir` looks for a
-    // `.cargo-lock` file next to the executable, which exists at `target/debug/.cargo-lock`
-    // but not at `target/debug/deps/`, where test binaries actually run from — so on macOS it
-    // falls through to the non-dev branch, `exe_dir.join("../Resources").canonicalize()`,
-    // confirmed by reading `tauri-utils`'s own `platform::resource_dir_from` directly. That
-    // `canonicalize()` call errors if the directory doesn't exist yet — a chicken-and-egg
-    // resolved by pre-creating the same `../Resources` guess by hand before asking the real API
-    // to resolve it. Windows always returns `exe_dir` unconditionally (no existence check) and
-    // Linux's own fallback returns a plain path even when nothing exists there yet, so neither
-    // needs this pre-step — confirmed against the same source, not assumed.
-    fn ensure_bundled_models_are_discoverable(app: &tauri::AppHandle<tauri::test::MockRuntime>) {
-        #[cfg(target_os = "macos")]
-        {
-            let exe_dir = std::env::current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .to_path_buf();
-            std::fs::create_dir_all(exe_dir.join("../Resources")).unwrap();
-        }
-
-        let resource_dir = app
-            .path()
-            .resource_dir()
-            .expect("resource_dir should resolve");
-        let dest = resource_dir.join("resources/models");
-        std::fs::create_dir_all(&dest).unwrap();
-        let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/models");
-        for file in [
-            "text_detection.onnx",
-            "text_recognition.onnx",
-            "character_dict.txt",
-        ] {
-            if !dest.join(file).exists() {
-                std::fs::copy(src.join(file), dest.join(file)).unwrap();
-            }
-        }
-    }
-
     fn temp_file_path(name: &str) -> String {
         std::env::temp_dir()
             .join(format!("umbra-bucket-cmd-{}-{name}", std::process::id()))
@@ -175,7 +155,6 @@ mod tests {
     #[tokio::test]
     async fn bucket_extract_text_command_reads_a_real_fixture_image_end_to_end() {
         let app = mock_app_handle();
-        ensure_bundled_models_are_discoverable(&app);
 
         let path = temp_file_path("hello-umbra.png");
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -195,7 +174,6 @@ mod tests {
     #[tokio::test]
     async fn bucket_extract_text_command_rejects_a_file_over_the_size_limit_without_reading_it() {
         let app = mock_app_handle();
-        ensure_bundled_models_are_discoverable(&app);
 
         let path = temp_file_path("oversized.bin");
         let file = std::fs::File::create(&path).unwrap();
@@ -211,7 +189,6 @@ mod tests {
     #[tokio::test]
     async fn bucket_extract_text_command_rejects_a_non_image_file() {
         let app = mock_app_handle();
-        ensure_bundled_models_are_discoverable(&app);
 
         let path = temp_file_path("not-an-image.txt");
         std::fs::write(&path, "just some text, not an image").unwrap();
@@ -225,7 +202,6 @@ mod tests {
     #[tokio::test]
     async fn bucket_extract_text_command_returns_file_read_error_for_missing_path() {
         let app = mock_app_handle();
-        ensure_bundled_models_are_discoverable(&app);
 
         let err = bucket_extract_text("/nonexistent/path/umbra-test".to_string(), app)
             .await
