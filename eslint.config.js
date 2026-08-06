@@ -4,7 +4,7 @@ import ts from 'typescript-eslint'
 import globals from 'globals'
 
 export default ts.config(
-  { ignores: ['dist/**', '**/target/**', 'src-tauri/gen/**', 'node_modules/**'] },
+  { ignores: ['dist/**', '**/target/**', 'src-tauri/gen/**', 'node_modules/**', '.claude/**'] },
   js.configs.recommended,
   ...ts.configs.recommended,
   ...eslintPluginVue.configs['flat/recommended'],

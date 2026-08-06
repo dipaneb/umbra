@@ -18,6 +18,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # AD-11: `ort-sys` (pulled in by `oar-ocr`, Story 4.1) downloads its ONNX Runtime binary
+      # (~150MB) from pyke's own CDN at build time, into an OS-specific user cache directory
+      # (`~/Library/Caches/ort.pyke.io` on macOS, `~/.cache/ort.pyke.io` on Linux,
+      # `%LOCALAPPDATA%\ort.pyke.io` on Windows — confirmed by reading `ort-sys`'s own
+      # `src/internal/dirs.rs`) that `Swatinem/rust-cache` below does NOT cover (it only caches
+      # `~/.cargo` and `target/`). Pointing `ORT_CACHE_DIR` at a fixed, workspace-relative path
+      # sidesteps the three different OS-default locations and gives the cache step below one
+      # single, absolute path to key on across the whole matrix.
+      ORT_CACHE_DIR: ${{ github.workspace }}/.ort-cache
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -41,6 +51,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
+      - name: cache ort-sys ONNX Runtime binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.ORT_CACHE_DIR }}
+          key: ${{ runner.os }}-ort-cache-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-ort-cache-
+
       - name: cargo check
         run: cargo check --workspace
 
@@ -48,7 +65,11 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo test
-        run: cargo test --workspace
+        # --no-fail-fast: cargo stops at the first failing test *target* by default, and
+        # `umbra_lib` (src-tauri) always runs before `umbra_core`. Without this flag a failure
+        # in umbra_lib hides umbra_core's own test results entirely on that run — surfacing
+        # real failures one push at a time instead of all at once.
+        run: cargo test --workspace --no-fail-fast
 
       - if: runner.os == 'Linux'
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4

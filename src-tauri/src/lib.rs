@@ -2,6 +2,7 @@ mod commands;
 mod fs_helper;
 
 use commands::base64::{base64_decode, base64_decode_to_file, base64_encode, base64_encode_file};
+use commands::bucket::bucket_extract_text;
 use commands::cron::{cron_explain, cron_parse_schedule};
 use commands::hash::{hash_compute, hash_compute_file};
 use commands::json::{json_format, json_minify, json_parse};
@@ -33,6 +34,7 @@ pub fn run() {
             uuid_generate,
             hash_compute,
             hash_compute_file,
+            bucket_extract_text,
             jwt_decode,
             cron_explain,
             cron_parse_schedule

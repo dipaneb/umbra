@@ -42,6 +42,19 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-04
+# note: story 4.1 moved to review 2026-08-04 (implementation complete; manual pnpm tauri dev
+# check outstanding, deferred to user — same pattern as every prior story)
+# note: story 4.1 moved to in-progress 2026-08-04
+# note: story 4.1 created 2026-08-04 (first story of Epic 4, epic-4 moved backlog -> in-progress.
+# No same-epic previous story existed, so intelligence was drawn from the epic-3 retrospective's
+# "Epic 4 Preview" section instead. The AD-16 runner-scoping amendment it names as critical prep was
+# written on docs/epic-3-retrospective (tip e062ee6), which merged to main as 3ba7886 (#35, squash)
+# before this story was committed -- so the story's baseline_commit points at main's 3ba7886 directly,
+# no branch stacking needed. Re-verified oar-ocr's actual API/version per the spine's
+# own "pre-1.0, re-verify at Epic 4 start" warning: found the crate had moved 0.8.x -> 0.9.0 in the
+# 24 hours before this story was drafted, confirming the warning wasn't hypothetical. Chose PP-OCRv6
+# tiny det/rec ONNX models (Apache-2.0, Hugging Face) as the documented model choice pending Task 2's
+# final verification, closing the spine's "exact model files" deferred item conditionally.)
 # note: epic-3 retrospective completed 2026-08-04 (action item #1 from epic-2 closed by re-raising as
 # Epic 4 critical-path prep, owner Winston; one new low-priority doc-hygiene action item added, owner John)
 # note: story 3.3 moved to done 2026-08-04 (code review complete: 0 decision-needed, 5 patches applied — minute-step step==1 corpus coverage, comma-gotcha regression pin, corpus min-size structural asserts, workspace-test-count wording fix, range-boundary rows — 1 item deferred to deferred-work.md; no manual pnpm tauri dev check needed, test-only story)
@@ -134,8 +147,8 @@ development_status:
   3-3-the-phrase-corpus-as-an-automated-acceptance-gate: done
   epic-3-retrospective: done
 
-  epic-4: backlog
-  4-1-drag-an-image-in-get-its-text: backlog
+  epic-4: in-progress
+  4-1-drag-an-image-in-get-its-text: review
   4-2-paste-a-screenshot-copy-the-text: backlog
   4-3-the-bucket-never-bluffs: backlog
   epic-4-retrospective: optional
