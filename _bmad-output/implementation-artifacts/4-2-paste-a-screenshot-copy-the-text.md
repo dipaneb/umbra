@@ -81,7 +81,7 @@ so that the everyday "error dialog → search/share as text" flow is instant and
 
 - [x] **Task 8: Commit and open a PR**
   - [x] Conventional Commit, `feat` type scoped to `bucket`.
-  - [x] PR against `main`.
+  - [x] PR against `main`: https://github.com/dipaneb/umbra/pull/37 (commit `cc5efda`).
 
 ## Dev Notes
 
