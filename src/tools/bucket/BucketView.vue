@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { useRegistryStore } from "../../stores/registry";
-import type { ToolError } from "../../shell/toolError";
+import { writeClipboardText } from "../../shell/clipboard";
+import { toToolError, type ToolError } from "../../shell/toolError";
 import type { OcrOutcome } from "./ocrOutcome";
+
+type BucketResult = { toolId: string; value: unknown } | { toolId: string; error: ToolError };
 
 const outcome = ref<OcrOutcome | null>(null);
 const error = ref<ToolError | null>(null);
+// AC2: editable in place, re-seeded from each new `outcome.text` as it arrives; Copy always
+// copies this current edited value, not the original `outcome.text`.
+const editedText = ref("");
 
 const registry = useRegistryStore();
 
@@ -17,20 +23,47 @@ const registry = useRegistryStore();
 // (clipboard-paste) that must share this same tool-scoped runner, not a
 // separate one (ARCHITECTURE-SPINE.md's AD-16 amendment, `HashView.vue` is
 // the reference implementation for that shape).
+function applyBucketResult(result: BucketResult) {
+  if ("error" in result) {
+    outcome.value = null;
+    error.value = result.error;
+  } else {
+    error.value = null;
+    outcome.value = result.value as OcrOutcome;
+    editedText.value = outcome.value.text;
+  }
+}
+
 watch(
   () => registry.dropResult,
   (result) => {
     if (!result || result.toolId !== "bucket") return;
     registry.dropResult = null; // one-shot signal
-    if ("error" in result) {
-      outcome.value = null;
-      error.value = result.error;
-    } else {
-      error.value = null;
-      outcome.value = result.value as OcrOutcome;
-    }
+    applyBucketResult(result);
   },
 );
+
+// Story 4.2: paste dispatches through the same registry-declared handler shape as drop
+// (`getLatestWinsRunner("bucket")` shared by both, per AD-16's amendment), delivered via its own
+// `pasteResult` field rather than repurposing `dropResult` — five other tools depend on
+// `dropResult` meaning "a file-drop outcome" exactly.
+watch(
+  () => registry.pasteResult,
+  (result) => {
+    if (!result || result.toolId !== "bucket") return;
+    registry.pasteResult = null; // one-shot signal
+    applyBucketResult(result);
+  },
+);
+
+async function onCopy() {
+  error.value = null;
+  try {
+    await writeClipboardText(editedText.value);
+  } catch (err) {
+    error.value = toToolError(err);
+  }
+}
 </script>
 
 <template>
@@ -38,7 +71,7 @@ watch(
     <h1>Bucket</h1>
 
     <p class="drop-hint">
-      Drop a PNG, JPEG, or WebP image anywhere in the window to extract its text.
+      Drop a PNG, JPEG, or WebP image anywhere in the window, or paste (⌘V), to extract its text.
     </p>
 
     <p
@@ -48,10 +81,24 @@ watch(
       {{ error.message }}
     </p>
 
-    <pre
+    <div
       v-if="outcome"
-      class="result"
-    >{{ outcome.text }}</pre>
+      class="field"
+    >
+      <label for="bucket-result">Extracted text</label>
+      <textarea
+        id="bucket-result"
+        v-model="editedText"
+        class="result"
+        rows="10"
+      />
+      <button
+        type="button"
+        @click="onCopy"
+      >
+        Copy
+      </button>
+    </div>
   </section>
 </template>
 
@@ -67,6 +114,12 @@ watch(
 
 p[role="alert"] {
   color: #b00020;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
 }
 
 .result {
