@@ -64,6 +64,47 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # TEMPORARY (Story 4.1 CI fix, remove before merge): the Windows test binary is dying at
+      # process load with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) — "a DLL was found but a
+      # required export is missing", not "DLL missing" (that would be 0xc0000135) — before any
+      # test runs. Leading hypothesis, from reading ort-sys's own build script directly
+      # (ort-sys-2.0.0-rc.12/build/static_link/mod.rs): it unconditionally links DirectML.dll
+      # on Windows ("pyke libs always ship compiled with DirectML on Windows"), and the inbox
+      # System32\DirectML.dll on Windows Server runner images may be older than ONNX Runtime
+      # 1.24 needs. This step gathers hard evidence for that hypothesis instead of guessing at
+      # a fix: the binary's actual import table, which DirectML.dll resolves and its version,
+      # what ort's copy-dylibs step actually placed next to the test binaries, and a bisect of
+      # whether umbra-core alone (links ort, not Tauri/arboard/rfd) fails the same way.
+      - if: runner.os == 'Windows'
+        name: TEMP diagnose windows loader failure
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          cargo test --workspace --no-run
+
+          Write-Host "=== import table of the umbra_lib test binary ==="
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vsPath\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($dumpbin) {
+            Get-ChildItem target\debug\deps\umbra_lib-*.exe | ForEach-Object {
+              & $dumpbin.FullName /dependents $_.FullName
+            }
+          } else {
+            Write-Host "dumpbin.exe not found under $vsPath"
+          }
+
+          Write-Host "=== which DirectML.dll resolves, and its version ==="
+          where.exe DirectML.dll
+          Get-Item C:\Windows\System32\DirectML.dll -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty VersionInfo | Format-List
+
+          Write-Host "=== dlls ort's copy-dylibs step placed next to the test binaries ==="
+          Get-ChildItem target\debug\*.dll, target\debug\deps\*.dll -ErrorAction SilentlyContinue
+
+          Write-Host "=== bisect: does umbra-core alone (no Tauri) fail the same way? ==="
+          cargo test -p umbra-core --no-fail-fast
+
       - name: cargo test
         # --no-fail-fast: cargo stops at the first failing test *target* by default, and
         # `umbra_lib` (src-tauri) always runs before `umbra_core`. Without this flag a failure
