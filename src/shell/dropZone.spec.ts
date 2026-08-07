@@ -4,7 +4,7 @@ import { createPinia, type Pinia } from "pinia";
 import type { ToolRegistryEntry } from "../stores/registry";
 import { useRegistryStore } from "../stores/registry";
 import { createAppRouter } from "../router";
-import { resolveActiveTool, routeDrop } from "./dropZone";
+import { isEditableTarget, resolveActiveTool, routeDrop, routePaste } from "./dropZone";
 import DropZone from "./DropZone.vue";
 
 // NOTE: `DropZone.vue`'s component tests live in this same file, rather than
@@ -73,12 +73,76 @@ describe("routeDrop", () => {
   });
 });
 
+const bucketTool: ToolRegistryEntry = {
+  id: "bucket",
+  name: "Bucket",
+  aliases: ["bucket", "ocr"],
+  route: "/tools/bucket",
+  icon: "OCR",
+  component: () => import("../tools/bucket/BucketView.vue"),
+  drop: { acceptedMimeTypes: [], handler: "bucket_extract_text" },
+  paste: { handler: "bucket_extract_text_from_clipboard" },
+};
+
+describe("routePaste", () => {
+  it("accepts a paste for a tool that declares paste support", () => {
+    const result = routePaste(bucketTool);
+    expect(result).toEqual({
+      accepted: true,
+      toolId: "bucket",
+      handler: "bucket_extract_text_from_clipboard",
+    });
+  });
+
+  it("rejects a paste when the active tool has no paste support", () => {
+    expect(routePaste(base64Tool)).toEqual({ accepted: false });
+  });
+
+  it("rejects a paste when no tool matches the route", () => {
+    expect(routePaste(undefined)).toEqual({ accepted: false });
+  });
+});
+
+describe("isEditableTarget", () => {
+  it("treats an <input> as editable", () => {
+    expect(isEditableTarget(document.createElement("input"))).toBe(true);
+  });
+
+  it("treats a <textarea> as editable", () => {
+    expect(isEditableTarget(document.createElement("textarea"))).toBe(true);
+  });
+
+  it("treats a contenteditable element as editable", () => {
+    const div = document.createElement("div");
+    div.setAttribute("contenteditable", "true");
+    expect(isEditableTarget(div)).toBe(true);
+  });
+
+  it("treats an element that only inherits contenteditable from an ancestor as editable", () => {
+    const div = document.createElement("div");
+    div.setAttribute("contenteditable", "true");
+    const span = document.createElement("span");
+    div.appendChild(span);
+    expect(isEditableTarget(span)).toBe(true);
+  });
+
+  it("does not treat a plain element as editable", () => {
+    expect(isEditableTarget(document.createElement("section"))).toBe(false);
+  });
+
+  it("does not treat a null/non-element target as editable", () => {
+    expect(isEditableTarget(null)).toBe(false);
+    expect(isEditableTarget(window)).toBe(false);
+  });
+});
+
 type DragDropCallback = (event: { payload: { type: string; paths: string[] } }) => void;
 
-const { onDragDropEventMock, unlistenMock, invokeMock } = vi.hoisted(() => ({
+const { onDragDropEventMock, unlistenMock, invokeMock, readClipboardImageMock } = vi.hoisted(() => ({
   onDragDropEventMock: vi.fn(),
   unlistenMock: vi.fn(),
   invokeMock: vi.fn(),
+  readClipboardImageMock: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/webview", () => ({
@@ -91,8 +155,26 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
+vi.mock("./clipboard", () => ({
+  readClipboardImage: (...args: unknown[]) => readClipboardImageMock(...args),
+}));
+
 let wrapper: VueWrapper | undefined;
 let capturedCallback: DragDropCallback | undefined;
+
+const SAMPLE_CLIPBOARD_IMAGE = { rgba: new Uint8Array([1, 2, 3, 4]), width: 1, height: 1 };
+
+function dispatchPasteKeydown(target: EventTarget = window, options: { repeat?: boolean } = {}): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key: "v",
+    metaKey: true,
+    bubbles: true,
+    cancelable: true,
+    repeat: options.repeat ?? false,
+  });
+  target.dispatchEvent(event);
+  return event;
+}
 
 afterEach(() => {
   wrapper?.unmount();
@@ -100,6 +182,7 @@ afterEach(() => {
   onDragDropEventMock.mockReset();
   unlistenMock.mockReset();
   invokeMock.mockReset();
+  readClipboardImageMock.mockReset();
   capturedCallback = undefined;
   vi.useRealTimers();
 });
@@ -300,5 +383,169 @@ describe("DropZone", () => {
     await flushPromises();
 
     expect(registry.dropResult).toBeNull();
+  });
+});
+
+describe("DropZone paste dispatch (Story 4.2)", () => {
+  it("dispatches ⌘V as a clipboard-image paste when Bucket is active and the target isn't editable (AC1)", async () => {
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockResolvedValueOnce({ text: "UMBRA", confidence: 0.9 });
+    const { pinia } = await setupDropZone("/tools/bucket");
+    const registry = useRegistryStore(pinia);
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    expect(readClipboardImageMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith("bucket_extract_text_from_clipboard", SAMPLE_CLIPBOARD_IMAGE.rgba, {
+      headers: { "x-image-width": "1", "x-image-height": "1" },
+    });
+    expect(registry.pasteResult).toEqual({ toolId: "bucket", value: { text: "UMBRA", confidence: 0.9 } });
+  });
+
+  it("stores a ToolError on the registry when the paste handler rejects", async () => {
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockRejectedValueOnce({
+      code: "bucket-malformed-image-buffer",
+      message: "RGBA buffer is 3 bytes, which does not match 10x10x4 = 400 bytes",
+      position: null,
+      context: null,
+    });
+    const { pinia } = await setupDropZone("/tools/bucket");
+    const registry = useRegistryStore(pinia);
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    expect(registry.pasteResult).toEqual({
+      toolId: "bucket",
+      error: {
+        code: "bucket-malformed-image-buffer",
+        message: "RGBA buffer is 3 bytes, which does not match 10x10x4 = 400 bytes",
+        position: null,
+        context: null,
+      },
+    });
+  });
+
+  it("does not intercept ⌘V for a tool with no paste support", async () => {
+    await setupDropZone("/tools/json");
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    expect(readClipboardImageMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  // Critical regression-prevention test (Story 4.2 Task 4/6): ⌘V is the standard OS text-paste
+  // shortcut, used everywhere in this app (Hash's textarea, JSON's input, Cron's fields, and
+  // Bucket's own editable text-output field). A naive global listener would break normal
+  // text-paste in all of them. This must never fire the image-paste dispatch when focus is
+  // inside an editable element, even with the Bucket route active.
+  it("does NOT intercept ⌘V when the event target is an editable element, even with Bucket active (regression)", async () => {
+    await setupDropZone("/tools/bucket");
+
+    const textarea = document.createElement("textarea");
+    document.body.appendChild(textarea);
+    try {
+      const event = dispatchPasteKeydown(textarea);
+      await flushPromises();
+
+      expect(readClipboardImageMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+      // Native text-paste must be left to proceed unmodified.
+      expect(event.defaultPrevented).toBe(false);
+    } finally {
+      textarea.remove();
+    }
+  });
+
+  it("does NOT intercept ⌘V when focus is inside an <input>, even with Bucket active (regression)", async () => {
+    await setupDropZone("/tools/bucket");
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    try {
+      dispatchPasteKeydown(input);
+      await flushPromises();
+
+      expect(readClipboardImageMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("does NOT intercept a repeated (held-key) ⌘V keydown, only the initial press", async () => {
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockResolvedValueOnce({ text: "UMBRA", confidence: 0.9 });
+    await setupDropZone("/tools/bucket");
+
+    dispatchPasteKeydown(window, { repeat: false });
+    await flushPromises();
+    dispatchPasteKeydown(window, { repeat: true });
+    await flushPromises();
+
+    expect(readClipboardImageMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("latest-wins: a paste dispatched after an in-flight drop for the same tool wins when it resolves first (AC4, AD-16)", async () => {
+    let resolveDrop: (value: unknown) => void;
+    const dropPromise = new Promise((resolve) => {
+      resolveDrop = resolve;
+    });
+    invokeMock.mockReturnValueOnce(dropPromise);
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockResolvedValueOnce({ text: "from paste", confidence: 0.8 });
+
+    const { pinia } = await setupDropZone("/tools/bucket");
+    const registry = useRegistryStore(pinia);
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/screenshot.png"] } });
+    await flushPromises();
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    // The paste (dispatched after the drop) resolves and wins...
+    expect(registry.dropResult).toBeNull();
+    expect(registry.pasteResult).toEqual({ toolId: "bucket", value: { text: "from paste", confidence: 0.8 } });
+
+    // ...then the older, superseded drop resolves after it and must not overwrite the paste's outcome.
+    resolveDrop!({ text: "from drop", confidence: 0.7 });
+    await flushPromises();
+    expect(registry.dropResult).toBeNull();
+    expect(registry.pasteResult).toEqual({ toolId: "bucket", value: { text: "from paste", confidence: 0.8 } });
+  });
+
+  it("latest-wins: a drop dispatched after an in-flight paste for the same tool wins when it resolves first (AC4, AD-16)", async () => {
+    let resolvePaste: (value: unknown) => void;
+    const pastePromise = new Promise((resolve) => {
+      resolvePaste = resolve;
+    });
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockReturnValueOnce(pastePromise);
+    invokeMock.mockResolvedValueOnce({ text: "from drop", confidence: 0.7 });
+
+    const { pinia } = await setupDropZone("/tools/bucket");
+    const registry = useRegistryStore(pinia);
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/screenshot.png"] } });
+    await flushPromises();
+
+    // The drop (dispatched after the paste) resolves and wins...
+    expect(registry.pasteResult).toBeNull();
+    expect(registry.dropResult).toEqual({ toolId: "bucket", value: { text: "from drop", confidence: 0.7 } });
+
+    // ...then the older, superseded paste resolves after it and must not overwrite the drop's outcome.
+    resolvePaste!({ text: "from paste", confidence: 0.8 });
+    await flushPromises();
+    expect(registry.pasteResult).toBeNull();
+    expect(registry.dropResult).toEqual({ toolId: "bucket", value: { text: "from drop", confidence: 0.7 } });
   });
 });

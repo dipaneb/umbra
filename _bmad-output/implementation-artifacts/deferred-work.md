@@ -102,3 +102,7 @@
 ## Deferred from: code review of 3-3-the-phrase-corpus-as-an-automated-acceptance-gate (2026-08-04)
 
 - The must-honestly-fail corpus's leak-check only matches the literal substring `"* *"`, so a leaked partial cron fragment without two adjacent asterisks (e.g. `"*/90"`, `"9-17"`) inside an error `message`/`context` would pass undetected. Pre-existing convention explicitly reused from Story 3.2's tests per this story's own Task 3 instructions ("`"* *"` is the existing project convention for this check"), not introduced by this diff. [`crates/umbra-core/src/cron.rs:1400-1404`]
+
+## Deferred from: code review of 4-2-paste-a-screenshot-copy-the-text (2026-08-06)
+
+- `result.value as OcrOutcome` unchecked type assertion in `applyBucketResult` — no runtime shape validation of the backend payload. Pre-existing: the pattern predates this story (already used for `dropResult`); this diff adds a second call site (`pasteResult`) following the same established convention rather than introducing a new one. [`src/tools/bucket/BucketView.vue:32`]

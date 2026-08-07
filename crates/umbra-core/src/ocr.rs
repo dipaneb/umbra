@@ -1,6 +1,8 @@
-//! OCR capability (AD-8): image bytes in, recognized text + confidence out. Named after the
-//! capability, not the Bucket tool, so a future structured-extraction feature (FR29) can reuse
-//! or extend this trait shape without a rename.
+//! OCR capability (AD-8): image bytes in, recognized text + confidence out — either compressed
+//! bytes (`extract_text`, format-sniffed) or already-decoded raw RGBA pixels plus dimensions
+//! (`extract_text_from_rgba`, Story 4.2 — clipboard-pasted images arrive already-decoded, with
+//! no compressed-bytes accessor). Named after the capability, not the Bucket tool, so a future
+//! structured-extraction feature (FR29) can reuse or extend this trait shape without a rename.
 //!
 //! `oar-ocr` is the v1 adapter behind [`OcrEngine`] — callers, commands, and UI depend on the
 //! trait only and never import `oar-ocr` directly.
@@ -29,6 +31,17 @@ pub struct OcrOutcome {
 
 pub trait OcrEngine: Send + Sync {
     fn extract_text(&self, image_bytes: &[u8]) -> Result<OcrOutcome, ToolError>;
+
+    /// Same output as [`Self::extract_text`], but for input that's already decoded to raw RGBA
+    /// pixels (row-major, top-to-bottom) rather than compressed image bytes — the shape
+    /// clipboard-pasted images arrive in (Story 4.2). `rgba.len()` must equal
+    /// `width * height * 4`; a mismatch is a [`ToolError`], not a panic.
+    fn extract_text_from_rgba(
+        &self,
+        rgba: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<OcrOutcome, ToolError>;
 }
 
 fn ocr_error(code: &str, message: impl std::fmt::Display) -> ToolError {
@@ -64,12 +77,8 @@ impl OarOcrEngine {
     }
 }
 
-impl OcrEngine for OarOcrEngine {
-    fn extract_text(&self, image_bytes: &[u8]) -> Result<OcrOutcome, ToolError> {
-        let image = image::load_from_memory(image_bytes)
-            .map_err(|err| ocr_error("bucket-unsupported-format", err))?
-            .into_rgb8();
-
+impl OarOcrEngine {
+    fn run_ocr(&self, image: image::RgbImage) -> Result<OcrOutcome, ToolError> {
         let mut results = self
             .inner
             .predict(vec![image])
@@ -100,6 +109,50 @@ impl OcrEngine for OarOcrEngine {
             text: lines.join("\n"),
             confidence,
         })
+    }
+}
+
+impl OcrEngine for OarOcrEngine {
+    fn extract_text(&self, image_bytes: &[u8]) -> Result<OcrOutcome, ToolError> {
+        let image = image::load_from_memory(image_bytes)
+            .map_err(|err| ocr_error("bucket-unsupported-format", err))?
+            .into_rgb8();
+        self.run_ocr(image)
+    }
+
+    fn extract_text_from_rgba(
+        &self,
+        rgba: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<OcrOutcome, ToolError> {
+        // `into()` here doesn't decode/re-encode anything: RgbaImage -> DynamicImage -> RgbImage
+        // is just alpha-channel dropping over the buffer already in memory (image 0.25.9's
+        // `impl From<RgbaImage> for DynamicImage` + `DynamicImage::into_rgb8`), the same
+        // conversion `extract_text`'s format-sniffing decode already ends with.
+        if width == 0 || height == 0 {
+            return Err(ocr_error(
+                "bucket-malformed-image-buffer",
+                format!("image dimensions must be non-zero, got {width}x{height}"),
+            ));
+        }
+        let rgba_image = image::RgbaImage::from_raw(width, height, rgba.to_vec()).ok_or_else(|| {
+            ocr_error(
+                "bucket-malformed-image-buffer",
+                format!(
+                    // u128, not u64: width/height are u32, so this product can't overflow u128,
+                    // unlike u64 (width as u64 * height as u64 * 4 can overflow for width/height
+                    // near u32::MAX) — this is an error-message computation, not a hot path, so
+                    // there's no reason to use anything narrower than a type wide enough to never
+                    // overflow for any valid input.
+                    "RGBA buffer is {} bytes, which does not match {width}x{height}x4 = {} bytes",
+                    rgba.len(),
+                    width as u128 * height as u128 * 4
+                ),
+            )
+        })?;
+        let image: image::DynamicImage = rgba_image.into();
+        self.run_ocr(image.into_rgb8())
     }
 }
 
@@ -144,6 +197,50 @@ mod tests {
             outcome.text
         );
         assert!(outcome.confidence.is_some());
+    }
+
+    #[test]
+    fn extracts_known_text_from_a_real_fixture_image_via_the_raw_rgba_path() {
+        let engine = test_engine();
+        let bytes = std::fs::read(fixture_path("hello-umbra.png")).unwrap();
+        let decoded = image::load_from_memory(&bytes).unwrap().into_rgba8();
+        let (width, height) = decoded.dimensions();
+
+        let outcome = engine
+            .extract_text_from_rgba(decoded.as_raw(), width, height)
+            .unwrap();
+
+        assert!(
+            outcome.text.to_uppercase().contains("UMBRA"),
+            "expected extracted text to contain \"UMBRA\", got: {:?}",
+            outcome.text
+        );
+        assert!(outcome.confidence.is_some());
+    }
+
+    #[test]
+    fn returns_a_tool_error_for_a_malformed_rgba_buffer_length() {
+        let engine = test_engine();
+        let err = engine
+            .extract_text_from_rgba(&[0, 0, 0], 10, 10)
+            .unwrap_err();
+        assert_eq!(err.code, "bucket-malformed-image-buffer");
+    }
+
+    #[test]
+    fn returns_a_tool_error_for_zero_width_or_height_without_reaching_the_ocr_engine() {
+        let engine = test_engine();
+        let err = engine.extract_text_from_rgba(&[], 0, 0).unwrap_err();
+        assert_eq!(err.code, "bucket-malformed-image-buffer");
+    }
+
+    #[test]
+    fn returns_a_tool_error_for_a_mismatched_buffer_near_u32_max_dimensions_without_overflowing() {
+        let engine = test_engine();
+        let err = engine
+            .extract_text_from_rgba(&[0, 0, 0], u32::MAX, u32::MAX)
+            .unwrap_err();
+        assert_eq!(err.code, "bucket-malformed-image-buffer");
     }
 
     #[test]

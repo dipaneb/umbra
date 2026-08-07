@@ -12,6 +12,10 @@ export interface ToolRegistryEntry {
   icon: string;
   component: () => Promise<Component>;
   drop?: { acceptedMimeTypes: string[]; handler: string };
+  // AD-14/AD-15: declares a tool's clipboard-image-paste handler, mirroring `drop` — keeps the
+  // shell's paste dispatcher generic (reads the handler name from the registry) rather than
+  // hardcoding a tool's command name (Story 4.2).
+  paste?: { handler: string };
   shortcut?: string;
 }
 
@@ -104,6 +108,7 @@ const TOOLS: ToolRegistryEntry[] = [
     icon: "OCR",
     component: () => import("../tools/bucket/BucketView.vue"),
     drop: { acceptedMimeTypes: [], handler: "bucket_extract_text" },
+    paste: { handler: "bucket_extract_text_from_clipboard" },
   },
 ];
 
@@ -149,6 +154,12 @@ export const useRegistryStore = defineStore("registry", () => {
   // above.
   const dropResult = ref<{ toolId: string; value: unknown } | { toolId: string; error: ToolError } | null>(null);
 
+  // One-shot outcome of a dispatcher-invoked clipboard-paste command — set by `DropZone.vue`
+  // after it invokes `activeTool.paste.handler`. A separate field from `dropResult`, not a
+  // repurposed one: five other tools' views already depend on `dropResult` meaning "a file-drop
+  // outcome" exactly (Story 4.2's Dev Notes). Same shape, consumed the same way.
+  const pasteResult = ref<{ toolId: string; value: unknown } | { toolId: string; error: ToolError } | null>(null);
+
   // AD-16: latest-wins must be scoped per tool, not per component instance —
   // otherwise a drop dispatched by `DropZone.vue`'s single shared dispatcher
   // and a manual invoke made by the tool's own view (e.g. Hash's "Compute"
@@ -166,5 +177,13 @@ export const useRegistryStore = defineStore("registry", () => {
     return runner;
   }
 
-  return { tools, routes, dropArgsProviders, setDropArgsProvider, dropResult, getLatestWinsRunner };
+  return {
+    tools,
+    routes,
+    dropArgsProviders,
+    setDropArgsProvider,
+    dropResult,
+    pasteResult,
+    getLatestWinsRunner,
+  };
 });

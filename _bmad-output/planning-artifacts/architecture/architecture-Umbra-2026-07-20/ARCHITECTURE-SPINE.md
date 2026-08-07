@@ -88,7 +88,7 @@ graph LR
 
 - **Binds:** OCR (Epic 4), the second AI feature (Epic 6)
 - **Prevents:** an inference library leaking through the whole call stack instead of sitting behind a swappable seam
-- **Rule:** `umbra-core` owns an OCR-shaped trait — image bytes in, recognized text + confidence out, honest empty/failure states. `oar-ocr` is the v1 adapter behind it. Commands and UI depend on the trait only, never on the adapter crate directly. `[ADOPTED]`
+- **Rule:** `umbra-core` owns an OCR-shaped trait — recognized text + confidence out, honest empty/failure states, accepting image input either as compressed bytes (format-sniffed) or as already-decoded raw RGBA pixels plus dimensions. `oar-ocr` is the v1 adapter behind it. Commands and UI depend on the trait only, never on the adapter crate directly. `[ADOPTED]` *(Amended 2026-08-06, Story 4.2 — the raw-RGBA input path was added because clipboard-pasted images arrive from the OS already decoded, with no compressed-bytes accessor; the rule's original "image bytes in" wording predated that finding and read narrower than what the trait now honestly accepts. See that story's Dev Notes.)*
 
 ### AD-9 — NL→cron never ships an unverified guess
 

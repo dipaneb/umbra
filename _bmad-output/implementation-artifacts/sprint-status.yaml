@@ -41,7 +41,39 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-04
+last_updated: 2026-08-06
+# note: story 4.2 moved to done 2026-08-06 (code review complete: 1 decision-needed resolved —
+# user confirmed manual measurement of AC3's ~3s bar on real hardware — and 4 patches applied:
+# u64-overflow fix in ocr.rs's malformed-buffer error message (u128 arithmetic), a 0x0-image guard
+# before RgbaImage::from_raw, an event.repeat guard on the DropZone.vue Cmd+V listener, and a
+# reverse-direction latest-wins regression test; 1 item deferred to deferred-work.md — pre-existing
+# unchecked `as OcrOutcome` type assertion pattern, not introduced by this story. Full verification
+# pass green: cargo fmt --check, cargo clippy --workspace --all-targets -D warnings, cargo test
+# --workspace (170 tests), pnpm test (198 tests), vue-tsc --noEmit.)
+# note: story 4.2 moved to review 2026-08-06 (implementation complete: Tasks 0-6, 8 done; full
+# Rust + TS test suites, lint, typecheck, and build all green. Task 3 surfaced a real Rust/Tauri
+# constraint -- an async fn taking a borrowed tauri::ipc::Request can't satisfy the Send + 'static
+# bound Tauri's async responder requires -- resolved with a plain #[tauri::command(async)] fn that
+# extracts owned data before building its future, validated via a full IPC round-trip test.
+# Manual pnpm tauri dev check (Task 7) attempted but this sandboxed session has no display server
+# to open a native window -- outstanding, deferred to user, same pattern as every prior story.)
+# note: story 4.2 moved to in-progress 2026-08-06 (branched feat/story-4-2-paste-a-screenshot-copy-the-text
+# from main at 966c94e, confirming the story's baseline_commit and Story 4.1's PR #36 merge)
+# note: story 4.2 created 2026-08-06 (second story of Epic 4, auto-discovered as the first
+# backlog-status story in sprint-status.yaml. Verified Story 4.1's PR #36 merged to main by
+# content-diffing origin/main against the story's own branch tip -- diff empty, confirming the
+# squash-merge commit is content-identical, not by trusting raw SHA ancestry. baseline_commit set
+# to main's tip (966c94e) directly, no branch stacking needed. Ground-truth-verified against the
+# installed @tauri-apps/plugin-clipboard-manager (2.3.2) and @tauri-apps/api type declarations that
+# readImage() returns already-decoded raw RGBA pixels, not compressed image bytes -- a real
+# mismatch with Story 4.1's OcrEngine trait input contract that the epics/spine hadn't spelled out
+# at this level of detail, resolved as an explicit task in the story rather than left implicit.
+# Also verified the exact clipboard-manager:allow-read-image capabilities permission identifier via
+# the vendored plugin crate's own permission TOML, and flagged a regression risk unique to this
+# story: a naive global Cmd+V listener would break normal text-paste everywhere else in the app.
+# A fresh-context subagent review (per the skill's checklist step) confirmed the research held up
+# and surfaced three real gaps -- a raw-IPC-body test-construction risk, a missing RGBA-to-RGB
+# conversion detail, and a missing AD-8 spine-update task -- all fixed before finalizing.)
 # note: story 4.1 moved to review 2026-08-04 (implementation complete; manual pnpm tauri dev
 # check outstanding, deferred to user — same pattern as every prior story)
 # note: story 4.1 moved to in-progress 2026-08-04
@@ -149,7 +181,7 @@ development_status:
 
   epic-4: in-progress
   4-1-drag-an-image-in-get-its-text: review
-  4-2-paste-a-screenshot-copy-the-text: backlog
+  4-2-paste-a-screenshot-copy-the-text: done
   4-3-the-bucket-never-bluffs: backlog
   epic-4-retrospective: optional
 

@@ -41,4 +41,9 @@ tokio = { version = "1", features = ["macros", "rt"] }
 # `AppHandle` can only come from a built app, so its tests go through `tauri::test`'s mock
 # IPC round trip instead (`mock_builder()` + `get_ipc_response`).
 tauri = { version = "2", features = ["test"] }
+# Test-only: decodes the shared PNG fixture into raw RGBA for
+# `bucket_extract_text_from_clipboard`'s tests (Story 4.2). Same crate + version umbra-core
+# already depends on directly — not a second image-handling library, just this crate's own
+# dev-only use of it to build test input.
+image = "0.25"
 
