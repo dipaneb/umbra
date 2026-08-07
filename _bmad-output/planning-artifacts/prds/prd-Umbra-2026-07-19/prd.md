@@ -76,7 +76,7 @@ FR IDs are global and stable. Phases: **MVP** (target ~Aug 8), **P2** (rest of A
 
 - **FR19.** Convert a natural-language schedule ("every Monday at 9am") to a standard 5-field cron expression, fully offline (INV-1). **Decided:** v1 uses a deterministic parser (exact, tiny, testable); the small-local-model/hybrid upgrade is v2 (see addendum).
 - **FR20.** Convert a cron expression to a plain-English description, including the next 3 upcoming run times.
-- **FR21.** When the input can't be confidently converted, the tool says so and shows what it _did_ understand — no silently wrong cron. This is the AI-quality bar: wrong-but-confident output is a bug, not a model limitation. Acceptance basis: the canonical phrase corpus in the addendum (must-convert and must-honestly-fail sets), maintained as an automated test.
+- **FR21.** When the input can't be confidently converted, the tool says so and shows what it _did_ understand — no silently wrong cron. This is the AI-quality bar: wrong-but-confident output is a bug, not a model limitation. Acceptance basis: the canonical phrase corpus in `crates/umbra-core/src/cron.rs` (Story 3.3; must-convert and must-honestly-fail sets), maintained as an automated test.
 - **FR22.** English input only in v1 (French is a P3 candidate, coupled with FR25's rule).
 
 ### F7 — The Bucket, v0: local OCR (MVP — flagship demo)
