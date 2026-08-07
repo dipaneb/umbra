@@ -73,7 +73,7 @@ so that I can trust both its answers and its privacy promise.
 
 - [x] **Task 8: Commit and open a PR**
   - [x] Conventional Commit, `feat` (or `test`, if the diff ends up test-coverage-dominant — judge by the actual diff shape) type scoped to `bucket`.
-  - [x] PR against `main`.
+  - [x] PR against `main`: https://github.com/dipaneb/umbra/pull/38 (commit `27ff3cb`).
 
 ## Dev Notes
 
