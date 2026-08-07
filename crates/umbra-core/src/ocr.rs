@@ -267,4 +267,15 @@ mod tests {
         let err = engine.extract_text(b"not an image").unwrap_err();
         assert_eq!(err.code, "bucket-unsupported-format");
     }
+
+    #[test]
+    fn returns_tool_error_not_a_panic_for_a_corrupt_truncated_image() {
+        let engine = test_engine();
+        let bytes = std::fs::read(fixture_path("hello-umbra.png")).unwrap();
+        let truncated = &bytes[..bytes.len() / 2];
+
+        let err = engine.extract_text(truncated).unwrap_err();
+
+        assert_eq!(err.code, "bucket-unsupported-format");
+    }
 }

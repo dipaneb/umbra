@@ -106,3 +106,9 @@
 ## Deferred from: code review of 4-2-paste-a-screenshot-copy-the-text (2026-08-06)
 
 - `result.value as OcrOutcome` unchecked type assertion in `applyBucketResult` — no runtime shape validation of the backend payload. Pre-existing: the pattern predates this story (already used for `dropResult`); this diff adds a second call site (`pasteResult`) following the same established convention rather than introducing a new one. [`src/tools/bucket/BucketView.vue:32`]
+
+## Deferred from: code review of 4-3-the-bucket-never-bluffs (2026-08-07)
+
+- Corrupt-image truncation tests cover only one truncation point (`bytes.len() / 2`) on one fixture. Near-full-length truncation (e.g. missing only the trailing chunk) is a meaningfully different `image`-crate decode path and is untested. [`crates/umbra-core/src/ocr.rs:271-280`, `src-tauri/src/commands/bucket.rs:298-312`]
+- New `role="status"` live-region pattern (first instance of this pattern in the codebase) has no manual screen-reader verification. Fold into the user's manual `pnpm tauri dev` check alongside this story's own Task 4/7 network-monitor tour. [`src/tools/bucket/BucketView.vue:84-89`]
+- `OcrOutcome.confidence` is plumbed through Rust/IPC/TS but never read by `BucketView.vue`'s template. Pre-existing since Story 4.1/4.2, no functional consequence; this story only extends test fixtures that carry the unused field. [`src/tools/bucket/BucketView.vue`]
