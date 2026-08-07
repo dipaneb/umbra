@@ -82,14 +82,14 @@ async function onCopy() {
     </p>
 
     <p
-      v-if="outcome && !outcome.text"
+      v-if="outcome && !outcome.text.trim()"
       role="status"
     >
       No text was found in this image.
     </p>
 
     <div
-      v-if="outcome && outcome.text"
+      v-if="outcome && outcome.text.trim()"
       class="field"
     >
       <label for="bucket-result">Extracted text</label>

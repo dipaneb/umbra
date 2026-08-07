@@ -42,6 +42,13 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-07
+# note: story 4.3 moved to done 2026-08-07 (code review complete: 1 decision-needed resolved —
+# user chose a real integration test over the existing test-local-OnceLock unit test for AC3 —
+# and 3 patches applied: a real tests/ocr_engine_race.rs integration test racing the actual
+# ocr_engine()/OCR_ENGINE production path, a .trim() fix for whitespace-only OCR text bypassing
+# the "no text found" message, and a missing Copy-button-absence assertion on the paste-path
+# empty-outcome test; 3 items deferred to deferred-work.md. Full verification pass green: 174
+# Rust tests, 201 Vue tests, fmt/clippy/lint/typecheck/build all clean.)
 # note: story 4.3 moved to review 2026-08-07 (implementation complete: Tasks 0-6, 8 done, AC1-3/5
 # fully satisfied and tested, AC4's automatable half closed via cargo tree -i reqwest re-audit;
 # Task 4's manual network-monitor tour and Task 7's manual pnpm tauri dev check remain outstanding,
@@ -219,7 +226,7 @@ development_status:
   epic-4: in-progress
   4-1-drag-an-image-in-get-its-text: done
   4-2-paste-a-screenshot-copy-the-text: done
-  4-3-the-bucket-never-bluffs: review
+  4-3-the-bucket-never-bluffs: done
   epic-4-retrospective: optional
 
   epic-5: backlog

@@ -6,6 +6,7 @@ import { useRegistryStore } from "../../stores/registry";
 
 const SAMPLE_OUTCOME = { text: "UMBRA OCR TEST", confidence: 0.97 };
 const SAMPLE_EMPTY_OUTCOME = { text: "", confidence: null };
+const SAMPLE_WHITESPACE_OUTCOME = { text: "\n", confidence: null };
 
 const { writeClipboardTextMock } = vi.hoisted(() => ({
   writeClipboardTextMock: vi.fn(),
@@ -124,6 +125,22 @@ describe("BucketView", () => {
     expect(status.exists()).toBe(true);
     expect(status.text()).toContain("No text was found in this image.");
     expect(resultTextarea().exists()).toBe(false);
+    expect(wrapper!.find("button").exists()).toBe(false);
+  });
+
+  it("states explicitly that no text was found for a whitespace-only outcome, instead of a blank-looking textarea (AC1)", async () => {
+    mountView();
+    const registry = useRegistryStore(pinia);
+    await flushPromises();
+
+    registry.dropResult = { toolId: "bucket", value: SAMPLE_WHITESPACE_OUTCOME };
+    await flushPromises();
+
+    const status = wrapper!.find("[role='status']");
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("No text was found in this image.");
+    expect(resultTextarea().exists()).toBe(false);
+    expect(wrapper!.find("button").exists()).toBe(false);
   });
 
   it("renders a bucket-unsupported-format ToolError from a failed drop result and clears any prior result", async () => {

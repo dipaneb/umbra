@@ -1,4 +1,8 @@
-mod commands;
+// `pub` (not `mod`): Story 4.3's `tests/ocr_engine_race.rs` integration test needs
+// `commands::bucket::ocr_engine` reachable from outside this crate — an integration-test binary
+// links against this crate's ordinarily-compiled rlib, so a private `mod` here would be
+// unreachable to it regardless of visibility inside `commands/bucket.rs` itself.
+pub mod commands;
 mod fs_helper;
 
 use commands::base64::{base64_decode, base64_decode_to_file, base64_encode, base64_encode_file};

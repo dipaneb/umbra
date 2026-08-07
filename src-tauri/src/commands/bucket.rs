@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use tauri::Runtime;
 use tauri::ipc::{InvokeBody, Request};
-#[cfg(not(test))]
+#[cfg(not(any(test, feature = "test-support")))]
 use tauri::{Manager, path::BaseDirectory};
 use umbra_core::ToolError;
 use umbra_core::ocr::{MAX_INPUT_BYTES, OarOcrEngine, OcrEngine, OcrOutcome};
@@ -28,7 +28,7 @@ static OCR_ENGINE: OnceLock<Result<OarOcrEngine, ToolError>> = OnceLock::new();
 // the exact directory `tauri.conf.json`'s `bundle.resources` ships and the same one
 // `umbra-core`'s own OCR tests already use directly — so both suites agree on where the
 // bundled models live, on every OS, with no per-platform special-casing.
-#[cfg(not(test))]
+#[cfg(not(any(test, feature = "test-support")))]
 fn models_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, ToolError> {
     app.path()
         .resolve("resources/models", BaseDirectory::Resource)
@@ -40,7 +40,10 @@ fn models_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, ToolErro
         })
 }
 
-#[cfg(test)]
+// `test-support`, not just `test`: this must also activate for `tests/ocr_engine_race.rs`, an
+// integration-test binary linking against this crate's ordinarily-compiled rlib — `cfg(test)`
+// never applies there (see Cargo.toml's `test-support` feature comment).
+#[cfg(any(test, feature = "test-support"))]
 fn models_dir<R: Runtime>(_app: &tauri::AppHandle<R>) -> Result<PathBuf, ToolError> {
     Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/models"))
 }
@@ -52,8 +55,23 @@ fn resolve_model_path<R: Runtime>(
     Ok(models_dir(app)?.join(file))
 }
 
-fn ocr_engine<R: Runtime>(app: &tauri::AppHandle<R>) -> &'static Result<OarOcrEngine, ToolError> {
+// AC3/AD-16, `tests/ocr_engine_race.rs`: counts real invocations of the closure below, i.e. how
+// many times engine construction actually ran — `OnceLock` alone guarantees exactly-once but
+// doesn't expose a way to observe that from outside, which is what a race test needs to assert.
+// Feature-gated, never compiled into a real build.
+#[cfg(any(test, feature = "test-support"))]
+pub static OCR_ENGINE_INIT_CALLS: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+
+// `pub`: reachable from `tests/ocr_engine_race.rs` (an integration-test binary, external to this
+// crate) as well as this module's own unit tests below.
+pub fn ocr_engine<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> &'static Result<OarOcrEngine, ToolError> {
     OCR_ENGINE.get_or_init(|| {
+        #[cfg(any(test, feature = "test-support"))]
+        OCR_ENGINE_INIT_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
         let text_detection_model_path = resolve_model_path(app, "text_detection.onnx")?;
         let text_recognition_model_path = resolve_model_path(app, "text_recognition.onnx")?;
         let character_dict_path = resolve_model_path(app, "character_dict.txt")?;
@@ -329,7 +347,11 @@ mod tests {
     // this test runs `OCR_ENGINE` is almost certainly already initialized by another test —
     // racing it directly couldn't reliably exercise the actual not-yet-initialized window. A
     // fresh, test-local `OnceLock` + `Barrier` reproduces the exact same pattern in isolation,
-    // deterministically, independent of test execution order or real model-load time.
+    // deterministically, independent of test execution order or real model-load time. The
+    // sibling `tests/ocr_engine_race.rs` integration test (its own fresh process, so
+    // `OCR_ENGINE` really is uninitialized there) covers the complementary claim this test
+    // can't: that `ocr_engine()` itself, not just the stdlib primitive it's built on, only ever
+    // constructs the engine once.
     #[test]
     fn oncelock_get_or_init_runs_exactly_once_under_a_real_thread_race() {
         static TEST_INIT_CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);

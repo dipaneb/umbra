@@ -15,6 +15,13 @@ rust-version = "1.85"
 name = "umbra_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Only for this crate's own integration tests (`tests/*.rs`): `#[cfg(test)]` does not propagate
+# to an integration-test binary linking against this crate's ordinarily-compiled rlib (Cargo
+# compiles the library once, without `--cfg test`, then links every `tests/*.rs` binary against
+# that same build) — see bucket.rs's `models_dir`/`OCR_ENGINE_INIT_CALLS` for what this gates.
+test-support = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 # Same major version tauri-build's own tauri-winres dependency pins (embed-resource = "3"), so
@@ -46,4 +53,11 @@ tauri = { version = "2", features = ["test"] }
 # already depends on directly — not a second image-handling library, just this crate's own
 # dev-only use of it to build test input.
 image = "0.25"
+# Self-dependency (a documented, supported Cargo pattern): lets `tests/*.rs` integration binaries
+# link against this crate with `test-support` turned on, without that feature ever being enabled
+# for a normal build or a downstream consumer. Story 4.3's `ocr_engine_race` integration test is
+# what needs it (AC3: proves the real `OCR_ENGINE` static's exactly-once-under-race guarantee, in
+# a fresh process where it's genuinely uninitialized — unlike this crate's own unit tests, which
+# share one process and therefore can't reliably race the not-yet-initialized window).
+umbra = { path = ".", features = ["test-support"] }
 
