@@ -156,6 +156,7 @@ graph LR
 | Testing | `umbra-core` unit tests (`cargo test -p umbra-core`, including the AD-9 corpus) + `src-tauri` command integration tests + Vitest. No e2e suite in v1 (NFR6). |
 | Commits & releases | Conventional Commits from the first commit (enables a generated `CHANGELOG.md` later, FR32). |
 | Dependency hygiene | Every dependency's license checked for compatibility with bundling into an All-Rights-Reserved app — permissive fine, copyleft/GPL needs explicit review. |
+| Dependency version/API drift | Any pre-1.0 dependency, or one whose pin predates the story using it by more than a few weeks, gets a live re-verification against the vendored source (not docs.rs/crates.io summaries) before implementation — the exact API, not just the version number, since a resolved version can silently differ from what was researched. The finding is recorded in the Stack table, not just the story's own Dev Notes. *(Added 2026-08-07, Epic 4 retrospective — this discipline held under real pressure three epics running (Epic 2's `docs.rs` contradiction, Epic 3's `croner` field claim, Epic 4's `oar-ocr`/`ort` drift, twice in one story) but was being re-derived from scratch in each story's Dev Notes instead of living as a standing rule. See that document for full discussion.)* |
 | Accessibility | Labels, visible focus states, WCAG AA contrast (4.5:1 text) checked at PR review from v1 (NFR5). |
 
 ## Stack

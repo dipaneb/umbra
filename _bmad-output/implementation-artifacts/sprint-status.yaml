@@ -42,6 +42,22 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-07
+# note: epic-4 retrospective completed 2026-08-07 (action item #1 from epic-3 closed -- the
+# AD-16 runner-scoping amendment was applied directly and correctly in Story 4.2, confirmed
+# during this session; action item #2 from epic-3 confirmed still open, owner John, now
+# two epics old. One new process action item added: a "Dependency version/API drift" row
+# for ARCHITECTURE-SPINE.md's Consistency Conventions table, owner Winston -- promotes the
+# ad-hoc "verify against vendored source" discipline that recurred across three straight
+# epics into a standing rule. A live mid-retrospective discovery (developer considering
+# deferring the Apple Developer ID purchase, which would have conflicted with Epic 5's
+# current macOS-signed-first plan) was raised and resolved in the same session -- developer
+# decided to purchase now, at MVP stage -- so no epic-5 plan changes were needed. Story 4.3's
+# manual verification was confirmed complete live during the session (text extraction,
+# empty-result messaging, and a real nettop capture proving zero network activity); only
+# the corrupt-image manual check remains open, owned by the developer.)
+# note: epic-4 rolled up to done 2026-08-07 (all 3 child stories done, retrospective
+# completed; epic-level field is a manual rollup per this file's own WORKFLOW NOTES,
+# same pattern as the epic-1/2/3 rollup fix earlier this session)
 # note: story 4.3 moved to done 2026-08-07 (code review complete: 1 decision-needed resolved —
 # user chose a real integration test over the existing test-local-OnceLock unit test for AC3 —
 # and 3 patches applied: a real tests/ocr_engine_race.rs integration test racing the actual
@@ -223,11 +239,11 @@ development_status:
   3-3-the-phrase-corpus-as-an-automated-acceptance-gate: done
   epic-3-retrospective: done
 
-  epic-4: in-progress
+  epic-4: done
   4-1-drag-an-image-in-get-its-text: done
   4-2-paste-a-screenshot-copy-the-text: done
   4-3-the-bucket-never-bluffs: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   epic-5: backlog
   5-1-a-signed-notarized-umbra-anyone-can-download: backlog
@@ -301,4 +317,29 @@ action_items:
   - epic: 3
     action: "Update epics.md and the PRD's four 'addendum phrase corpus' references to point at the real corpus in crates/umbra-core/src/cron.rs (Story 3.3) instead of the non-existent addendum.md"
     owner: "John"
-    status: open
+    status: done
+    # resolved 2026-08-07: fixed all 4 references -- epics.md's inputDocuments frontmatter
+    # (removed the never-existent addendum.md entry, replaced with a dated note), epics.md's
+    # FR21 requirements-inventory line and Story 3.3's own AC (both now cite
+    # crates/umbra-core/src/cron.rs directly instead of "the addendum"), and the PRD's FR21
+    # line. Two other, unrelated "addendum" mentions in the PRD (FR19's v2 model-upgrade
+    # note, NFR6's e2e-gap note) were left untouched -- different topics, out of this action
+    # item's scope; flagged for the developer to decide separately if worth a follow-up.
+  - epic: 4
+    action: "Add a 'Dependency version/API drift' row to ARCHITECTURE-SPINE.md's Consistency Conventions table: any pre-1.0 dependency, or one pinned more than a few weeks before the story using it, requires live re-verification against the vendored source (not docs.rs/crates.io summaries) before implementation, with the finding recorded in the Stack table"
+    owner: "Winston"
+    status: done
+    # resolved 2026-08-07: added as a new "Dependency version/API drift" row in
+    # ARCHITECTURE-SPINE.md's Consistency Conventions table, dated and citing the
+    # epic-4 retrospective, following the same inline-dated-amendment convention
+    # already used for AD-16/AD-11/AD-8's own amendments.
+  - epic: 4
+    action: "Run the corrupt-image manual check for Story 4.3 (head -c 500 on a real screenshot, drop into the Bucket, confirm inline error and no crash) - last open item on Epic 4's own scope"
+    owner: "developer"
+    status: done
+    # resolved 2026-08-07: developer ran `head -c 500 happy-birthday.png > corrupt.png`,
+    # dropped it into the Bucket, and got an inline "unexpected end of file" error - no
+    # crash, exactly matching Story 4.3's own bucket-unsupported-format test expectation.
+    # Also closed Task 4/7's network-monitor manual half live in the same session (nettop,
+    # zero outbound connections). Story 4.3's file updated to reflect all manual
+    # verification now complete.

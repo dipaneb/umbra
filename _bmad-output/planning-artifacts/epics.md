@@ -8,16 +8,20 @@ stepsCompleted:
   ]
 inputDocuments:
   - _bmad-output/planning-artifacts/prds/prd-Umbra-2026-07-19/prd.md
-  - _bmad-output/planning-artifacts/prds/prd-Umbra-2026-07-19/addendum.md
   - _bmad-output/planning-artifacts/architecture/architecture-Umbra-2026-07-20/ARCHITECTURE-SPINE.md
   - _bmad-output/planning-artifacts/architecture/architecture-Umbra-2026-07-20/ARCHITECTURE.md
+  # note: a "PRD addendum" (prd-Umbra-2026-07-19/addendum.md) was listed here originally but
+  # never existed on disk -- confirmed absent by repo-wide search in both Story 3.2 and
+  # Story 3.3, and removed 2026-08-07 (epic-4 retrospective action item, owner John) once
+  # the FR21 phrase corpus it was meant to source was confirmed to live in
+  # crates/umbra-core/src/cron.rs (Story 3.3) instead.
 ---
 
 # Umbra - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for Umbra, decomposing the requirements from the PRD, the PRD addendum, and the Architecture spine into implementable stories.
+This document provides the complete epic and story breakdown for Umbra, decomposing the requirements from the PRD and the Architecture spine into implementable stories.
 
 No UX design contract exists; UX constraints are carried by the PRD itself (NFR5 accessibility baseline, §2 demo flow) and the architecture's accessibility conventions. Confirmed with the product owner on 2026-07-20.
 
@@ -62,7 +66,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 
 - FR19: Convert a natural-language schedule to a standard 5-field cron expression, fully offline via a deterministic parser (v1 decision; model/hybrid upgrade is v2).
 - FR20: Convert a cron expression to a plain-English description, including the next 3 upcoming run times.
-- FR21: When input can't be confidently converted, the tool says so and shows what it _did_ understand — no silently wrong cron. Acceptance basis: the addendum's canonical phrase corpus (must-convert ≥30, must-honestly-fail ≥10), maintained as an automated test.
+- FR21: When input can't be confidently converted, the tool says so and shows what it _did_ understand — no silently wrong cron. Acceptance basis: the canonical phrase corpus in `crates/umbra-core/src/cron.rs` (Story 3.3; must-convert ≥30, must-honestly-fail ≥10), maintained as an automated test.
 - FR22: English input only in v1.
 
 **F7 — The Bucket, v0: local OCR (MVP — flagship demo)**
@@ -670,7 +674,7 @@ So that FR21 is enforced by CI, not by good intentions.
 
 **Given** the corpus test suite in `umbra-core` (part of `cargo test -p umbra-core`),
 **When** it runs,
-**Then** at least 30 must-convert phrases from the addendum's seed set assert their exact expected cron expressions (FR21, AD-9).
+**Then** at least 30 must-convert phrases from the corpus in `crates/umbra-core/src/cron.rs` assert their exact expected cron expressions (FR21, AD-9).
 
 **Given** the must-honestly-fail set,
 **When** the suite runs,
