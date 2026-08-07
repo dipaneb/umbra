@@ -4,7 +4,7 @@ baseline_commit: 966c94e
 
 # Story 4.2: Paste a screenshot, copy the text
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -82,6 +82,15 @@ so that the everyday "error dialog → search/share as text" flow is instant and
 - [x] **Task 8: Commit and open a PR**
   - [x] Conventional Commit, `feat` type scoped to `bucket`.
   - [x] PR against `main`: https://github.com/dipaneb/umbra/pull/37 (commit `cc5efda`).
+
+### Review Findings
+
+- [x] [Review][Decision] AC3's "~3 seconds, verified by measurement" is not actually measured in this diff — Task 7 (the only task that performs the wall-clock timing check) is unchecked; the sandboxed dev session has no display server to drive a real OS clipboard paste. **Resolved 2026-08-06:** user confirmed manual measurement of a real screenshot's extraction time on real hardware is within the ~3s bar.
+- [x] [Review][Patch] `u64` multiplication can overflow while building the malformed-buffer error message [crates/umbra-core/src/ocr.rs:139] — `width as u64 * height as u64 * 4` overflows `u64` for `width`/`height` near `u32::MAX` (both parsed unbounded from the `x-image-width`/`x-image-height` IPC headers). Panics under `overflow-checks = true` (the default for `cargo test`/dev builds — release is unaffected since this repo has no `[profile.release] overflow-checks = true` override), inside code whose sole purpose is producing a non-panicking `ToolError`. Untested — no test exercises large/boundary dimension headers. **Fixed:** switched to `u128` arithmetic (can't overflow for any `u32` inputs); added `returns_a_tool_error_for_a_mismatched_buffer_near_u32_max_dimensions_without_overflowing`.
+- [x] [Review][Patch] Zero-dimension (`0x0`) image headers pass unguarded into `OAROCR::predict()` [crates/umbra-core/src/ocr.rs:133, src-tauri/src/commands/bucket.rs:150-151] — `width=0`/`height=0` headers with a matching empty buffer satisfy `RgbaImage::from_raw`'s length check and proceed into OCR inference with a degenerate 0-pixel image; behavior of `OAROCR::predict` on a zero-dimension image is unverified and untested. **Fixed:** added an explicit `width == 0 || height == 0` guard returning `bucket-malformed-image-buffer` before `RgbaImage::from_raw` is called; added `returns_a_tool_error_for_zero_width_or_height_without_reaching_the_ocr_engine`.
+- [x] [Review][Patch] No guard against key-repeat on the ⌘V listener [src/shell/DropZone.vue:57-67] — `onKeydown` doesn't check `event.repeat`, so holding ⌘V fires `dispatchPaste` (a fresh `readClipboardImage()` + CPU-bound OCR invocation, AD-4) once per repeated keydown. Latest-wins keeps the final result correct, but every intermediate invocation still burns CPU/battery and competes with the winning call on the blocking thread pool, delaying it. **Fixed:** added `event.repeat` to the early-return guard; added `does NOT intercept a repeated (held-key) ⌘V keydown, only the initial press`.
+- [x] [Review][Patch] `dropZone.spec.ts`'s new latest-wins test only covers "paste after in-flight drop, paste wins" — the reverse direction ("drop after in-flight paste, drop wins") has no explicit test. Low risk since both dispatch paths share the same symmetric `createLatestWinsRunner()` (already tested for drop-vs-drop), but Task 6 called for coverage "across an in-flight drop and a subsequent paste" without specifying direction, so this is a partial, one-directional satisfaction. **Fixed:** added `latest-wins: a drop dispatched after an in-flight paste for the same tool wins when it resolves first (AC4, AD-16)`, mirroring the existing paste-after-drop test in reverse.
+- [x] [Review][Defer] `result.value as OcrOutcome` unchecked type assertion in `applyBucketResult` [src/tools/bucket/BucketView.vue:32] — deferred, pre-existing (the pattern predates this story via `dropResult`; this diff adds a second call site, `pasteResult`, following the same established convention rather than introducing a new one)
 
 ## Dev Notes
 

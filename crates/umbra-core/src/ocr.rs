@@ -130,13 +130,24 @@ impl OcrEngine for OarOcrEngine {
         // is just alpha-channel dropping over the buffer already in memory (image 0.25.9's
         // `impl From<RgbaImage> for DynamicImage` + `DynamicImage::into_rgb8`), the same
         // conversion `extract_text`'s format-sniffing decode already ends with.
+        if width == 0 || height == 0 {
+            return Err(ocr_error(
+                "bucket-malformed-image-buffer",
+                format!("image dimensions must be non-zero, got {width}x{height}"),
+            ));
+        }
         let rgba_image = image::RgbaImage::from_raw(width, height, rgba.to_vec()).ok_or_else(|| {
             ocr_error(
                 "bucket-malformed-image-buffer",
                 format!(
+                    // u128, not u64: width/height are u32, so this product can't overflow u128,
+                    // unlike u64 (width as u64 * height as u64 * 4 can overflow for width/height
+                    // near u32::MAX) — this is an error-message computation, not a hot path, so
+                    // there's no reason to use anything narrower than a type wide enough to never
+                    // overflow for any valid input.
                     "RGBA buffer is {} bytes, which does not match {width}x{height}x4 = {} bytes",
                     rgba.len(),
-                    width as u64 * height as u64 * 4
+                    width as u128 * height as u128 * 4
                 ),
             )
         })?;
@@ -212,6 +223,22 @@ mod tests {
         let engine = test_engine();
         let err = engine
             .extract_text_from_rgba(&[0, 0, 0], 10, 10)
+            .unwrap_err();
+        assert_eq!(err.code, "bucket-malformed-image-buffer");
+    }
+
+    #[test]
+    fn returns_a_tool_error_for_zero_width_or_height_without_reaching_the_ocr_engine() {
+        let engine = test_engine();
+        let err = engine.extract_text_from_rgba(&[], 0, 0).unwrap_err();
+        assert_eq!(err.code, "bucket-malformed-image-buffer");
+    }
+
+    #[test]
+    fn returns_a_tool_error_for_a_mismatched_buffer_near_u32_max_dimensions_without_overflowing() {
+        let engine = test_engine();
+        let err = engine
+            .extract_text_from_rgba(&[0, 0, 0], u32::MAX, u32::MAX)
             .unwrap_err();
         assert_eq!(err.code, "bucket-malformed-image-buffer");
     }

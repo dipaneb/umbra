@@ -164,12 +164,13 @@ let capturedCallback: DragDropCallback | undefined;
 
 const SAMPLE_CLIPBOARD_IMAGE = { rgba: new Uint8Array([1, 2, 3, 4]), width: 1, height: 1 };
 
-function dispatchPasteKeydown(target: EventTarget = window): KeyboardEvent {
+function dispatchPasteKeydown(target: EventTarget = window, options: { repeat?: boolean } = {}): KeyboardEvent {
   const event = new KeyboardEvent("keydown", {
     key: "v",
     metaKey: true,
     bubbles: true,
     cancelable: true,
+    repeat: options.repeat ?? false,
   });
   target.dispatchEvent(event);
   return event;
@@ -476,6 +477,20 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
     }
   });
 
+  it("does NOT intercept a repeated (held-key) ⌘V keydown, only the initial press", async () => {
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockResolvedValueOnce({ text: "UMBRA", confidence: 0.9 });
+    await setupDropZone("/tools/bucket");
+
+    dispatchPasteKeydown(window, { repeat: false });
+    await flushPromises();
+    dispatchPasteKeydown(window, { repeat: true });
+    await flushPromises();
+
+    expect(readClipboardImageMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+
   it("latest-wins: a paste dispatched after an in-flight drop for the same tool wins when it resolves first (AC4, AD-16)", async () => {
     let resolveDrop: (value: unknown) => void;
     const dropPromise = new Promise((resolve) => {
@@ -503,5 +518,34 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
     await flushPromises();
     expect(registry.dropResult).toBeNull();
     expect(registry.pasteResult).toEqual({ toolId: "bucket", value: { text: "from paste", confidence: 0.8 } });
+  });
+
+  it("latest-wins: a drop dispatched after an in-flight paste for the same tool wins when it resolves first (AC4, AD-16)", async () => {
+    let resolvePaste: (value: unknown) => void;
+    const pastePromise = new Promise((resolve) => {
+      resolvePaste = resolve;
+    });
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockReturnValueOnce(pastePromise);
+    invokeMock.mockResolvedValueOnce({ text: "from drop", confidence: 0.7 });
+
+    const { pinia } = await setupDropZone("/tools/bucket");
+    const registry = useRegistryStore(pinia);
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/screenshot.png"] } });
+    await flushPromises();
+
+    // The drop (dispatched after the paste) resolves and wins...
+    expect(registry.pasteResult).toBeNull();
+    expect(registry.dropResult).toEqual({ toolId: "bucket", value: { text: "from drop", confidence: 0.7 } });
+
+    // ...then the older, superseded paste resolves after it and must not overwrite the drop's outcome.
+    resolvePaste!({ text: "from paste", confidence: 0.8 });
+    await flushPromises();
+    expect(registry.pasteResult).toBeNull();
+    expect(registry.dropResult).toEqual({ toolId: "bucket", value: { text: "from drop", confidence: 0.7 } });
   });
 });

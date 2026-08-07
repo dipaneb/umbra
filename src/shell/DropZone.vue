@@ -56,7 +56,7 @@ async function dispatchPaste(toolId: string, handler: string) {
 // "paste an image" (Story 4.2).
 function onKeydown(event: KeyboardEvent) {
   const isPasteShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v";
-  if (!isPasteShortcut || isEditableTarget(event.target)) return;
+  if (!isPasteShortcut || event.repeat || isEditableTarget(event.target)) return;
 
   const activeTool = resolveActiveTool(route.path, registry.tools);
   const routing = routePaste(activeTool);

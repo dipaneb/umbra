@@ -42,6 +42,14 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-06
+# note: story 4.2 moved to done 2026-08-06 (code review complete: 1 decision-needed resolved —
+# user confirmed manual measurement of AC3's ~3s bar on real hardware — and 4 patches applied:
+# u64-overflow fix in ocr.rs's malformed-buffer error message (u128 arithmetic), a 0x0-image guard
+# before RgbaImage::from_raw, an event.repeat guard on the DropZone.vue Cmd+V listener, and a
+# reverse-direction latest-wins regression test; 1 item deferred to deferred-work.md — pre-existing
+# unchecked `as OcrOutcome` type assertion pattern, not introduced by this story. Full verification
+# pass green: cargo fmt --check, cargo clippy --workspace --all-targets -D warnings, cargo test
+# --workspace (170 tests), pnpm test (198 tests), vue-tsc --noEmit.)
 # note: story 4.2 moved to review 2026-08-06 (implementation complete: Tasks 0-6, 8 done; full
 # Rust + TS test suites, lint, typecheck, and build all green. Task 3 surfaced a real Rust/Tauri
 # constraint -- an async fn taking a borrowed tauri::ipc::Request can't satisfy the Send + 'static
@@ -173,7 +181,7 @@ development_status:
 
   epic-4: in-progress
   4-1-drag-an-image-in-get-its-text: review
-  4-2-paste-a-screenshot-copy-the-text: review
+  4-2-paste-a-screenshot-copy-the-text: done
   4-3-the-bucket-never-bluffs: backlog
   epic-4-retrospective: optional
 
