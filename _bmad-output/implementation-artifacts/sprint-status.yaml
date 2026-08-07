@@ -42,6 +42,9 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-07
+# note: story 5.1 moved to in-progress 2026-08-07 (branched
+# feat/story-5-1-a-signed-notarized-umbra-anyone-can-download from main at 75cb0ea,
+# confirming the story's baseline_commit against both local and origin/main)
 # note: epic-4 retrospective completed 2026-08-07 (action item #1 from epic-3 closed -- the
 # AD-16 runner-scoping amendment was applied directly and correctly in Story 4.2, confirmed
 # during this session; action item #2 from epic-3 confirmed still open, owner John, now
@@ -245,8 +248,8 @@ development_status:
   4-3-the-bucket-never-bluffs: done
   epic-4-retrospective: done
 
-  epic-5: backlog
-  5-1-a-signed-notarized-umbra-anyone-can-download: backlog
+  epic-5: in-progress
+  5-1-a-signed-notarized-umbra-anyone-can-download: in-progress
   5-2-umbra-updates-itself-with-consent-and-full-disclosure: backlog
   5-3-the-privacy-promise-proven-at-every-release: backlog
   5-4-a-landing-page-that-earns-the-download: backlog
