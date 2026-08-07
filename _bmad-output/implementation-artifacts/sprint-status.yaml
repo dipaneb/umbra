@@ -41,7 +41,44 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-06
+last_updated: 2026-08-07
+# note: story 4.3 moved to review 2026-08-07 (implementation complete: Tasks 0-6, 8 done, AC1-3/5
+# fully satisfied and tested, AC4's automatable half closed via cargo tree -i reqwest re-audit;
+# Task 4's manual network-monitor tour and Task 7's manual pnpm tauri dev check remain outstanding,
+# deferred to the user -- this sandboxed session has no display server, same limitation as every
+# prior story. Full automated verification green: 173 Rust tests, 200 Vue tests, fmt/clippy/lint/
+# typecheck/build all clean.)
+# note: story 4.3 moved to in-progress 2026-08-07 (branched
+# feat/story-4-3-the-bucket-never-bluffs from main at 1589d29, confirming the
+# story's baseline_commit and Story 4.1/4.2's clean merge to origin/main)
+# note: story 4.3 created 2026-08-07 (third story of Epic 4, auto-discovered as the first
+# backlog-status story in sprint-status.yaml; epic-4 already in-progress since Story 4.1, no
+# epic-status transition needed). baseline_commit set to main's tip (1589d29) directly -- local
+# main and origin/main both resolve to that commit, no branch-stacking content-diff needed, unlike
+# Stories 4.1/4.2. Live-read the current Bucket/OCR/command code and found the real gap behind
+# AC1: a successful extraction with empty outcome.text (the engine's own documented "no text
+# found" signal) currently renders a blank textarea instead of an explicit statement -- not
+# previously flagged anywhere. Confirmed AC2/AC3's backend mechanisms (ToolError mapping,
+# OnceLock-guarded init) already exist from Stories 4.1/4.2 and need test coverage, not new logic
+# -- AC3's gap was explicitly named as deferred-to-this-story in Story 4.2's own scope notes.
+# Re-ran deferred-work.md's Story 1.2 `cargo tree -i reqwest` audit method against the current
+# dependency tree: no new network-capable dependency was introduced by Epic 4's OCR work,
+# closing AC4's automatable half; the manual network-monitor tour remains deferred to the user.
+# A fresh-context validation subagent (per the skill's checklist step) caught and fixed two real
+# gaps before finalizing: Task 3's originally-proposed race test would have been a no-op (racing
+# the shared production OCR_ENGINE static when other tests in the same file already initialize it
+# first under cargo's default parallel-test execution) -- replaced with a test-local OnceLock +
+# Barrier construction that proves the exact mechanism in isolation; and Task 2's "add a fixture
+# or slice bytes in-test" alternative was tightened to in-test-only, keeping the story's file list
+# closed.
+# note: epic-1, epic-2, epic-3 rolled up to done 2026-08-07 (all child stories and
+# retrospectives were already 'done'; the epic-level field is a manual rollup per
+# this file's own WORKFLOW NOTES and had never been flipped — user-requested fix,
+# no story-level work involved)
+# note: story 4.1 moved to done 2026-08-07 (PR #36 confirmed merged to main at
+# 966c94e per git log, independently re-confirmed by Story 4.2's own content-diff
+# verification against origin/main; story's own Status header synced to match —
+# user-requested fix)
 # note: story 4.2 moved to done 2026-08-06 (code review complete: 1 decision-needed resolved —
 # user confirmed manual measurement of AC3's ~3s bar on real hardware — and 4 patches applied:
 # u64-overflow fix in ocr.rs's malformed-buffer error message (u128 arithmetic), a 0x0-image guard
@@ -151,7 +188,7 @@ tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-a-governed-public-repository: done
   1-2-first-launch-the-scaffolded-app-opens: done
   1-3-workspace-structure-and-the-toolerror-contract: done
@@ -164,7 +201,7 @@ development_status:
   1-10-settings-that-remember-my-session: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-1-encode-and-decode-text-base64: done
   2-2-turn-files-into-base64-and-back: done
   2-3-generate-uuids: done
@@ -173,16 +210,16 @@ development_status:
   2-6-decode-jwts-offline: done
   epic-2-retrospective: done
 
-  epic-3: in-progress
+  epic-3: done
   3-1-read-a-cron-expression-in-plain-english: done
   3-2-type-a-schedule-get-a-cron-expression: done
   3-3-the-phrase-corpus-as-an-automated-acceptance-gate: done
   epic-3-retrospective: done
 
   epic-4: in-progress
-  4-1-drag-an-image-in-get-its-text: review
+  4-1-drag-an-image-in-get-its-text: done
   4-2-paste-a-screenshot-copy-the-text: done
-  4-3-the-bucket-never-bluffs: backlog
+  4-3-the-bucket-never-bluffs: review
   epic-4-retrospective: optional
 
   epic-5: backlog

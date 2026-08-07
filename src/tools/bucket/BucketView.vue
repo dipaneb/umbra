@@ -81,8 +81,15 @@ async function onCopy() {
       {{ error.message }}
     </p>
 
+    <p
+      v-if="outcome && !outcome.text"
+      role="status"
+    >
+      No text was found in this image.
+    </p>
+
     <div
-      v-if="outcome"
+      v-if="outcome && outcome.text"
       class="field"
     >
       <label for="bucket-result">Extracted text</label>

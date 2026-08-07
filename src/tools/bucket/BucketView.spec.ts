@@ -5,6 +5,7 @@ import BucketView from "./BucketView.vue";
 import { useRegistryStore } from "../../stores/registry";
 
 const SAMPLE_OUTCOME = { text: "UMBRA OCR TEST", confidence: 0.97 };
+const SAMPLE_EMPTY_OUTCOME = { text: "", confidence: null };
 
 const { writeClipboardTextMock } = vi.hoisted(() => ({
   writeClipboardTextMock: vi.fn(),
@@ -93,6 +94,35 @@ describe("BucketView", () => {
     registry.pasteResult = { toolId: "hash", value: { irrelevant: true } };
     await flushPromises();
 
+    expect(resultTextarea().exists()).toBe(false);
+  });
+
+  it("states explicitly that no text was found for an empty-text drop result, instead of a blank textarea (AC1)", async () => {
+    mountView();
+    const registry = useRegistryStore(pinia);
+    await flushPromises();
+
+    registry.dropResult = { toolId: "bucket", value: SAMPLE_EMPTY_OUTCOME };
+    await flushPromises();
+
+    const status = wrapper!.find("[role='status']");
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("No text was found in this image.");
+    expect(resultTextarea().exists()).toBe(false);
+    expect(wrapper!.find("button").exists()).toBe(false);
+  });
+
+  it("states explicitly that no text was found for an empty-text paste result, instead of a blank textarea (AC1)", async () => {
+    mountView();
+    const registry = useRegistryStore(pinia);
+    await flushPromises();
+
+    registry.pasteResult = { toolId: "bucket", value: SAMPLE_EMPTY_OUTCOME };
+    await flushPromises();
+
+    const status = wrapper!.find("[role='status']");
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("No text was found in this image.");
     expect(resultTextarea().exists()).toBe(false);
   });
 
