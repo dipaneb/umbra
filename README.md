@@ -22,3 +22,15 @@ the actual skills and scripts that produced those documents, included so
 the process is reproducible, not just its output.
 
 Development (the code in `src/`, `src-tauri/`, etc.) follows in later commits.
+
+## Documentation
+
+`docs/` holds standalone reference documentation meant to outlive any single story or
+PR — for example release/signing setup notes written for future recall, not just
+implementation history. It's distinct from `_bmad-output/`, which records the planning
+and story-by-story development process itself.
+
+Anything written there must never include real personal information (full names, local
+filesystem paths revealing a username, etc.) — this repo is public. Use placeholders
+and generic examples instead; see `.claude/hooks/guard-commit-privacy.sh` for the
+automated guard against this.
