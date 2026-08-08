@@ -41,7 +41,15 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-07
+last_updated: 2026-08-08
+# note: story 5.1 moved to review 2026-08-08 (implementation complete: Tasks 0-6, 8 done. Real-world
+# progress on Task 7 during this session: Apple Developer Program enrollment cleared, Developer ID
+# Application certificate issued (after diagnosing and fixing a missing-intermediate-CA trust-chain
+# gap), and all 8 required GitHub Actions secrets created and verified via `gh secret list`. Still
+# outstanding, deferred to the developer: backing up the updater private key in two offline locations,
+# a prerelease validation tag, and the real-Mac Gatekeeper check -- none performable from a coding
+# session. PR #40 opened against main. Full verification pass green: actionlint 0 findings, 174 Rust
+# tests, 201 Vue tests, fmt/clippy/lint/typecheck/build all clean.)
 # note: story 5.1 moved to in-progress 2026-08-07 (branched
 # feat/story-5-1-a-signed-notarized-umbra-anyone-can-download from main at 75cb0ea,
 # confirming the story's baseline_commit against both local and origin/main)
@@ -249,7 +257,7 @@ development_status:
   epic-4-retrospective: done
 
   epic-5: in-progress
-  5-1-a-signed-notarized-umbra-anyone-can-download: in-progress
+  5-1-a-signed-notarized-umbra-anyone-can-download: review
   5-2-umbra-updates-itself-with-consent-and-full-disclosure: backlog
   5-3-the-privacy-promise-proven-at-every-release: backlog
   5-4-a-landing-page-that-earns-the-download: backlog

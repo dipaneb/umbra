@@ -26,10 +26,10 @@
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 #                                 Password for the above key, if one was set at generation time.
 #
-# This secrets list is documented here (workflow comments) only, not duplicated into a README
-# section — this repo has no `docs/` folder yet despite `_bmad/bmm/config.yaml` pointing
-# `project_knowledge` at one, and creating one for this alone would be speculative structure this
-# story doesn't need.
+# This list (what each secret is, where it's used) intentionally stays terse — it's a quick
+# reference while editing this file, not the full story. For what each secret IS, why it exists,
+# how to regenerate it, and what happens if the Apple Developer Program membership lapses, see
+# docs/release-secrets.md — a durable reference written for future-you, not tied to any one story.
 
 name: Release
 
