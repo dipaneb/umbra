@@ -33,7 +33,11 @@ fi
 # A commit that *removes* a leaked path/secret must not be blocked by the same
 # check that exists to stop one from being *introduced* — otherwise fixing a
 # leak becomes impossible without bypassing this hook entirely.
-added="$(printf '%s\n' "$staged" | grep -E '^\+' | grep -vE '^\+\+\+ ')"
+# The header-exclusion pattern is anchored to the actual "+++ a/…", "+++ b/…",
+# or "+++ /dev/null" shapes (not a bare "^\+\+\+ " prefix) so a genuinely added
+# line whose own content happens to start with "++ " isn't misclassified as a
+# diff header and silently skipped.
+added="$(printf '%s\n' "$staged" | grep -E '^\+' | grep -vE '^\+\+\+ (a/|b/|/dev/null)')"
 
 deny() {
   local reason="$1"

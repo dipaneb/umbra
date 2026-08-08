@@ -42,6 +42,16 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-08
+# note: story 5.1 moved to done 2026-08-08 (code review complete via bmad-code-review: 1
+# decision-needed resolved -- a real Apple Team ID committed in plaintext in
+# docs/release-secrets.md, contradicting AC3 and this diff's own new CLAUDE.md placeholder
+# convention; developer chose redact-only, no history rewrite -- and 4 patches applied (the
+# Team ID redaction, a stale-commit-reference fix in Task 8, CLAUDE.md added to the File
+# List, and a guard-commit-privacy.sh header-exclusion-pattern tightening closing a narrow
+# added-lines-filter bypass); 6 items deferred to deferred-work.md, 5 dismissed after
+# verification (including a suspected redundant-certificate-handling finding disproven via
+# Context7 against Tauri's own official docs example). Full details in the story file's own
+# Review Findings section and Change Log.)
 # note: story 5.1 moved to review 2026-08-08 (implementation complete: Tasks 0-6, 8 done. Real-world
 # progress on Task 7 during this session: Apple Developer Program enrollment cleared, Developer ID
 # Application certificate issued (after diagnosing and fixing a missing-intermediate-CA trust-chain
@@ -257,7 +267,7 @@ development_status:
   epic-4-retrospective: done
 
   epic-5: in-progress
-  5-1-a-signed-notarized-umbra-anyone-can-download: review
+  5-1-a-signed-notarized-umbra-anyone-can-download: done
   5-2-umbra-updates-itself-with-consent-and-full-disclosure: backlog
   5-3-the-privacy-promise-proven-at-every-release: backlog
   5-4-a-landing-page-that-earns-the-download: backlog

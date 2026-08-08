@@ -41,7 +41,7 @@ the same "generate once, store carefully, never lose it" shape as the Apple cred
 | `KEYCHAIN_PASSWORD` | Arbitrary password for a throwaway CI keychain | GitHub secret only (you chose it) | Change anytime, no downstream effect |
 | `APPLE_ID` | Your Apple ID email | GitHub secret + your memory | N/A, it's just your email |
 | `APPLE_PASSWORD` | An app-specific password for that Apple ID | GitHub secret + [appleid.apple.com](https://appleid.apple.com) | Yes, generate a new one anytime |
-| `APPLE_TEAM_ID` | Your Developer Program Team ID (`8PD8J6B7CA`) | GitHub secret + Apple's account page | No, fixed for the life of the membership |
+| `APPLE_TEAM_ID` | Your Developer Program Team ID (`<Team ID>`) | GitHub secret + Apple's account page | No, fixed for the life of the membership |
 | `TAURI_SIGNING_PRIVATE_KEY` | Content of the updater's private signing key | GitHub secret + `~/.tauri/umbra-updater.key` | Only by generating a brand-new keypair (breaks old updater trust) |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password protecting that key | GitHub secret only (you chose it) | Only alongside a new keypair |
 | `GITHUB_TOKEN` | Auth for `tauri-action` to publish the Release | Automatic — **you never create this** | N/A |
@@ -59,7 +59,7 @@ Everything below depends on one paid, annual subscription.
 - **Cost:** $99/year (USD; may vary by country), billed to whatever payment method you
   enrolled with. [developer.apple.com/programs](https://developer.apple.com/programs/)
   confirms this pricing.
-- **Team ID:** `8PD8J6B7CA` — visible in your account's Membership Details page, and
+- **Team ID:** `<Team ID>` — visible in your account's Membership Details page, and
   also embedded directly in your Developer ID Application certificate (its `OU` field).
   This ID doesn't change for the life of the membership.
 - **Renewal:** Apple Developer Program memberships typically auto-renew unless you
@@ -153,7 +153,7 @@ value again, you must regenerate it from the source described below.
   one without touching anything else in this list.
 
 ### `APPLE_TEAM_ID`
-- **What:** `8PD8J6B7CA` — see "The root of everything" above.
+- **What:** `<Team ID>` — see "The root of everything" above.
 - **Why:** Required when an Apple ID belongs to more than one team, to disambiguate
   which team's certificate/notarization context to use.
 - **Source of truth:** your account's Membership Details page, or the `OU` field of any
