@@ -29,6 +29,16 @@ if [ -z "$staged" ]; then
   exit 0
 fi
 
+# Only scan *added* lines (real "+" diff lines, not the "+++ b/file" header).
+# A commit that *removes* a leaked path/secret must not be blocked by the same
+# check that exists to stop one from being *introduced* — otherwise fixing a
+# leak becomes impossible without bypassing this hook entirely.
+# The header-exclusion pattern is anchored to the actual "+++ a/…", "+++ b/…",
+# or "+++ /dev/null" shapes (not a bare "^\+\+\+ " prefix) so a genuinely added
+# line whose own content happens to start with "++ " isn't misclassified as a
+# diff header and silently skipped.
+added="$(printf '%s\n' "$staged" | grep -E '^\+' | grep -vE '^\+\+\+ (a/|b/|/dev/null)')"
+
 deny() {
   local reason="$1"
   jq -n --arg reason "$reason" \
@@ -43,21 +53,21 @@ affected_files() {
 # 1. This machine's real home-directory path, derived from $HOME (not
 #    hardcoded, so the hook stays correct on a different machine/user).
 home_escaped="$(printf '%s' "$HOME" | sed 's/[.[\*^$/]/\\&/g')"
-if [ -n "$HOME" ] && printf '%s' "$staged" | grep -qE "$home_escaped"; then
-  deny "Staged changes contain this machine's home-directory absolute path — that is personal information (reveals a name). Affected file(s): $(affected_files). Remove the absolute path (use a relative path, or drop it) and re-stage before committing."
+if [ -n "$HOME" ] && [ -n "$added" ] && printf '%s' "$added" | grep -qE "$home_escaped"; then
+  deny "Staged changes ADD this machine's home-directory absolute path — that is personal information (reveals a name). Affected file(s): $(affected_files). Remove the absolute path (use a relative path, or drop it) and re-stage before committing."
 fi
 
 # 2. Generic macOS/Linux personal-home-path fallback, in case a differently
 #    shaped path shows up (e.g. this repo used from another machine/user).
-if printf '%s' "$staged" | grep -qE '(^|[^A-Za-z0-9_])(/Users/[A-Za-z0-9_.-]+/|/home/[A-Za-z0-9_.-]+/)'; then
-  deny "Staged changes contain what looks like a personal home-directory path. Affected file(s): $(affected_files). Review and remove it before committing."
+if [ -n "$added" ] && printf '%s' "$added" | grep -qE '(^|[^A-Za-z0-9_])(/Users/[A-Za-z0-9_.-]+/|/home/[A-Za-z0-9_.-]+/)'; then
+  deny "Staged changes ADD what looks like a personal home-directory path. Affected file(s): $(affected_files). Review and remove it before committing."
 fi
 
 # 3. Common secret/credential patterns. Best-effort — some false positives
 #    are acceptable since this only blocks, it never silently proceeds.
 secret_pattern='AKIA[0-9A-Z]{16}|-----BEGIN[A-Z ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{36,}|(api[_-]?key|apikey|secret|password|token)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9_/+=]{12,}'
-if printf '%s' "$staged" | grep -qiE "$secret_pattern"; then
-  deny "Staged changes contain what looks like a secret or credential (API key, private key, or token pattern). Affected file(s): $(affected_files). Remove it — and rotate the credential if it is real — before committing."
+if [ -n "$added" ] && printf '%s' "$added" | grep -qiE "$secret_pattern"; then
+  deny "Staged changes ADD what looks like a secret or credential (API key, private key, or token pattern). Affected file(s): $(affected_files). Remove it — and rotate the credential if it is real — before committing."
 fi
 
 exit 0
