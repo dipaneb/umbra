@@ -42,6 +42,70 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-09
+# note: story 5.3 moved to done 2026-08-09 (code review complete via bmad-code-review: 1
+# decision-needed resolved, 7 patches applied, 1 item deferred to deferred-work.md, 8 dismissed
+# after verification. Decision: developer confirmed the recorded AC3 pass was captured *after*
+# both live-caught methodology fixes (process-name, PID-poll-loop), not before -- Change
+# Log/Completion Notes updated to state this explicitly rather than leave it inferable. Patches:
+# poll-loop snippet hardened with a 30s timeout and a multi-PID guard (a stale second instance
+# could otherwise make nettop silently attach to the wrong process -- a false-pass risk for the
+# exact thing this checklist exists to catch); added a pointer comment in
+# src/stores/registry.ts (comment-only, no behavior change) so future tool additions see a
+# reminder to update the checklist's exercise list; corrected the story's own self-verification
+# claim -- `git diff main --stat` alone cannot show untracked new files and was never able to
+# prove what the story cited it for, confirmed by reproducing the command directly; added a
+# single-machine/single-network-condition caveat to the nettop section; added a bootstrap note
+# reconciling the recording convention's release-PR scoping with this story's own first use on a
+# feat PR; added an explicit "do not merge on fail" remediation step, previously undefined.
+# Deferred: src-tauri/Cargo.toml's version (0.1.0) has drifted from tauri.conf.json's (0.1.2) --
+# pre-existing, functionally inert, but now visibly inconsistent since the checklist doc cites
+# Cargo.toml as evidence. Dismissed findings were mostly limitations the checklist doc already
+# discloses inline (manual v1 procedure, no CI enforcement, self-attested evidence under the
+# repo's own PII rule) rather than silent gaps.)
+# note: story 5.3 moved to review 2026-08-09 (implementation complete: Tasks 0-3 all done. Task
+# 3 (AC3's hard completion gate) executed live by the developer against the real, installed,
+# signed v0.1.2 release build -- passing result: all 7 tools produced zero outbound connections,
+# and a relaunch showed exactly one connection matching the expected one-shot update check.
+# Two real methodology gaps in the checklist doc itself were caught live and fixed before
+# finalizing: the process-name guidance was wrong (installed release app's actual process name
+# is `umbra`, lowercase, same as the dev build -- not `Umbra` as originally assumed, since Tauri
+# names the executable after the Cargo binary target regardless of build type; `productName`
+# only sets the bundle's display name), and a stale-PID risk where quitting/relaunching the app
+# produces a new PID that a running `nettop` session silently stops tracking, which looks
+# identical to "zero connections" but isn't -- fixed with a PID-poll-loop pattern in the doc.
+# No src/ or src-tauri/src/ files touched, confirmed via git diff --stat -- documentation-only
+# story as scoped.)
+# note: story 5.3 moved to in-progress 2026-08-09 (branched
+# feat/story-5-3-the-privacy-promise-proven-at-every-release from main at 363a50e,
+# confirming the story's baseline_commit against both local and origin/main)
+# note: story 5.3 created 2026-08-09 (third story of Epic 5, auto-discovered as the first
+# backlog-status story in sprint-status.yaml; epic-5 already in-progress since Story 5.1, no
+# epic-status transition needed). baseline_commit set to main's tip (363a50e) directly -- local
+# main and origin/main both resolve to that commit, clean tree, no branch-stacking content-diff
+# needed. Drew scope directly from the story's own ACs plus two explicit forward-references
+# Story 5.2 left for it by name: its own boundary note ("Story 5.3's written network-monitor
+# release checklist... is not this story's job") and a code-review-deferred item (tauri.conf.json
+# version-bump discipline, also in deferred-work.md). Confirmed via epics.md/PRD that NFR1's
+# conditional second carve-out (a first-use OCR model download) is resolved away by AD-7's
+# bundled-models decision, so the checklist only needs to tolerate one permitted connection type
+# (the update check), not two. Ground-truthed the current tool inventory directly from
+# src/stores/registry.ts (json, base64, uuid, hash, jwt, cron, bucket -- 7 tools) rather than
+# trusting planning docs, which don't itemize one. Chose nettop (macOS-native) as the capture
+# tool, following Story 4.3's own precedent of already using it ad hoc for the Bucket. Decided
+# explicitly against adding a .github/pull_request_template.md (none exists in the repo) since
+# the architecture spine's own deferred item frames this as a manual v1 procedure, not one
+# committing to mechanical enforcement -- recorded as a deliberate scope decision, not a silent
+# gap. A fresh-context validation subagent (per the skill's checklist step) independently
+# re-verified every citation in the story against the source files and found zero discrepancies,
+# but surfaced two real refinements applied before finalizing: nettop needs to be scoped to
+# Umbra's own process (PID/process-name filtering, which differs between a pnpm tauri dev session
+# and the installed release app) to avoid drowning in unrelated system traffic, and Task 3's
+# "test the current release" instruction was tightened from a soft preference into concrete
+# steps for installing and running the real signed v0.1.2 build rather than defaulting to a dev
+# session. AC3's actual execution against v0.1.2 remains a hard completion gate deferred to the
+# developer -- this sandboxed session has no display server, same limitation as every prior story,
+# but unlike routine smoke checks this one is an explicit story-completion blocker, not optional
+# polish.
 # note: story 5.2 moved to done 2026-08-09 (code review complete via bmad-code-review: 0
 # decision-needed, 6 patches applied, 1 item deferred to deferred-work.md, 8 dismissed after
 # verification. Fixes: UpdateDialog.vue's install path had no error handling/re-entrancy guard
@@ -313,7 +377,7 @@ development_status:
   epic-5: in-progress
   5-1-a-signed-notarized-umbra-anyone-can-download: done
   5-2-umbra-updates-itself-with-consent-and-full-disclosure: done
-  5-3-the-privacy-promise-proven-at-every-release: backlog
+  5-3-the-privacy-promise-proven-at-every-release: done
   5-4-a-landing-page-that-earns-the-download: backlog
   5-5-the-public-backlog-opens: backlog
   epic-5-retrospective: optional

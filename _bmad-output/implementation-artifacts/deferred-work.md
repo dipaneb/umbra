@@ -125,3 +125,7 @@
 ## Deferred from: code review of 5-2-umbra-updates-itself-with-consent-and-full-disclosure (2026-08-09)
 
 - `tauri.conf.json`'s `version` field bump discipline (must be bumped every release for the updater's semver comparison to detect anything) is unenforced and undocumented. Deferred reason: belongs to the release-checklist territory this story's own boundary notes already assign to Story 5.3, not a fix this diff's code can make unilaterally. [`src-tauri/tauri.conf.json`]
+
+## Deferred from: code review of 5-3-the-privacy-promise-proven-at-every-release (2026-08-09)
+
+- `src-tauri/Cargo.toml`'s `[package] version` (`0.1.0`) has drifted from `src-tauri/tauri.conf.json`'s `version` (`0.1.2`) — pre-existing, not introduced by this story. Functionally inert today since `release.yml`'s tag-vs-version check and `tauri-action` both read only `tauri.conf.json`, never `Cargo.toml`. Worth a fix since `docs/release-checklist.md` itself now cites `Cargo.toml`'s `[package] name` as load-bearing evidence for the process-naming guidance, making the same file's own stale `version` field a visible inconsistency to anyone cross-checking. [`src-tauri/Cargo.toml:3`]
