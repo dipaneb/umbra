@@ -116,6 +116,7 @@ Claude Sonnet 5 (claude-sonnet-5)
 - Developer corrected initial `npm create astro@latest` attempt to `pnpm create astro@latest` mid-session — pnpm is this user's established package manager (saved to memory for future sessions).
 - `pnpm astro check` requires installing `@astrojs/check` + `typescript` as additional dependencies (interactive prompt) — skipped as out-of-scope-dependency; used `pnpm build` (a real production build of all pages) as this task's validation instead, which is arguably the more direct test for a static content site anyway.
 - Astro's `Layout.astro` canonical-URL logic (`new URL(Astro.url.pathname, Astro.site)`) throws at build time if `astro.config.mjs`'s `site` is unset — this pulled Task 3's `site` config forward into Task 2's work as a hard prerequisite, not just a SEO nice-to-have.
+- A live browser check (via `pnpm preview` + Claude in Chrome, after the Chrome extension's initial connection issue was resolved by the developer running `/mcp` to reconnect) caught a real rendering bug the build log and HTML-structure checks missed: the footer's "publicly readable — source on GitHub" text rendered with the em dash and link glued together, no space. Cause: Astro trims the newline+indentation between inline text and a following tag rather than collapsing it to a space like normal HTML whitespace handling — a real framework gotcha, not a typo. Fixed by keeping the text and link on one source line; verified visually after rebuild, committed and pushed separately (`4483939`).
 
 ### Completion Notes List
 
