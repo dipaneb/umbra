@@ -11,6 +11,8 @@
     "clipboard-manager:allow-read-image",
     "store:default",
     "dialog:default",
+    "updater:default",
+    "process:allow-restart",
     "core:window:allow-show",
     "core:window:allow-set-position",
     "core:window:allow-set-size"

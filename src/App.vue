@@ -2,6 +2,7 @@
 import AppSidebar from "./shell/AppSidebar.vue";
 import CommandPalette from "./shell/CommandPalette.vue";
 import DropZone from "./shell/DropZone.vue";
+import UpdateDialog from "./shell/UpdateDialog.vue";
 </script>
 
 <template>
@@ -12,6 +13,7 @@ import DropZone from "./shell/DropZone.vue";
     </main>
     <CommandPalette />
     <DropZone />
+    <UpdateDialog />
   </div>
 </template>
 

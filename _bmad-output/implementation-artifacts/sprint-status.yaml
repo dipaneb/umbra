@@ -41,7 +41,51 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-08
+last_updated: 2026-08-09
+# note: story 5.2 moved to done 2026-08-09 (code review complete via bmad-code-review: 0
+# decision-needed, 6 patches applied, 1 item deferred to deferred-work.md, 8 dismissed after
+# verification. Fixes: UpdateDialog.vue's install path had no error handling/re-entrancy guard
+# and raced against Dismiss (a user could click Install then Not Now while the download was in
+# flight and the app could still relaunch after the apparent decline) -- added an installing
+# guard, inline error+retry, and caught close() rejections, with 3 new regression tests;
+# process:default capability scoped to process:allow-restart (only permission actually used);
+# corrected an overclaiming AD-7 audit-trail sentence in ARCHITECTURE-SPINE.md/the story's own
+# Completion Notes (cargo tree -i reqwest alone didn't prove tauri-plugin-process has no other
+# network-capable dependency -- the underlying claim was independently confirmed true via
+# Cargo.lock, so this was a documentation fix); UpdateDialog.vue brought in line with
+# CommandPalette.vue's focus-management/capture-phase-Escape/z-index conventions. Full
+# verification green after patches: 174/174 Rust tests, 214/214 Vue tests (211 baseline + 3
+# new), fmt/clippy/lint/typecheck all clean.)
+# note: story 5.2 moved to review 2026-08-09 (implementation complete: Tasks 0-7 done, Task 8's
+# manual pnpm tauri dev check deferred to the developer -- no display server in this sandboxed
+# session, same limitation as every prior story. Two real gaps found and recorded, not silently
+# worked around: the updater endpoint 404s until a non-prerelease release exists (GitHub's
+# /releases/latest excludes prereleases; only the prerelease v0.1.0-alpha.1 exists so far), and
+# holding the Update class instance in a plain ref() broke vue-tsc and risked runtime
+# private-field-access failures through Vue's reactive Proxy -- fixed with shallowRef. Full
+# verification green: 174/174 Rust tests, 211/211 Vue tests (201 baseline + 10 new), fmt/clippy/
+# lint/typecheck/build all clean. AD-7 cargo tree -i reqwest audit confirms tauri-plugin-updater
+# as the sole network-capable dependency; findings recorded in ARCHITECTURE-SPINE.md's Stack table.)
+# note: story 5.2 moved to in-progress 2026-08-09 (branched
+# feat/story-5-2-umbra-updates-itself-with-consent-and-full-disclosure from main at 2ed9804,
+# confirming the story's baseline_commit)
+# note: story 5.2 created 2026-08-09 (second story of Epic 5, auto-discovered as the first
+# backlog-status story in sprint-status.yaml; epic-5 already in-progress since Story 5.1, no
+# epic-status transition needed). baseline_commit set to main's tip (2ed9804) directly -- local
+# main and origin/main both resolve to that commit, clean tree, no branch-stacking content-diff
+# needed. Drew the story's scope directly from Story 5.1's own explicit "Explicitly out of
+# scope for this story" section, which named exactly what 5.2 needed to build: the
+# tauri-plugin-updater/tauri-plugin-process dependencies, the endpoints config, the app-built
+# confirmation dialog, and the README+Settings network-exception disclosure. Verified current
+# package versions live against npm/crates.io (tauri-plugin-updater 2.10.1, tauri-plugin-process
+# 2.3.1) and the updater plugin's current JS/Rust API via Context7, per the spine's
+# "Dependency version/API drift" convention. Resolved one real open design question not decided
+# upstream -- whether to add a manual "Check for Updates" button -- by deciding against it
+# (auto-check-on-launch only; no AC requires a manual trigger, and building one would need new
+# cross-component state-sharing with no existing pattern to reuse). A fresh-context validation
+# subagent (per the skill's checklist step) re-verified all cited versions/APIs/file-state
+# live and found one real gap -- Task 4 built the update dialog but never instructed writing its
+# own test file, though later tasks assumed it existed -- fixed before finalizing.
 # note: story 5.1 moved to done 2026-08-08 (code review complete via bmad-code-review: 1
 # decision-needed resolved -- a real Apple Team ID committed in plaintext in
 # docs/release-secrets.md, contradicting AC3 and this diff's own new CLAUDE.md placeholder
@@ -268,7 +312,7 @@ development_status:
 
   epic-5: in-progress
   5-1-a-signed-notarized-umbra-anyone-can-download: done
-  5-2-umbra-updates-itself-with-consent-and-full-disclosure: backlog
+  5-2-umbra-updates-itself-with-consent-and-full-disclosure: done
   5-3-the-privacy-promise-proven-at-every-release: backlog
   5-4-a-landing-page-that-earns-the-download: backlog
   5-5-the-public-backlog-opens: backlog

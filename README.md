@@ -4,6 +4,12 @@ A privacy-first developer toolbox for macOS — your data never leaves your mach
 
 Built with Rust, Tauri, and Vue.
 
+## Privacy
+
+Umbra makes zero network calls except one, explicitly disclosed: the automatic check
+for app updates. Installing an update always requires your explicit confirmation
+first — nothing installs silently. There is no telemetry anywhere in the app.
+
 ## How this was planned: BMad Method
 
 The `_bmad/`, `_bmad-output/`, and `.claude/` directories in this repo are the
