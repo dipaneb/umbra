@@ -4,7 +4,7 @@ baseline_commit: 848d992
 
 # Story 5.4: A landing page that earns the download
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -62,11 +62,11 @@ so that I can evaluate and download Umbra in one visit.
   - [x] Documented, no action needed: every push to `main` now deploys to production automatically, confirmed by observing the redeploy after the `site`-URL-fix push land live.
   - [x] **Decision confirmed: custom domain deferred**, as planned — shipping on `umbra-web-beta.vercel.app`.
 
-- [ ] **Task 6: Manual verification** — one item below still open (PostHog pageview confirmation needs a real browser visit).
+- [x] **Task 6: Manual verification**
   - [x] All three pages confirmed live and returning 200: `/`, `/download/`, `/faq/` (verified via `curl` this session).
   - [x] Download link confirmed resolving to a real, current, non-prerelease release: `https://github.com/dipaneb/umbra/releases/latest` redirects to `.../releases/tag/v0.1.2` (verified via `curl -I` following the redirect).
   - [x] Real PostHog project API key swapped in (developer created the project 2026-08-09/10; onboarding skipped past the irrelevant feature-flags/session-replay/surveys setup, straight to Project Settings → Project API Key). **Region correction:** developer confirmed their PostHog project is EU-region, not the US default this session had assumed — `api_host` changed from `us.i.posthog.com` to `eu.i.posthog.com` to match. Verified in both the local build output and the live site (`curl` confirms the real key + EU host are live, no placeholder remnants anywhere in `dist/` or `src/`). Committed and pushed (`ed1888f`).
-  - [ ] **PostHog dashboard pageview confirmation — not directly verified by the agent, last item outstanding.** `curl` requests don't execute JavaScript, so none of this session's live-site checks actually fired a real PostHog pageview event; that requires a real browser visit. The Claude-in-Chrome browser tool was available earlier in this session but disconnected again before this final check (needs the developer's own `/mcp` reconnect to resume, as it did once already this session) — rather than chase that further, this is left for the developer: visit `https://umbra-web-beta.vercel.app/` once in a normal browser, then check PostHog's Web analytics/Activity tab for the pageview.
+  - [x] **PostHog dashboard pageview confirmation.** Developer visited the live site and confirmed the pageview registered in PostHog's dashboard (2026-08-10). AC3 fully satisfied: analytics scoped to `umbra-web` only, working end-to-end.
   - [x] Cross-repo isolation re-confirmed: `Umbra`'s `git status --porcelain` after all of Tasks 5–6's work still shows only this story file and Task 1's `ARCHITECTURE-SPINE.md` line.
 
 ## Dev Notes
@@ -105,7 +105,8 @@ so that I can evaluate and download Umbra in one visit.
 ## Change Log
 
 - 2026-08-09: Implementation session via `bmad-dev-story`, starting from `848d992`. Tasks 0–4 complete: scaffolded `umbra-web` (Astro, pnpm) as a new separate public repo, recorded the stack decision in `Umbra`'s `ARCHITECTURE-SPINE.md`, built all three pages (home, download, FAQ) with a shared `Layout.astro`, added SEO basics (`@astrojs/sitemap`, per-page title/description/canonical, `robots.txt`), and wired PostHog page-view analytics with a placeholder API key. All pushed to `dipaneb/umbra-web` `main`. Tasks 5–6 (Vercel account-linking, live post-deploy verification) cannot be performed in this coding session — no Vercel dashboard access. Flagged explicitly, not silently skipped — status held at `in-progress` rather than advancing to `review`.
-- 2026-08-09/10: Developer connected `dipaneb/umbra-web` to Vercel (actual URL `umbra-web-beta.vercel.app`, corrected in `astro.config.mjs`) and created a real PostHog project (EU region). Both swapped in for their respective placeholders, verified live, committed, and pushed. Tasks 5–6 now complete except one item: confirming a real pageview registers in PostHog's dashboard, which needs an actual browser visit rather than the `curl`-based checks this session could run. Status held at `in-progress`, one visit away from `review`.
+- 2026-08-09/10: Developer connected `dipaneb/umbra-web` to Vercel (actual URL `umbra-web-beta.vercel.app`, corrected in `astro.config.mjs`) and created a real PostHog project (EU region). Both swapped in for their respective placeholders, verified live, committed, and pushed.
+- 2026-08-10: Developer confirmed the PostHog pageview registered in the dashboard after visiting the live site — Task 6's last item. All tasks complete, all ACs satisfied with live evidence. Status moved to `review`.
 
 ## Dev Agent Record
 
@@ -124,12 +125,11 @@ Claude Sonnet 5 (claude-sonnet-5)
 
 ### Completion Notes List
 
-- Tasks 0–5 fully implemented and verified. Task 6 has one item remaining. 9 commits total on `dipaneb/umbra-web` `main`.
+- **All tasks (0–6) complete.** 9 commits on `dipaneb/umbra-web` `main`, all pushed; live at `https://umbra-web-beta.vercel.app`.
 - **Vercel connection (Task 5) done by the developer 2026-08-09/10**, actual URL `https://umbra-web-beta.vercel.app` (not the guessed `umbra-web.vercel.app` — that name was taken). `astro.config.mjs` corrected to match, verified live via `curl` (canonical links, sitemap, robots.txt all resolve correctly on the real domain).
 - **PostHog project created by the developer** (2026-08-09/10) — onboarding's feature-flags/session-replay/surveys setup skipped entirely, going straight to Project Settings for the API key, exactly as guided. Real key + correct **EU-region** `api_host` (developer's project is EU, not the US default this story assumed) swapped in, verified in the live build via `curl` — no placeholder remnants anywhere.
 - Download link verified live: `https://github.com/dipaneb/umbra/releases/latest` redirects to `.../releases/tag/v0.1.2` (real, non-prerelease).
-- **One item outstanding: confirming a pageview actually registers in PostHog's dashboard.** `curl` cannot execute the JavaScript that fires PostHog's tracking call, so none of this session's live-site checks generated a real event — that needs an actual browser visit. The Claude-in-Chrome tool was used successfully once this session (after the developer ran `/mcp` to reconnect it) but had disconnected again by the time of this final check; rather than chase reconnection further, this is left for the developer to confirm directly: visit the live URL once, then check PostHog's dashboard.
-- **Story status is intentionally left at `in-progress`, not `review`** — per the workflow's own completion gate, a story with incomplete tasks cannot be marked ready for review, and this is a one-visit, one-minute check for the developer to close out. Re-run `dev-story` (or just tell the agent it's confirmed) once the pageview shows up in PostHog, to move to `review`.
+- **Task 6's last item — a real PostHog pageview registering in the dashboard — confirmed directly by the developer 2026-08-10** after visiting the live site (needed a real browser; `curl` can't execute the tracking JS). AC1, AC2, and AC3 all fully satisfied with live, verified evidence, not just build-time checks.
 - Cross-repo isolation confirmed throughout: `Umbra`'s `git status --porcelain` after every `umbra-web` task showed only this story file and Task 1's single `ARCHITECTURE-SPINE.md` line — no `src/`/`src-tauri/` changes at any point.
 - User requested (2026-08-09, mid-session, reaffirmed 2026-08-10) that work on `umbra-web` stay pedagogical — explaining Astro/Vercel/PostHog concepts and dashboard steps as they come up, since they're using this project to learn the stack. This is a standing project preference, not a one-off; saved to memory (not committed to any repo, per their instruction) so it carries into future sessions.
 

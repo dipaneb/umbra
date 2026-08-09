@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-09
+last_updated: 2026-08-10
 # note: story 5.3 moved to done 2026-08-09 (code review complete via bmad-code-review: 1
 # decision-needed resolved, 7 patches applied, 1 item deferred to deferred-work.md, 8 dismissed
 # after verification. Decision: developer confirmed the recorded AC3 pass was captured *after*
@@ -378,7 +378,7 @@ development_status:
   5-1-a-signed-notarized-umbra-anyone-can-download: done
   5-2-umbra-updates-itself-with-consent-and-full-disclosure: done
   5-3-the-privacy-promise-proven-at-every-release: done
-  5-4-a-landing-page-that-earns-the-download: in-progress
+  5-4-a-landing-page-that-earns-the-download: review
   5-5-the-public-backlog-opens: backlog
   epic-5-retrospective: optional
 
