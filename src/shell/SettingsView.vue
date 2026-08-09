@@ -34,6 +34,14 @@ async function onClearAll(): Promise<void> {
       Settings
     </h1>
 
+    <h2>Privacy</h2>
+    <p>
+      Umbra makes zero network calls except one, explicitly disclosed: the automatic
+      check for app updates. Installing an update always requires your explicit
+      confirmation first — nothing installs silently. There is no telemetry anywhere
+      in the app.
+    </p>
+
     <label class="restore-toggle">
       <input
         type="checkbox"

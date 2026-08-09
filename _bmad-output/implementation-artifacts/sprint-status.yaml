@@ -42,6 +42,20 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-09
+# note: story 5.2 moved to done 2026-08-09 (code review complete via bmad-code-review: 0
+# decision-needed, 6 patches applied, 1 item deferred to deferred-work.md, 8 dismissed after
+# verification. Fixes: UpdateDialog.vue's install path had no error handling/re-entrancy guard
+# and raced against Dismiss (a user could click Install then Not Now while the download was in
+# flight and the app could still relaunch after the apparent decline) -- added an installing
+# guard, inline error+retry, and caught close() rejections, with 3 new regression tests;
+# process:default capability scoped to process:allow-restart (only permission actually used);
+# corrected an overclaiming AD-7 audit-trail sentence in ARCHITECTURE-SPINE.md/the story's own
+# Completion Notes (cargo tree -i reqwest alone didn't prove tauri-plugin-process has no other
+# network-capable dependency -- the underlying claim was independently confirmed true via
+# Cargo.lock, so this was a documentation fix); UpdateDialog.vue brought in line with
+# CommandPalette.vue's focus-management/capture-phase-Escape/z-index conventions. Full
+# verification green after patches: 174/174 Rust tests, 214/214 Vue tests (211 baseline + 3
+# new), fmt/clippy/lint/typecheck all clean.)
 # note: story 5.2 moved to review 2026-08-09 (implementation complete: Tasks 0-7 done, Task 8's
 # manual pnpm tauri dev check deferred to the developer -- no display server in this sandboxed
 # session, same limitation as every prior story. Two real gaps found and recorded, not silently
@@ -298,7 +312,7 @@ development_status:
 
   epic-5: in-progress
   5-1-a-signed-notarized-umbra-anyone-can-download: done
-  5-2-umbra-updates-itself-with-consent-and-full-disclosure: review
+  5-2-umbra-updates-itself-with-consent-and-full-disclosure: done
   5-3-the-privacy-promise-proven-at-every-release: backlog
   5-4-a-landing-page-that-earns-the-download: backlog
   5-5-the-public-backlog-opens: backlog

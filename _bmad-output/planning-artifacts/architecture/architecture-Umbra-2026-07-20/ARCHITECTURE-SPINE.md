@@ -168,7 +168,8 @@ graph LR
 | Rust | stable, edition 2024 (MSRV ≥1.77.2 per `tauri` crate) |
 | Tauri (Rust crate `tauri`) | 2.11.5 — verified 2026-07-20, unchanged from original spine |
 | `tauri-plugin-store` | 2.4.x (JS `@tauri-apps/plugin-store` 2.4.4, npm registry API 2026-07-20) |
-| `tauri-plugin-updater` | 2.x (JS `@tauri-apps/plugin-updater` 2.10.1 verified) |
+| `tauri-plugin-updater` | 2.x (JS `@tauri-apps/plugin-updater` / Rust crate `tauri-plugin-updater` 2.10.1, re-verified live against npm and crates.io 2026-08-09, Story 5.2 — unchanged since the 2026-07-20 figure). AD-7 audit (Story 5.2): `cargo tree -i reqwest --target aarch64-apple-darwin` shows `reqwest` resolving to `reqwest v0.13.4`, reachable through exactly one path — `tauri-plugin-updater` — confirming it as the sole network-capable dependency in the tree. |
+| `tauri-plugin-process` | 2.x (JS `@tauri-apps/plugin-process` / Rust crate `tauri-plugin-process` 2.3.1, verified live against npm and crates.io 2026-08-09, Story 5.2). Added to relaunch the app after `tauri-plugin-updater`'s `downloadAndInstall()`, which does not relaunch on its own. AD-7 audit (Task 6's own second, direct-inspection check, not just the `reqwest`-scoped `cargo tree -i` result above, which by itself only rules out a `reqwest` path and can't rule out some other network-capable crate): `tauri-plugin-process`'s own `Cargo.lock` entry lists exactly two dependencies, `tauri` and `tauri-plugin`, both process-lifecycle-only — confirming no network-capable crate anywhere in its tree. |
 | `tauri-plugin-dialog` | 2.x (2.7.2 observed 2026-07-20) |
 | `tauri-plugin-clipboard-manager` | 2.x (2.3.2 observed 2026-07-20) |
 | Vue | 3.x (3.5.40 observed 2026-07-20) |

@@ -15,6 +15,16 @@ function stubbedSettingsStore() {
 }
 
 describe("SettingsView", () => {
+  it("discloses the update-check network exception (AC2)", async () => {
+    stubbedSettingsStore();
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("automatic");
+    expect(wrapper.text()).toContain("update");
+    expect(wrapper.text()).toContain("no telemetry");
+  });
+
   it("toggling the restore checkbox calls setRestoreEnabled", async () => {
     const settings = stubbedSettingsStore();
     const wrapper = mount(SettingsView);
