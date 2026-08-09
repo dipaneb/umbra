@@ -46,6 +46,10 @@ export function assertUniqueToolIds(entries: ToolRegistryEntry[]): void {
 // 1.6) the ⌘K command palette are all *generated* from `tools` — none of
 // them list tool names, routes, or components independently. To add a tool,
 // add one entry here; don't hand-edit the sidebar or the router.
+//
+// Adding an entry also means updating docs/release-checklist.md's exercise
+// list (Story 5.3, NFR1) — that checklist's "every tool exercised" guarantee
+// is only as good as this list staying in sync with it.
 const TOOLS: ToolRegistryEntry[] = [
   {
     id: "json",
