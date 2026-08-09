@@ -54,6 +54,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: verify tag matches tauri.conf.json's version
+        # tauri-action reads the app's version strictly from tauri.conf.json, never from the
+        # pushed git tag -- the tag only names the GitHub Release. A forgotten version bump means
+        # the release publishes under the right tag while the signed app inside still self-reports
+        # the old version, silently breaking the updater's version comparison for everyone already
+        # on that old version (confirmed to have already happened once: v0.1.0-alpha.1's own build
+        # shipped with tauri.conf.json still at "0.1.0", no "-alpha.1" suffix). Runs before any
+        # expensive setup/sign/notarize steps so a mismatch fails fast.
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CONF_VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          if [ "$TAG_VERSION" != "$CONF_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME (version $TAG_VERSION) does not match src-tauri/tauri.conf.json's version ($CONF_VERSION). Bump tauri.conf.json to $TAG_VERSION and push that commit before re-tagging."
+            exit 1
+          fi
+
       - uses: dtolnay/rust-toolchain@3a8b2ad3ea1212417907ff0e1b3d0c4e121bef40 # 1.94.0
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
