@@ -42,6 +42,23 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-10
+# note: epic-5 retrospective completed 2026-08-10 (all 3 epic-4 action items confirmed fully
+# closed before epic-5 began -- cleanest retro-to-retro handoff yet, unlike epic-3->4's carried-
+# over item. Two challenges surfaced: (1) a second occurrence of the PII-leak failure mode from
+# Story 5.1 -- guard-commit-privacy.sh's existing home-path pattern did not fire during the
+# actual leaking commit, left as an open investigation, not assumed fixed by widening CLAUDE.md's
+# examples; (2) umbra-web (Story 5.4's new repo) shipped with neither the stack/hosting decision
+# surfaced as options before executing, nor Umbra's own established governance (LICENSE, branch
+# protection, scoped commits) carried over from Story 1.1's precedent -- developer confirmed this
+# as low-severity/note-and-move-on for umbra-web itself but wants the general pattern (new shared
+# infra doesn't inherit checks automatically) fixed going forward. 4 action items recorded: (1)
+# any story creating new shared infrastructure must present the resulting choice as options first
+# and explicitly check/apply this project's governance precedent, owner Amelia; (2) expand
+# CLAUDE.md's privacy section with concrete PII examples since the hook can't regex-detect names
+# in prose, owner Amelia; (3) investigate why the hook's existing pattern didn't fire, owner
+# developer; (4) low-priority housekeeping -- add LICENSE + branch protection to umbra-web, owner
+# developer. No significant discoveries requiring an Epic 6 plan change; Epic 6 confirmed clear to
+# start, no blockers.)
 # note: story 5.5 moved to done 2026-08-10 (code review complete via bmad-code-review, diff
 # 66429c5..HEAD across README.md and this file. AC1's out-of-diff GitHub deliverable (label +
 # 12 issues #47-#58) independently re-verified live via gh, including the two required content
@@ -413,13 +430,13 @@ development_status:
   4-3-the-bucket-never-bluffs: done
   epic-4-retrospective: done
 
-  epic-5: in-progress
+  epic-5: done
   5-1-a-signed-notarized-umbra-anyone-can-download: done
   5-2-umbra-updates-itself-with-consent-and-full-disclosure: done
   5-3-the-privacy-promise-proven-at-every-release: done
   5-4-a-landing-page-that-earns-the-download: done
   5-5-the-public-backlog-opens: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   epic-6: backlog
   6-1-work-pdfs-locally-merge-split-extract: backlog
@@ -511,3 +528,45 @@ action_items:
     # Also closed Task 4/7's network-monitor manual half live in the same session (nettop,
     # zero outbound connections). Story 4.3's file updated to reflect all manual
     # verification now complete.
+  - epic: 5
+    action: "Any story creating new shared infrastructure (new repo, new deployment target, new external service account) must present the resulting architecture/tooling choice as options with trade-offs before executing, and explicitly check/apply this project's established governance patterns (branch protection, LICENSE, CI gates, scoped Conventional Commits - Story 1.1's own precedent) or record a deliberate reason not to"
+    owner: "Amelia"
+    status: done
+    # resolved 2026-08-10: added as a new "Process: new shared infrastructure doesn't
+    # inherit this project's governance automatically" section in CLAUDE.md, citing
+    # this retro and the umbra-web gap that prompted it.
+  - epic: 5
+    action: "Expand CLAUDE.md's privacy section with concrete PII examples (full legal names in prose, email addresses, phone numbers, exact employer/client names, physical addresses, account/customer IDs) - the commit-guard hook cannot regex-detect a name in prose, so the written rule is the front-line defense for that leak shape"
+    owner: "Amelia"
+    status: done
+    # resolved 2026-08-10: added a concrete-examples bullet list to CLAUDE.md's privacy
+    # section, directly under the existing placeholder rule.
+  - epic: 5
+    action: "Investigate why guard-commit-privacy.sh's existing home-path detection pattern did not fire during Story 5.1's actual git commit calls, despite the leaked content matching it"
+    owner: "developer"
+    status: done
+    # investigated 2026-08-10: confirmed the hook was present, executable, and correctly
+    # registered throughout Story 5.1's session -- not a "hook didn't exist" issue. Found
+    # and fixed one real, reproducible bug independent of root cause: the generic
+    # /Users//home/ fallback pattern required a trailing "/" after the username, so a
+    # bare path with no subpath (e.g. "outside /Users/<name> entirely") slipped through --
+    # verified via a live regex test before and after the fix. The $HOME-derived pattern
+    # (rule 1) has no such gap and should have caught any literal path substring, so its
+    # failure isn't fully explained by the regex gap alone; hardened defensively anyway
+    # (fallback to the passwd-database home dir if $HOME is unset/empty at hook-execution
+    # time). One structural hypothesis moved from "unprovable" to CONFIRMED, live, during
+    # this very fix: combining `git add` and `git commit` in one Bash invocation makes the
+    # hook's `git diff --cached` check run against the index as it stood *before* that same
+    # call's own `git add` executes, since PreToolUse fires before any part of the command
+    # runs -- reproduced directly (commit 43b0f8c initially blocked on stale, already-fixed
+    # content when add+commit were combined; splitting them into separate calls resolved it
+    # cleanly). If Story 5.1's leaking commit was issued the same combined way, the hook
+    # would have checked yesterday's index and allowed a commit that only became a leak once
+    # the same call's own `git add` ran afterward -- a real, now-demonstrated failure mode,
+    # not just a theory. The other hypothesis ($HOME not reliably inherited by the hook
+    # subprocess) remains unprovable after the fact. End-to-end tested: the previously-missed
+    # bare-path case is now denied; a normal safe commit still passes with no false positive.
+  - epic: 5
+    action: "Add a LICENSE file and enable branch protection on umbra-web's main branch, matching Umbra's own governance (low priority - no secrets or user data in that repo)"
+    owner: "developer"
+    status: open
