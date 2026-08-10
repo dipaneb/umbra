@@ -290,7 +290,7 @@ mod tests {
             }
             out.push_str(&format!(
                 r#"{{"id":{i},"name":"item-{i}","active":{active},"tags":["a","b","c"]}}"#,
-                active = i % 2 == 0
+                active = i.is_multiple_of(2)
             ));
             i += 1;
         }

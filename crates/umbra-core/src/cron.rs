@@ -78,12 +78,12 @@ fn find_out_of_range_field(expression: &str) -> Option<String> {
                 None => vec![base],
             };
             for candidate in candidates {
-                if let Ok(value) = candidate.parse::<u32>() {
-                    if value < *min || value > *max {
-                        return Some(format!(
-                            "{name} field: {value} is out of range ({min}-{max})"
-                        ));
-                    }
+                if let Ok(value) = candidate.parse::<u32>()
+                    && (value < *min || value > *max)
+                {
+                    return Some(format!(
+                        "{name} field: {value} is out of range ({min}-{max})"
+                    ));
                 }
             }
         }
@@ -501,10 +501,10 @@ fn try_parse_full(
     // No explicit day clause. A bare step-time phrase ("every 15 minutes",
     // "every 2 hours") implicitly means "every day" — `describe()` renders
     // that combination too (see the `explain_step_minutes_...` test above).
-    if let Some(after_every) = starts_with_word(lower, "every") {
-        if let Some((minute, hour)) = parse_time_step(after_every.trim_start()) {
-            return Some(build_result(now, FieldSpec::Wildcard, minute, hour));
-        }
+    if let Some(after_every) = starts_with_word(lower, "every")
+        && let Some((minute, hour)) = parse_time_step(after_every.trim_start())
+    {
+        return Some(build_result(now, FieldSpec::Wildcard, minute, hour));
     }
 
     None

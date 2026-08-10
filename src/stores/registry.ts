@@ -107,7 +107,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "bucket",
     name: "Bucket",
-    aliases: ["bucket", "ocr", "screenshot"],
+    aliases: ["bucket", "ocr", "screenshot", "pdf", "merge"],
     route: "/tools/bucket",
     icon: "OCR",
     component: () => import("../tools/bucket/BucketView.vue"),

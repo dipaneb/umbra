@@ -100,7 +100,10 @@ Story 5.3, but a tool may have been added since:
 - **Bucket** — drag an image in, paste a screenshot, and extract text — **including the
   very first use of the OCR engine in the running session.** First use is the specific
   moment a forgotten bundled-model reference would surface as an actual download,
-  rather than as a bug that shows up somewhere else.
+  rather than as a bug that shows up somewhere else. Also exercise the PDF section
+  (Story 6.1): merge 2+ PDFs, extract a page range, and extract text — a brand-new
+  dependency (`lopdf`) the first time it's used in the real app, not just assumed
+  network-clean from the `cargo tree` check alone.
 
 Also open **Settings** and the **⌘K palette** during the capture. Neither makes any
 `invoke`/`fetch` call today (confirmed by reading `SettingsView.vue` and

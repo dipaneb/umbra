@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -62,4 +62,9 @@ image = "0.25"
 # a fresh process where it's genuinely uninitialized — unlike this crate's own unit tests, which
 # share one process and therefore can't reliably race the not-yet-initialized window).
 umbra = { path = ".", features = ["test-support"] }
+# Test-only, same rationale as the `image` dev-dependency above: builds small valid in-test PDF
+# fixtures for `commands/pdf.rs`'s integration tests. Same crate + default-features=false setting
+# umbra-core already depends on directly (see that crate's Cargo.toml comment for why) — not a
+# second PDF library, just this crate's own dev-only use of it to build test input.
+lopdf = { version = "0.44", default-features = false }
 
