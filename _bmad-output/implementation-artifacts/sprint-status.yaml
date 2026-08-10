@@ -42,6 +42,26 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-10
+# note: story 5.4 moved to done 2026-08-10 (code review complete via bmad-code-review,
+# across both repos: umbra-web diff 23d130c..ed1888f, Umbra diff 848d992..HEAD. 1
+# decision-needed resolved -- developer confirmed disclosure-only PostHog analytics
+# (footer + FAQ, no cookies, no PII) is sufficient, no consent banner added -- and 5
+# patches applied to umbra-web, each verified via a real pnpm build: PostHog gated
+# behind import.meta.env.PROD (no longer fires in local dev/preview deploys); footer's
+# "closed-source but publicly readable" copy realigned with the FAQ's more precise
+# "public code, not open source, All Rights Reserved" phrasing; astro.config.mjs given
+# an explicit trailingSlash: 'always' (canonical URLs no longer split between /faq and
+# /faq/); nav links given aria-current="page" on the active page; Layout.astro's Props
+# given sensible defaults (previously unreachable, latent footgun for future pages). 7
+# items deferred to deferred-work.md, all low-severity (PostHog dashboard-level feature
+# verification, missing og:image/Twitter Card, missing structured data, the -beta URL
+# already accepted in Task 5, no test/CI convention yet -- already noted as optional in
+# the story's own Dev Notes, and two unreachable-today edge cases: a zero-releases
+# download CTA and an Astro.site-unset robots.txt.ts guard). 9 findings dismissed after
+# verification, including two false positives caught by reading the actual repo state
+# rather than trusting the diff: a "favicon regression" (favicon.ico still exists,
+# browsers auto-probe it without the removed <link> tag) and "dangling references to
+# deleted scaffold assets" (grep confirmed zero remaining references).)
 # note: story 5.3 moved to done 2026-08-09 (code review complete via bmad-code-review: 1
 # decision-needed resolved, 7 patches applied, 1 item deferred to deferred-work.md, 8 dismissed
 # after verification. Decision: developer confirmed the recorded AC3 pass was captured *after*
@@ -378,7 +398,7 @@ development_status:
   5-1-a-signed-notarized-umbra-anyone-can-download: done
   5-2-umbra-updates-itself-with-consent-and-full-disclosure: done
   5-3-the-privacy-promise-proven-at-every-release: done
-  5-4-a-landing-page-that-earns-the-download: review
+  5-4-a-landing-page-that-earns-the-download: done
   5-5-the-public-backlog-opens: backlog
   epic-5-retrospective: optional
 
