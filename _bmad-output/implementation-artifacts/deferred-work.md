@@ -143,3 +143,9 @@
 - No automated tests, CI check, Lighthouse/SEO run, or broken-link check exist for this repo — this story's own Dev Notes already state no such convention exists yet for `umbra-web` and frame adding one as "worth considering, not a requirement." [umbra-web: repo-wide]
 - Download CTA links to `github.com/dipaneb/umbra/releases/latest` with no fallback if the repo ever has zero published releases — verified a real, current release (`v0.1.2`) exists today per this story's own Task 6. Low-probability future scenario (would require deleting every release), not a current defect. [umbra-web: `src/pages/download.astro`]
 - `src/pages/robots.txt.ts` would throw (`new URL(undefined)`) if `Astro.site` were ever unset — verified `site` is explicitly set in the current `astro.config.mjs`, so unreachable today. Worth a defensive guard only if that config line is ever removed. [umbra-web: `src/pages/robots.txt.ts`]
+
+## Deferred from: code review of 6-2-convert-and-compress-images (2026-08-11)
+
+- TOCTOU race between `check_file_size`'s `fs::metadata` check and the later `read_file_bytes` read — a file could grow past `MAX_INPUT_BYTES` between the two calls. Pre-existing: identical pattern already exists in `pdf.rs`/`bucket.rs`/`base64.rs`, not introduced by this diff. [`src-tauri/src/commands/image.rs:6`]
+- No success confirmation is shown after a completed conversion (no "Converted" message or state update). Pre-existing: the sibling PDF section's `onExtractPages` has the same gap; fixing consistently is a broader UX pass across the file, out of scope for this diff alone. [`src/tools/bucket/BucketView.vue:314`]
+- JPEG-with-alpha now composites over a fixed white background (this review's Finding 3) — a user-configurable background color (color picker, or a "match source" heuristic) is deferred to a future version. Developer's explicit call when resolving this review: ship white-only for v1. [`crates/umbra-core/src/image_convert.rs`]

@@ -204,7 +204,9 @@ graph LR
       src/base64.rs, hash.rs, jwt.rs, uuid.rs  # Epic 2
       src/cron.rs                     # Epic 3 (AD-9)
       src/ocr.rs                      # Epic 4 — OCR trait (AD-8)                                 [ASSUMPTION: module name]
-      src/pdf.rs, image.rs            # Epic 6                                                    [ASSUMPTION: module names]
+      src/pdf.rs, image_convert.rs     # Epic 6 (image_convert.rs, not image.rs — confirmed by Story 6.2:
+                                       #   `umbra-core` already depends on the external `image` crate, and a
+                                       #   local `pub mod image;` would collide with it at the crate root)
       src/lib.rs
   Cargo.toml                          # workspace root: [src-tauri, crates/umbra-core]
   .github/

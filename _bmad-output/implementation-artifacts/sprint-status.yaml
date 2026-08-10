@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-10
+last_updated: 2026-08-11
 # note: story 6.2 created 2026-08-10 (second story of Epic 6, auto-discovered as the first
 # backlog-status story in sprint-status.yaml; epic-6 stays in-progress, no epic-status
 # transition needed). Confirmed Story 6.1's actual merge state directly rather than trusting its
@@ -504,7 +504,7 @@ development_status:
 
   epic-6: in-progress
   6-1-work-pdfs-locally-merge-split-extract: done
-  6-2-convert-and-compress-images: ready-for-dev
+  6-2-convert-and-compress-images: done
   6-3-choose-the-second-ai-feature: backlog
   6-4-ship-the-chosen-ai-feature: backlog
   epic-6-retrospective: optional
