@@ -79,7 +79,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 **F8 — Bucket growth (P2)**
 
 - FR27: PDF: merge multiple PDFs, split/extract page ranges, extract text — all locally.
-- FR28: Images: convert between PNG/JPEG/WebP/HEIC and compress with a quality slider showing estimated output size.
+- FR28: Images: convert between PNG/JPEG/WebP/HEIC and compress with a quality slider showing estimated output size. **Scope update (Story 6.2, 2026-08-10):** HEIC descoped from v1 — every real Rust HEIC crate candidate investigated carries a concrete, unresolved blocker (AGPL/commercial dual license, unpublished/unconfirmed license, or a GPL/LGPL codec-dependency risk to the AD-11 CI compile gate). v1 ships PNG/JPEG/WebP only; see Story 6.2's Task 1 for the full verification trail.
 
 **F9 — Second AI feature (P2 — pick one, backlog the other)**
 
@@ -925,7 +925,7 @@ So that I can prepare assets without an online converter.
 **Acceptance Criteria:**
 
 **Given** a dropped image,
-**When** I choose a target format among PNG/JPEG/WebP/HEIC,
+**When** I choose a target format among PNG/JPEG/WebP/HEIC (**HEIC descoped from v1, see FR28 above and this story's own Task 1/3rd AC below**),
 **Then** the converted file is produced and saved via the shared save helper (FR28, AD-15).
 
 **Given** a lossy target format,

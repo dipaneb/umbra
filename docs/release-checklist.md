@@ -103,7 +103,9 @@ Story 5.3, but a tool may have been added since:
   rather than as a bug that shows up somewhere else. Also exercise the PDF section
   (Story 6.1): merge 2+ PDFs, extract a page range, and extract text — a brand-new
   dependency (`lopdf`) the first time it's used in the real app, not just assumed
-  network-clean from the `cargo tree` check alone.
+  network-clean from the `cargo tree` check alone. Also exercise the Image section
+  (Story 6.2): convert a PNG to JPEG with a quality change, confirming the live size
+  estimate updates as the slider moves.
 
 Also open **Settings** and the **⌘K palette** during the capture. Neither makes any
 `invoke`/`fetch` call today (confirmed by reading `SettingsView.vue` and

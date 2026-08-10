@@ -89,7 +89,7 @@ FR IDs are global and stable. Phases: **MVP** (target ~Aug 8), **P2** (rest of A
 ### F8 — Bucket growth (P2)
 
 - **FR27.** PDF: merge multiple PDFs, split/extract page ranges, and extract text — all locally.
-- **FR28.** Images: convert between common formats (PNG/JPEG/WebP/HEIC) and compress with a quality slider showing estimated output size.
+- **FR28.** Images: convert between common formats (PNG/JPEG/WebP/HEIC) and compress with a quality slider showing estimated output size. **Scope update (Story 6.2, 2026-08-10):** HEIC descoped from v1 for licensing/CI-compile-gate reasons — v1 ships PNG/JPEG/WebP only. See `epics.md`'s FR28 entry and Story 6.2's Task 1.
 
 ### F9 — Second AI feature (P2 — pick one, backlog the other)
 

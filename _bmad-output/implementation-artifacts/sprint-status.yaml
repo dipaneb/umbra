@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-24
+# last_updated: 2026-08-10
 # project: Umbra
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,26 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-10
+last_updated: 2026-08-11
+# note: story 6.2 created 2026-08-10 (second story of Epic 6, auto-discovered as the first
+# backlog-status story in sprint-status.yaml; epic-6 stays in-progress, no epic-status
+# transition needed). Confirmed Story 6.1's actual merge state directly rather than trusting its
+# own "done" label: origin/main's tip is 97d34d4 (PR #61, squash-merged); local main remains
+# stale/diverged (missing PRs #59/#60/#61), so baseline_commit is set to origin/main's tip
+# directly, following this project's established content-diff-over-raw-SHA-ancestry method.
+# Performed the live crate research AC3 requires during story creation: investigated three real
+# Rust HEIC crates (libheif-rs, heic by Imazen, heic_decoder by ente-io) against crates.io/docs.rs/
+# GitHub directly -- each carries a distinct blocker (GPL/LGPL codec-dependency risk to AD-11's
+# CI gate; AGPL/commercial dual license incompatible with an All-Rights-Reserved bundle; an
+# unpublished-to-crates.io crate with unconfirmed license) -- recorded as Task 1 with a
+# recommended default (descope HEIC from v1) pending the implementing session's own live
+# re-verification. Found and recorded two further load-bearing implementation facts: (1) the
+# already-vendored `image` 0.25.9 crate's WebP encoder is lossless-only (no quality parameter),
+# confirmed against docs.rs, narrowing AC2's quality slider to JPEG only; (2) naming the new core
+# module `image.rs` (as the Structural Seed's own placeholder suggests) would collide with the
+# already-present external `image` crate at umbra-core's crate root -- resolved as
+# `image_convert.rs` instead, updating the Structural Seed's placeholder to match once
+# implemented, mirroring Story 6.1's own `pdf.rs` resolution.
 # note: story 6.1 moved to review 2026-08-10 (implementation complete: Tasks 0-7 done, Task 8's
 # manual pnpm tauri dev GUI smoke check and real nettop spot-check deferred to the developer --
 # this sandboxed session has no display server, same limitation as every prior story. Branched
@@ -485,7 +504,7 @@ development_status:
 
   epic-6: in-progress
   6-1-work-pdfs-locally-merge-split-extract: done
-  6-2-convert-and-compress-images: backlog
+  6-2-convert-and-compress-images: done
   6-3-choose-the-second-ai-feature: backlog
   6-4-ship-the-chosen-ai-feature: backlog
   epic-6-retrospective: optional
