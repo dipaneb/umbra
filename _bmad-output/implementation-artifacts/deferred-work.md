@@ -35,6 +35,10 @@
 - Superseded `spawn_blocking` jobs are never cancelled — a stale Format/Minify/live-parse call still runs its CPU work to completion on the blocking thread pool even after the UI has already discarded its result via latest-wins. Pre-existing: the debounce + `createLatestWinsRunner` design was established in Stories 1.7-1.8; this story's own Dev Notes scope AD-16 work to "verify, don't rebuild," not add cancellation. [`src/tools/json/JsonView.vue`, `src-tauri/src/commands/json.rs`]
 - AC1's own wording lists "format, minify, validate, or render it as a tree" as the operations that must stay responsive, but no `json_validate` command exists anywhere in the codebase (confirmed by search). Inherited unchanged from the epics/Story 1.7 phrasing; out of scope for Story 1.9's actual diff.
 
+## Deferred from: code review of story-5-5-the-public-backlog-opens (2026-08-10)
+
+- README's Backlog link (`https://github.com/dipaneb/umbra/issues?q=is%3Aissue+is%3Aopen+label%3Abacklog-candidate`) is scoped to `is:open`; if the labeled set is ever fully closed with no immediate replacement candidate added, the link renders an empty search page with no pointer to what already shipped from the backlog. Not urgent — the label is meant to stay populated across the Sept–March cadence — but worth revisiting if the open count ever hits zero (e.g. a companion "recently shipped" link or `is:closed` note). [`README.md`, new `## Backlog` section]
+
 ## Deferred from: code review of story-2-5-hash-files (2026-07-31)
 
 - TOCTOU gap between `check_file_size`'s metadata check and the later `read_file_bytes` read — a file that grows between the two calls can be fully read into memory past `MAX_INPUT_BYTES`, defeating the size guard. Copied verbatim from `base64.rs`'s Story 2.2 `check_file_size`; fixing only `hash.rs` would leave `base64.rs` equally exposed. Candidate for a shared bounded-read helper in `fs_helper.rs` fixing both at once. [`src-tauri/src/commands/hash.rs:26-40`]

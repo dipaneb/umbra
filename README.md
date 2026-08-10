@@ -40,3 +40,12 @@ Anything written there must never include real personal information (full names,
 filesystem paths revealing a username, etc.) — this repo is public. Use placeholders
 and generic examples instead; see `.claude/hooks/guard-commit-privacy.sh` for the
 automated guard against this.
+
+## Backlog
+
+Beyond the epics already shipped, a public backlog of candidate features and
+improvements is tracked as
+[GitHub Issues labeled `backlog-candidate`](https://github.com/dipaneb/umbra/issues?q=is%3Aissue+is%3Aopen+label%3Abacklog-candidate).
+These are candidates, not commitments — the plan is to pick up one small
+tool or improvement roughly every week or two from September 2026 through
+March 2027.

@@ -42,6 +42,25 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-10
+# note: story 5.5 moved to done 2026-08-10 (code review complete via bmad-code-review, diff
+# 66429c5..HEAD across README.md and this file. AC1's out-of-diff GitHub deliverable (label +
+# 12 issues #47-#58) independently re-verified live via gh, including the two required content
+# caveats (AD-13 French coupling, AD-7/INV-1 error-tracking carve-out) confirmed present in
+# issues #54/#57. 0 decision-needed, 3 patches applied (story Dev Notes' leftover "11 issues"
+# corrected to 12, Task 3's PRD citation fixed from :137 to the correct FR35 :111, README
+# cadence sentence given a year anchor), 1 item deferred to deferred-work.md (README backlog
+# link's is:open scoping would eventually show empty if the label set is ever fully closed),
+# 10 findings dismissed after verification including two false positives from a subagent
+# misreading unchanged diff context as additions.)
+# note: story 5.5 moved to review 2026-08-10 (implementation complete in one session, ready-for-dev
+# -> in-progress -> review: created the backlog-candidate label, seeded 12 public GitHub issues on
+# dipaneb/umbra (#47-#58) from the PRD's FR35 P3 candidate list, and added a Backlog section to
+# README.md. No application code touched, as scoped -- confirmed via git status --porcelain. Caught
+# and corrected a real drafting slip in the story itself: Task 2's table and AC1 both name 12
+# distinct candidates, but Task 2/4's prose said "11" three times; developer confirmed creating all
+# 12 rather than silently dropping one. Confirmed with the developer before running the gh issue
+# create calls, per the story's own gate and CLAUDE.md's "visible to others" rule. Regression suite
+# run as a safety check despite no code changes: 174 Rust tests, 214 Vue tests, all green.)
 # note: story 5.4 moved to done 2026-08-10 (code review complete via bmad-code-review,
 # across both repos: umbra-web diff 23d130c..ed1888f, Umbra diff 848d992..HEAD. 1
 # decision-needed resolved -- developer confirmed disclosure-only PostHog analytics
@@ -399,7 +418,7 @@ development_status:
   5-2-umbra-updates-itself-with-consent-and-full-disclosure: done
   5-3-the-privacy-promise-proven-at-every-release: done
   5-4-a-landing-page-that-earns-the-download: done
-  5-5-the-public-backlog-opens: backlog
+  5-5-the-public-backlog-opens: done
   epic-5-retrospective: optional
 
   epic-6: backlog
