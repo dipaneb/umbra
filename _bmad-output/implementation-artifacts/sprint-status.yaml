@@ -554,12 +554,18 @@ action_items:
     # (rule 1) has no such gap and should have caught any literal path substring, so its
     # failure isn't fully explained by the regex gap alone; hardened defensively anyway
     # (fallback to the passwd-database home dir if $HOME is unset/empty at hook-execution
-    # time). Two structural hypotheses recorded as still-open, not provable after the
-    # fact: hook-subprocess env not reliably inheriting $HOME, or git add/git commit
-    # being combined/dispatched in a way where the hook's git diff --cached check ran
-    # before staging had actually happened (PreToolUse fires before tool execution).
-    # End-to-end tested: the previously-missed bare-path case is now denied; a normal
-    # safe commit still passes with no false positive.
+    # time). One structural hypothesis moved from "unprovable" to CONFIRMED, live, during
+    # this very fix: combining `git add` and `git commit` in one Bash invocation makes the
+    # hook's `git diff --cached` check run against the index as it stood *before* that same
+    # call's own `git add` executes, since PreToolUse fires before any part of the command
+    # runs -- reproduced directly (commit 43b0f8c initially blocked on stale, already-fixed
+    # content when add+commit were combined; splitting them into separate calls resolved it
+    # cleanly). If Story 5.1's leaking commit was issued the same combined way, the hook
+    # would have checked yesterday's index and allowed a commit that only became a leak once
+    # the same call's own `git add` ran afterward -- a real, now-demonstrated failure mode,
+    # not just a theory. The other hypothesis ($HOME not reliably inherited by the hook
+    # subprocess) remains unprovable after the fact. End-to-end tested: the previously-missed
+    # bare-path case is now denied; a normal safe commit still passes with no false positive.
   - epic: 5
     action: "Add a LICENSE file and enable branch protection on umbra-web's main branch, matching Umbra's own governance (low priority - no secrets or user data in that repo)"
     owner: "developer"
