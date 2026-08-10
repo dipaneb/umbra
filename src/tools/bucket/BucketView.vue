@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useRegistryStore } from "../../stores/registry";
 import { writeClipboardText } from "../../shell/clipboard";
+import { createLatestWinsRunner } from "../../shell/invoke";
 import { toToolError, type ToolError } from "../../shell/toolError";
 import type { OcrOutcome } from "./ocrOutcome";
 
@@ -64,6 +67,155 @@ async function onCopy() {
     error.value = toToolError(err);
   }
 }
+
+// --- PDF section (Story 6.1) ---
+// Deliberately separate state from the OCR section above: this is a second, disjoint state
+// group in the same view, triggered only by explicit button clicks (never drop/paste), so it
+// gets its own local latest-wins runner rather than reusing `registry.getLatestWinsRunner
+// ("bucket")` — reusing it would let a PDF operation spuriously mark an in-flight OCR
+// extraction as "superseded," or vice versa, per AD-16's amendment (see ARCHITECTURE-SPINE.md).
+const PDF_FILTERS = [{ name: "PDF", extensions: ["pdf"] }];
+
+const pdfError = ref<ToolError | null>(null);
+const runPdf = createLatestWinsRunner();
+
+const pdfMergeFiles = ref<string[]>([]);
+const pdfMerging = ref(false);
+
+const pdfExtractPagesPath = ref<string | null>(null);
+const pdfStartPage = ref(1);
+const pdfEndPage = ref(1);
+const pdfExtractingPages = ref(false);
+
+const pdfExtractTextPath = ref<string | null>(null);
+const pdfExtractedText = ref("");
+const pdfExtractingText = ref(false);
+const pdfTextExtracted = ref(false);
+
+async function onAddPdfsForMerge() {
+  pdfError.value = null;
+  try {
+    const paths = await open({ multiple: true, filters: PDF_FILTERS });
+    if (paths === null) return;
+    pdfMergeFiles.value.push(...paths);
+  } catch (err) {
+    pdfError.value = toToolError(err);
+  }
+}
+
+function moveMergeFileUp(index: number) {
+  if (index <= 0) return;
+  pdfError.value = null;
+  const files = pdfMergeFiles.value;
+  [files[index - 1], files[index]] = [files[index], files[index - 1]];
+}
+
+function moveMergeFileDown(index: number) {
+  pdfError.value = null;
+  const files = pdfMergeFiles.value;
+  if (index >= files.length - 1) return;
+  [files[index], files[index + 1]] = [files[index + 1], files[index]];
+}
+
+function removeMergeFile(index: number) {
+  pdfError.value = null;
+  pdfMergeFiles.value.splice(index, 1);
+}
+
+async function onMergePdfs() {
+  pdfError.value = null;
+  pdfMerging.value = true;
+  try {
+    const outputPath = await save({ filters: PDF_FILTERS });
+    if (outputPath === null) return;
+    const result = await runPdf(() =>
+      invoke("bucket_merge_pdfs", { paths: pdfMergeFiles.value, outputPath }),
+    );
+    if (!result.superseded) {
+      pdfMergeFiles.value = [];
+    }
+  } catch (err) {
+    pdfError.value = toToolError(err);
+  } finally {
+    pdfMerging.value = false;
+  }
+}
+
+async function onPickExtractPagesFile() {
+  pdfError.value = null;
+  try {
+    const path = await open({ filters: PDF_FILTERS });
+    if (path === null) return;
+    pdfExtractPagesPath.value = path;
+  } catch (err) {
+    pdfError.value = toToolError(err);
+  }
+}
+
+async function onExtractPages() {
+  if (!pdfExtractPagesPath.value) return;
+  pdfError.value = null;
+  pdfExtractingPages.value = true;
+  try {
+    const outputPath = await save({ filters: PDF_FILTERS });
+    if (outputPath === null) return;
+    await runPdf(() =>
+      invoke("bucket_extract_pdf_pages", {
+        path: pdfExtractPagesPath.value,
+        startPage: pdfStartPage.value,
+        endPage: pdfEndPage.value,
+        outputPath,
+      }),
+    );
+  } catch (err) {
+    pdfError.value = toToolError(err);
+  } finally {
+    pdfExtractingPages.value = false;
+  }
+}
+
+async function onPickExtractTextFile() {
+  pdfError.value = null;
+  try {
+    const path = await open({ filters: PDF_FILTERS });
+    if (path === null) return;
+    pdfExtractTextPath.value = path;
+    pdfExtractedText.value = "";
+    pdfTextExtracted.value = false;
+  } catch (err) {
+    pdfError.value = toToolError(err);
+  }
+}
+
+async function onExtractText() {
+  if (!pdfExtractTextPath.value) return;
+  pdfError.value = null;
+  pdfExtractingText.value = true;
+  try {
+    const result = await runPdf(() =>
+      invoke<string>("bucket_extract_pdf_text", { path: pdfExtractTextPath.value }),
+    );
+    if (!result.superseded) {
+      pdfExtractedText.value = result.value;
+      pdfTextExtracted.value = true;
+    }
+  } catch (err) {
+    pdfExtractedText.value = "";
+    pdfTextExtracted.value = false;
+    pdfError.value = toToolError(err);
+  } finally {
+    pdfExtractingText.value = false;
+  }
+}
+
+async function onCopyExtractedPdfText() {
+  pdfError.value = null;
+  try {
+    await writeClipboardText(pdfExtractedText.value);
+  } catch (err) {
+    pdfError.value = toToolError(err);
+  }
+}
 </script>
 
 <template>
@@ -106,6 +258,152 @@ async function onCopy() {
         Copy
       </button>
     </div>
+
+    <section class="pdf-section">
+      <h2>PDF tools</h2>
+
+      <p
+        v-if="pdfError"
+        role="alert"
+      >
+        {{ pdfError.message }}
+      </p>
+
+      <div class="pdf-flow">
+        <h3>Merge</h3>
+        <button
+          type="button"
+          :disabled="pdfMerging"
+          @click="onAddPdfsForMerge"
+        >
+          Add PDFs…
+        </button>
+        <ul v-if="pdfMergeFiles.length">
+          <li
+            v-for="(path, index) in pdfMergeFiles"
+            :key="path + index"
+          >
+            {{ path }}
+            <button
+              type="button"
+              :disabled="index === 0"
+              @click="moveMergeFileUp(index)"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              :disabled="index === pdfMergeFiles.length - 1"
+              @click="moveMergeFileDown(index)"
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              @click="removeMergeFile(index)"
+            >
+              Remove
+            </button>
+          </li>
+        </ul>
+        <button
+          type="button"
+          :disabled="pdfMergeFiles.length < 2 || pdfMerging"
+          @click="onMergePdfs"
+        >
+          Merge
+        </button>
+      </div>
+
+      <div class="pdf-flow">
+        <h3>Split / Extract pages</h3>
+        <button
+          type="button"
+          @click="onPickExtractPagesFile"
+        >
+          Choose PDF…
+        </button>
+        <p v-if="pdfExtractPagesPath">
+          {{ pdfExtractPagesPath }}
+        </p>
+        <label for="pdf-start-page">Start page</label>
+        <input
+          id="pdf-start-page"
+          v-model.number="pdfStartPage"
+          type="number"
+          min="1"
+          step="1"
+        >
+        <label for="pdf-end-page">End page</label>
+        <input
+          id="pdf-end-page"
+          v-model.number="pdfEndPage"
+          type="number"
+          min="1"
+          step="1"
+        >
+        <button
+          type="button"
+          :disabled="
+            !pdfExtractPagesPath ||
+              !Number.isInteger(pdfStartPage) ||
+              !Number.isInteger(pdfEndPage) ||
+              pdfStartPage < 1 ||
+              pdfStartPage > pdfEndPage ||
+              pdfExtractingPages
+          "
+          @click="onExtractPages"
+        >
+          Extract pages
+        </button>
+      </div>
+
+      <div class="pdf-flow">
+        <h3>Extract text</h3>
+        <button
+          type="button"
+          @click="onPickExtractTextFile"
+        >
+          Choose PDF…
+        </button>
+        <p v-if="pdfExtractTextPath">
+          {{ pdfExtractTextPath }}
+        </p>
+        <button
+          type="button"
+          :disabled="!pdfExtractTextPath || pdfExtractingText"
+          @click="onExtractText"
+        >
+          Extract text
+        </button>
+
+        <p
+          v-if="pdfTextExtracted && !pdfExtractedText.trim()"
+          role="status"
+        >
+          No text was found in this PDF.
+        </p>
+
+        <div
+          v-if="pdfExtractedText"
+          class="field"
+        >
+          <label for="pdf-extracted-text">Extracted text</label>
+          <textarea
+            id="pdf-extracted-text"
+            v-model="pdfExtractedText"
+            class="result"
+            rows="10"
+          />
+          <button
+            type="button"
+            @click="onCopyExtractedPdfText"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -127,6 +425,16 @@ p[role="alert"] {
   display: flex;
   flex-direction: column;
   gap: 0.4em;
+}
+
+.pdf-section {
+  margin-top: 1.5em;
+  padding-top: 1em;
+  border-top: 1px solid #ccc;
+}
+
+.pdf-flow {
+  margin-bottom: 1.2em;
 }
 
 .result {

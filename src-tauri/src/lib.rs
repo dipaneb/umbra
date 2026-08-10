@@ -11,6 +11,7 @@ use commands::cron::{cron_explain, cron_parse_schedule};
 use commands::hash::{hash_compute, hash_compute_file};
 use commands::json::{json_format, json_minify, json_parse};
 use commands::jwt::jwt_decode;
+use commands::pdf::{bucket_extract_pdf_pages, bucket_extract_pdf_text, bucket_merge_pdfs};
 use commands::uuid::uuid_generate;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -44,7 +45,10 @@ pub fn run() {
             bucket_extract_text_from_clipboard,
             jwt_decode,
             cron_explain,
-            cron_parse_schedule
+            cron_parse_schedule,
+            bucket_merge_pdfs,
+            bucket_extract_pdf_pages,
+            bucket_extract_pdf_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

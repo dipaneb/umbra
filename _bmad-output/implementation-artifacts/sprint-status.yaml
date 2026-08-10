@@ -42,6 +42,51 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-10
+# note: story 6.1 moved to review 2026-08-10 (implementation complete: Tasks 0-7 done, Task 8's
+# manual pnpm tauri dev GUI smoke check and real nettop spot-check deferred to the developer --
+# this sandboxed session has no display server, same limitation as every prior story. Branched
+# directly from origin/main per Task 0. Live-verified lopdf (0.44.0, MIT, MSRV 1.88) against the
+# crates.io API -- zero drift from the story's own cached figures -- but a real cargo build
+# reproduction caught a live upstream break neither the version check nor Context7 research could:
+# lopdf's default features (chrono/jiff/rayon/time) fail to compile outright, since the resolved
+# time 0.3.45 removed the BorrowedFormatItem::StringLiteral variant lopdf's own datetime.rs still
+# references -- fixed with default-features = false, none of the four used by this story's scope
+# anyway. Confirmed every core API signature (delete_pages, extract_text_with_limit, get_pages,
+# is_encrypted/encryption_state) directly against the vendored crate source per the spine's own
+# convention, which caught the precise encrypted-PDF semantics (is_encrypted() stays true even
+# after a successful empty-password auto-decrypt; encryption_state.is_none() is the real "real
+# password required" signal) -- confirmed end-to-end against a real RC4-encrypted in-test fixture.
+# Bumping rust-version to 1.88 (required by lopdf's MSRV) had a real side effect: it unlocked two
+# MSRV-gated clippy lints against pre-existing, unrelated code in cron.rs/json.rs (both crates) --
+# confirmed via a stash comparison as a genuine consequence, not a false positive, and fixed
+# mechanically. Frontend: confirmed Base64View.vue's own local runLatestWins (shared across three
+# manual actions) as an even closer AD-16 precedent than the story's cited CronView.vue/
+# HashView.vue split, used as the direct template for the PDF section's shared runner. Full
+# verification green: 194/194 Rust tests (174 baseline + 20 new), 227/227 Vue tests (214 baseline
+# + 13 new), fmt/clippy/lint/typecheck/build all clean, cargo tree -i reqwest confirms no new
+# network-capable dependency.)
+# note: story 6.1 created 2026-08-10 (first story of Epic 6, auto-discovered as the first
+# backlog-status story in sprint-status.yaml; epic-6 moved backlog -> in-progress). No same-epic
+# previous story existed, so intelligence was drawn from the Epic 5 retrospective's own "Epic 6
+# Preview" section instead, which confirmed no code-level Epic 5->6 dependency and explicitly
+# anticipated this story's lopdf re-verification. baseline_commit set to origin/main's tip
+# (f7e222c), not local main's -- local main was found stale/diverged (still carrying Story 5.4's
+# 6 pre-squash-merge commits, which GitHub squashed into one on origin/main), confirmed via
+# content-diff rather than raw SHA ancestry, per this project's established squash-merge-
+# verification method. Live-verified lopdf (0.44.0, MIT, MSRV 1.88) against the crates.io
+# registry API and its page-management/merge/text-extraction API via Context7 + docs.rs. Resolved
+# two real design questions not decided upstream: (1) the shell's AD-14 window-drop dispatcher
+# only forwards the first of possibly-multiple dropped paths to one fixed per-tool handler, which
+# fits none of this story's three PDF operations -- resolved by routing all three through the
+# already-used @tauri-apps/plugin-dialog file picker instead, with zero AD-14/registry changes;
+# (2) which AD-16 latest-wins runner shape applies -- resolved as CronView.vue's "independent
+# state-groups get separate local runners" pattern, not HashView.vue's tool-wide-runner shape. A
+# fresh-context validation subagent (per the skill's checklist step) independently re-verified
+# every citation, AD reference, and architectural claim in the story against the source files and
+# found one real bug: Task 0's git command (`merge --ff-only origin/main`) would have aborted,
+# since local main has diverged from origin/main rather than merely drifted behind it -- fixed to
+# branch directly from origin/main instead, with local main's resync left as an optional,
+# separately-confirmed cleanup per the repo's own destructive-git-operation safety rule.
 # note: epic-5 retrospective completed 2026-08-10 (all 3 epic-4 action items confirmed fully
 # closed before epic-5 began -- cleanest retro-to-retro handoff yet, unlike epic-3->4's carried-
 # over item. Two challenges surfaced: (1) a second occurrence of the PII-leak failure mode from
@@ -438,8 +483,8 @@ development_status:
   5-5-the-public-backlog-opens: done
   epic-5-retrospective: done
 
-  epic-6: backlog
-  6-1-work-pdfs-locally-merge-split-extract: backlog
+  epic-6: in-progress
+  6-1-work-pdfs-locally-merge-split-extract: done
   6-2-convert-and-compress-images: backlog
   6-3-choose-the-second-ai-feature: backlog
   6-4-ship-the-chosen-ai-feature: backlog
