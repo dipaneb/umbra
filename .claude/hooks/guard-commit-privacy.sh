@@ -11,6 +11,14 @@
 
 set -euo pipefail
 
+# Don't trust inherited $HOME blindly -- a hook subprocess's environment is
+# not guaranteed to carry the interactive shell's HOME correctly. Fall back
+# to the passwd-database home directory for the current user if HOME is
+# unset or empty, so rule 1 below can't silently go blind.
+if [ -z "${HOME:-}" ]; then
+  HOME="$(eval echo "~$(id -un)")"
+fi
+
 input="$(cat)"
 command="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
 
@@ -59,7 +67,10 @@ fi
 
 # 2. Generic macOS/Linux personal-home-path fallback, in case a differently
 #    shaped path shows up (e.g. this repo used from another machine/user).
-if [ -n "$added" ] && printf '%s' "$added" | grep -qE '(^|[^A-Za-z0-9_])(/Users/[A-Za-z0-9_.-]+/|/home/[A-Za-z0-9_.-]+/)'; then
+#    Trailing slash is optional -- a bare "/Users/<name>" with no subpath
+#    after it (e.g. "...moved outside /Users/<name> entirely") must still
+#    match; a stricter trailing-"/" requirement was a confirmed gap.
+if [ -n "$added" ] && printf '%s' "$added" | grep -qE '(^|[^A-Za-z0-9_])(/Users/[A-Za-z0-9_.-]+/?|/home/[A-Za-z0-9_.-]+/?)'; then
   deny "Staged changes ADD what looks like a personal home-directory path. Affected file(s): $(affected_files). Review and remove it before committing."
 fi
 

@@ -49,6 +49,24 @@ the destructive-command hook above has to the standing rule around it.
   instead — this applies to documentation, code comments, commit messages, and story
   files alike, not just obviously-public-facing content. This repo is a public
   portfolio piece; assume anything committed will be read by a stranger.
+- **Concrete examples of what counts as personally-identifying** (this list exists
+  because `guard-commit-privacy.sh` can pattern-match a filesystem path but has no way
+  to regex-detect "is this string a person's name" — the written rule here is the
+  actual front-line defense for everything below except the path case):
+  - A real full legal name, in any context — prose, a code comment, a `git config`
+    value quoted in a doc, a certificate/identity string (e.g. `"Developer ID
+    Application: <Your Name> (<Team ID>)"`).
+  - A real email address, personal or work.
+  - A real phone number.
+  - An exact employer, client, or company name tied to the developer (as opposed to
+    a public dependency/vendor name, which is fine).
+  - A physical or mailing address.
+  - An account ID, customer ID, or subscription ID that could identify a specific
+    person or deanonymize them in combination with other public info.
+  - A literal home-directory path fragment even without a trailing slash after the
+    username (`/Users/<name>` alone, with no further subpath, still reveals a name —
+    a confirmed gap in the hook's older regex, fixed in `guard-commit-privacy.sh`
+    2026-08-10, but the written rule doesn't depend on the hook catching it).
 - **Committing and pushing are separate authorizations.** A prior approval to push
   one specific commit does not carry forward to the next one — confirm again before
   every `git push`, and separately confirm before creating any *new* file under
@@ -60,3 +78,29 @@ the destructive-command hook above has to the standing rule around it.
   history until that history is rewritten, which requires a force-push. Flag this
   explicitly rather than letting a forward-fix read as if the leak were fully
   undone; do not force-push without the user's explicit, specific request to do so.
+
+## Process: new shared infrastructure doesn't inherit this project's governance automatically
+
+Story 5.4 stood up a second public repository (`umbra-web`, the landing page) and it
+shipped with neither a LICENSE file nor branch protection on `main` — even though
+`Umbra` itself has had both since Story 1.1 ("A governed public repository"). The
+stack/hosting decision (Astro, a separate repo, Vercel) was reasoned through
+carefully, but was presented as already-decided rather than as options weighed
+with the developer first. Neither gap was a deliberate scope call; both happened
+because nothing re-triggered the check. Flagged at the Epic 5 retrospective
+(2026-08-10) — see `_bmad-output/implementation-artifacts/epic-5-retro-2026-08-10.md`.
+
+- **Any story whose scope includes creating new shared infrastructure** — a new
+  repository, a new deployment target, a new external service account/project (e.g.
+  a hosting platform, an analytics provider) — must do two things before executing,
+  not after:
+  1. **Present the resulting architecture/tooling choice as options with trade-offs**
+     for the developer to weigh in on, even when one option is clearly better. A
+     well-reasoned decision made *for* the developer is still a decision they were
+     left out of.
+  2. **Explicitly check this project's own established governance patterns** —
+     branch protection, a LICENSE file, CI gates, the scoped Conventional Commits
+     convention (`type(scope): subject`, matching `Umbra`'s own history) — and either
+     apply them to the new infrastructure or record a deliberate reason not to.
+     "We've solved this before" only helps if something actually re-applies it;
+     don't assume a pattern travels with the project by default.

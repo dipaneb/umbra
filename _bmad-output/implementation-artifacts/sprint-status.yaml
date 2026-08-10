@@ -531,15 +531,35 @@ action_items:
   - epic: 5
     action: "Any story creating new shared infrastructure (new repo, new deployment target, new external service account) must present the resulting architecture/tooling choice as options with trade-offs before executing, and explicitly check/apply this project's established governance patterns (branch protection, LICENSE, CI gates, scoped Conventional Commits - Story 1.1's own precedent) or record a deliberate reason not to"
     owner: "Amelia"
-    status: open
+    status: done
+    # resolved 2026-08-10: added as a new "Process: new shared infrastructure doesn't
+    # inherit this project's governance automatically" section in CLAUDE.md, citing
+    # this retro and the umbra-web gap that prompted it.
   - epic: 5
     action: "Expand CLAUDE.md's privacy section with concrete PII examples (full legal names in prose, email addresses, phone numbers, exact employer/client names, physical addresses, account/customer IDs) - the commit-guard hook cannot regex-detect a name in prose, so the written rule is the front-line defense for that leak shape"
     owner: "Amelia"
-    status: open
+    status: done
+    # resolved 2026-08-10: added a concrete-examples bullet list to CLAUDE.md's privacy
+    # section, directly under the existing placeholder rule.
   - epic: 5
     action: "Investigate why guard-commit-privacy.sh's existing home-path detection pattern did not fire during Story 5.1's actual git commit calls, despite the leaked content matching it"
     owner: "developer"
-    status: open
+    status: done
+    # investigated 2026-08-10: confirmed the hook was present, executable, and correctly
+    # registered throughout Story 5.1's session -- not a "hook didn't exist" issue. Found
+    # and fixed one real, reproducible bug independent of root cause: the generic
+    # /Users//home/ fallback pattern required a trailing "/" after the username, so a
+    # bare path with no subpath (e.g. "outside /Users/<name> entirely") slipped through --
+    # verified via a live regex test before and after the fix. The $HOME-derived pattern
+    # (rule 1) has no such gap and should have caught any literal path substring, so its
+    # failure isn't fully explained by the regex gap alone; hardened defensively anyway
+    # (fallback to the passwd-database home dir if $HOME is unset/empty at hook-execution
+    # time). Two structural hypotheses recorded as still-open, not provable after the
+    # fact: hook-subprocess env not reliably inheriting $HOME, or git add/git commit
+    # being combined/dispatched in a way where the hook's git diff --cached check ran
+    # before staging had actually happened (PreToolUse fires before tool execution).
+    # End-to-end tested: the previously-missed bare-path case is now denied; a normal
+    # safe commit still passes with no false positive.
   - epic: 5
     action: "Add a LICENSE file and enable branch protection on umbra-web's main branch, matching Umbra's own governance (low priority - no secrets or user data in that repo)"
     owner: "developer"
