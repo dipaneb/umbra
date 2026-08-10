@@ -89,7 +89,9 @@ fn map_join_error(err: tauri::Error) -> ToolError {
 mod tests {
     use super::*;
     use lopdf::content::{Content, Operation};
-    use lopdf::{Document, Object, Stream, dictionary};
+    use lopdf::{
+        Document, EncryptionState, EncryptionVersion, Object, Permissions, Stream, dictionary,
+    };
 
     // Minimal valid in-test PDF fixture builder — same rationale as umbra-core's own pdf.rs test
     // module (cheaper to maintain than a checked-in binary fixture). This crate's tests only need
@@ -141,6 +143,32 @@ mod tests {
         });
         doc.trailer.set("Root", catalog_id);
 
+        let mut buffer = Vec::new();
+        doc.save_to(&mut buffer).unwrap();
+        buffer
+    }
+
+    /// Same RC4 V2 encryption shape as `umbra_core::pdf`'s own test module — a real, non-empty
+    /// password so the encrypted-PDF path is exercised through this command layer too, not just
+    /// at the core-function level.
+    fn generate_encrypted_test_pdf_bytes(pages_text: &[&str]) -> Vec<u8> {
+        let mut doc = Document::load_mem(&generate_test_pdf_bytes(pages_text)).unwrap();
+        doc.trailer.set(
+            "ID",
+            Object::Array(vec![
+                Object::string_literal(vec![1u8; 16]),
+                Object::string_literal(vec![2u8; 16]),
+            ]),
+        );
+        let state = EncryptionState::try_from(EncryptionVersion::V2 {
+            document: &doc,
+            owner_password: "owner-secret",
+            user_password: "user-secret",
+            key_length: 40,
+            permissions: Permissions::PRINTABLE,
+        })
+        .unwrap();
+        doc.encrypt(&state).unwrap();
         let mut buffer = Vec::new();
         doc.save_to(&mut buffer).unwrap();
         buffer
@@ -299,6 +327,55 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.code, "file-read-error");
+    }
+
+    #[tokio::test]
+    async fn bucket_extract_pdf_text_command_returns_bucket_pdf_corrupt_for_undecodable_bytes() {
+        let path = temp_file_path("extract-text-corrupt.pdf");
+        std::fs::write(&path, b"not a pdf").unwrap();
+
+        let err = bucket_extract_pdf_text(path.clone()).await.unwrap_err();
+        assert_eq!(err.code, "bucket-pdf-corrupt");
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn all_three_commands_return_bucket_pdf_encrypted_for_a_real_password_protected_pdf() {
+        let encrypted_path = temp_file_path("encrypted.pdf");
+        let other_path = temp_file_path("encrypted-other.pdf");
+        std::fs::write(
+            &encrypted_path,
+            generate_encrypted_test_pdf_bytes(&["Secret page"]),
+        )
+        .unwrap();
+        std::fs::write(&other_path, generate_test_pdf_bytes(&["Other page"])).unwrap();
+
+        let text_err = bucket_extract_pdf_text(encrypted_path.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(text_err.code, "bucket-pdf-encrypted");
+
+        let range_err = bucket_extract_pdf_pages(
+            encrypted_path.clone(),
+            1,
+            1,
+            temp_file_path("encrypted-range-out.pdf"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(range_err.code, "bucket-pdf-encrypted");
+
+        let merge_err = bucket_merge_pdfs(
+            vec![encrypted_path.clone(), other_path.clone()],
+            temp_file_path("encrypted-merge-out.pdf"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(merge_err.code, "bucket-pdf-encrypted");
+
+        std::fs::remove_file(&encrypted_path).unwrap();
+        std::fs::remove_file(&other_path).unwrap();
     }
 
     #[tokio::test]

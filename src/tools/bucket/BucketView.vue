@@ -89,6 +89,8 @@ const pdfExtractingPages = ref(false);
 
 const pdfExtractTextPath = ref<string | null>(null);
 const pdfExtractedText = ref("");
+const pdfExtractingText = ref(false);
+const pdfTextExtracted = ref(false);
 
 async function onAddPdfsForMerge() {
   pdfError.value = null;
@@ -103,17 +105,20 @@ async function onAddPdfsForMerge() {
 
 function moveMergeFileUp(index: number) {
   if (index <= 0) return;
+  pdfError.value = null;
   const files = pdfMergeFiles.value;
   [files[index - 1], files[index]] = [files[index], files[index - 1]];
 }
 
 function moveMergeFileDown(index: number) {
+  pdfError.value = null;
   const files = pdfMergeFiles.value;
   if (index >= files.length - 1) return;
   [files[index], files[index + 1]] = [files[index + 1], files[index]];
 }
 
 function removeMergeFile(index: number) {
+  pdfError.value = null;
   pdfMergeFiles.value.splice(index, 1);
 }
 
@@ -176,6 +181,7 @@ async function onPickExtractTextFile() {
     if (path === null) return;
     pdfExtractTextPath.value = path;
     pdfExtractedText.value = "";
+    pdfTextExtracted.value = false;
   } catch (err) {
     pdfError.value = toToolError(err);
   }
@@ -184,16 +190,21 @@ async function onPickExtractTextFile() {
 async function onExtractText() {
   if (!pdfExtractTextPath.value) return;
   pdfError.value = null;
+  pdfExtractingText.value = true;
   try {
     const result = await runPdf(() =>
       invoke<string>("bucket_extract_pdf_text", { path: pdfExtractTextPath.value }),
     );
     if (!result.superseded) {
       pdfExtractedText.value = result.value;
+      pdfTextExtracted.value = true;
     }
   } catch (err) {
     pdfExtractedText.value = "";
+    pdfTextExtracted.value = false;
     pdfError.value = toToolError(err);
+  } finally {
+    pdfExtractingText.value = false;
   }
 }
 
@@ -262,6 +273,7 @@ async function onCopyExtractedPdfText() {
         <h3>Merge</h3>
         <button
           type="button"
+          :disabled="pdfMerging"
           @click="onAddPdfsForMerge"
         >
           Add PDFs…
@@ -320,6 +332,7 @@ async function onCopyExtractedPdfText() {
           v-model.number="pdfStartPage"
           type="number"
           min="1"
+          step="1"
         >
         <label for="pdf-end-page">End page</label>
         <input
@@ -327,11 +340,17 @@ async function onCopyExtractedPdfText() {
           v-model.number="pdfEndPage"
           type="number"
           min="1"
+          step="1"
         >
         <button
           type="button"
           :disabled="
-            !pdfExtractPagesPath || pdfStartPage < 1 || pdfStartPage > pdfEndPage || pdfExtractingPages
+            !pdfExtractPagesPath ||
+              !Number.isInteger(pdfStartPage) ||
+              !Number.isInteger(pdfEndPage) ||
+              pdfStartPage < 1 ||
+              pdfStartPage > pdfEndPage ||
+              pdfExtractingPages
           "
           @click="onExtractPages"
         >
@@ -352,11 +371,18 @@ async function onCopyExtractedPdfText() {
         </p>
         <button
           type="button"
-          :disabled="!pdfExtractTextPath"
+          :disabled="!pdfExtractTextPath || pdfExtractingText"
           @click="onExtractText"
         >
           Extract text
         </button>
+
+        <p
+          v-if="pdfTextExtracted && !pdfExtractedText.trim()"
+          role="status"
+        >
+          No text was found in this PDF.
+        </p>
 
         <div
           v-if="pdfExtractedText"
