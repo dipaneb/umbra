@@ -1,0 +1,419 @@
+<title>Umbra Color Themes — Round 2</title>
+<style>
+  /*
+  ============================================================
+  UMBRA COLOR THEMES — ROUND 2 — CONCRETE HEX REFERENCE
+  ============================================================
+  Two refinements of round-1 favorites, per developer feedback:
+  all round-1 dark modes rejected (read as "inverted", too close
+  to true black) → fixed here with Material-style elevation:
+  dark base sits in the #121212–#1A1A1A band, and raised surfaces
+  (sidebar/cards) get progressively LIGHTER, never darker.
+  Card borders (round 1) rejected as "criminal" → removed; card
+  separation now comes from bg-surface vs bg-surface-2 contrast
+  only. A hairline divider (sidebar/main split) is kept at very
+  low contrast — that's a structural divider, not a card border.
+  New idea tested: black (light mode) / near-white (dark mode) as
+  a second, achromatic functional accent for primary-button fills
+  — orange stays reserved for the sparse signature touch (nav
+  active state, icon dot), never for CTA fills, in the "black CTA"
+  variant of the button strip.
+
+  1. RUST CALM  (refines round-1 "Machined Metal")
+  ----------------------------------------------------------------
+  Light:
+    bg-base (sidebar, elev. n/a — flat):        #EDEDEC
+    bg-surface (main pane):                      #F7F7F6
+    bg-surface-2 (cards / icon chips):           #E0E0DE
+    border (hairline divider only):              #DDDBD8
+    text-primary:                                 #141312
+    text-secondary:                               #4A4844
+    text-tertiary:                                #6E6B63  (darkened from round-1's
+                                                    #7A776F — that value only cleared
+                                                    ~4.17:1 against #F7F7F6; #6E6B63
+                                                    clears 4.96:1)
+    accent (orange):                              #B8480F
+    accent-hover:                                 #96390C
+    text-on-accent (ink for orange button fill):  #FFFFFF  (5.29:1 — white works here)
+    cta-mono (achromatic CTA fill):               #1A1714
+    text-on-mono:                                 #FFFFFF
+
+  Dark (elevation 0 → 1 → 2, each tier LIGHTER):
+    bg-base   — elev. 0 (sidebar):                #141210
+    bg-surface — elev. 1 (main pane):              #1C1916
+    bg-surface-2 — elev. 2 (cards / icon chips):   #272220
+    border (hairline divider only):                #2C2823
+    text-primary:                                  #EDEAE6
+    text-secondary:                                #A8A29B
+    text-tertiary:                                 #8B8378  (round-1's #766F66 only
+                                                     cleared ~3.53:1; #8B8378 clears 4.68:1)
+    accent (orange):                               #CD6222  (nudged up from round-1's
+                                                     #C85D1E — that value cleared only
+                                                     ~4.48:1 as nav-label text against the
+                                                     newly-corrected, lighter #141210 base;
+                                                     #CD6222 clears 4.78:1)
+    accent-hover:                                  #D6731F
+    text-on-accent (ink for orange button fill):   #14100C  (white fails at ~4.17:1 on
+                                                     this orange; dark ink clears 4.75:1)
+    cta-mono (achromatic CTA fill, inverted to near-white for dark-bg contrast): #EDEAE6
+    text-on-mono:                                  #171412
+
+  2. CLEAN FACTORY  (refines round-1 "High-Contrast Snap")
+  ----------------------------------------------------------------
+  Light:
+    bg-base (sidebar):                            #EFF0F1
+    bg-surface (main pane — pulled down from round-1's
+      near-white #FFFFFF to Precision Titanium's cool
+      tinted-gray sidebar tone, per feedback):      #F4F5F6
+    bg-surface-2 (cards / icon chips):              #E7E9EB
+    border (hairline divider only):                 #E0E2E4
+    text-primary:                                   #101113
+    text-secondary:                                 #4C4F53
+    text-tertiary:                                  #6C6F73  (round-1-equivalent
+                                                      #83868A only cleared ~3.35:1;
+                                                      #6C6F73 clears 4.62:1)
+    accent (orange, brand hue — used for fills/dots/
+      icon-chip accents, NOT body/label text):       #FF5E1A
+    accent-text (AA-safe on-light variant, used only
+      where the orange is rendered AS text, e.g. the
+      active nav label — the brand orange itself is
+      too light/bright to pass 4.5:1 as small text on
+      this background, ~2.77:1 undiluted):           #C04E08  (clears 4.61:1)
+    accent-hover:                                    #E64A0A
+    text-on-accent (ink for orange button fill; white
+      fails at ~3.06:1 on this bright orange):        #121214  (clears 6.87:1)
+    cta-mono (achromatic CTA fill):                   #17181A
+    text-on-mono:                                     #FFFFFF
+
+  Dark (elevation 0 → 1 → 2, each tier LIGHTER):
+    bg-base   — elev. 0 (sidebar):                  #141415
+    bg-surface — elev. 1 (main pane):                #1D1D1F
+    bg-surface-2 — elev. 2 (cards / icon chips):     #28282B
+    border (hairline divider only):                  #2C2C2F
+    text-primary:                                    #F5F5F6
+    text-secondary:                                  #B4B4B6
+    text-tertiary:                                    #838588  (round-1-equivalent
+                                                       #808285 only cleared ~4.37:1;
+                                                       #838588 clears 4.55:1)
+    accent (orange — also used as nav-label text here;
+      dark bg gives it enough headroom unaided):       #FF6E30  (clears 6.69:1 as text)
+    accent-hover:                                      #FF8B54
+    text-on-accent (ink for orange button fill; white
+      fails at ~2.79:1 on this orange):                 #121214  (clears 7.53:1)
+    cta-mono (near-white for dark-bg contrast):          #F0F0F1
+    text-on-mono:                                        #17181A
+  ============================================================
+  */
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: #E8E8E8;
+    color: #111;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 32px 24px 64px;
+  }
+
+  .page-head { max-width: 1240px; margin: 0 auto 28px; }
+  .page-head h1 { font-size: 22px; margin: 0 0 4px; }
+  .page-head p { font-size: 13px; color: #555; margin: 0; max-width: 860px; line-height: 1.5; }
+
+  .variation {
+    max-width: 1240px;
+    margin: 0 auto 28px;
+    background: #FCFCFC;
+    border: 1px solid #CCCCCC;
+    border-radius: 12px;
+    padding: 20px 22px 24px;
+  }
+
+  .variation-head h2 { font-size: 17px; margin: 0 0 4px; }
+  .variation-head .register { font-size: 12.5px; color: #555; margin: 0 0 8px; line-height: 1.5; max-width: 900px; }
+  .variation-head .changed { font-size: 12px; color: #7A4A00; background: #FFF3E0; border-radius: 6px; padding: 8px 10px; margin: 0 0 16px; max-width: 900px; line-height: 1.5; }
+  .variation-head .changed b { color: #5C3800; }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+  .chip { width: 108px; font-size: 10px; text-align: center; }
+  .chip-label { font-weight: 700; margin-bottom: 5px; color: #333; font-size: 10.5px; }
+  .chip-swatches { display: flex; height: 34px; border-radius: 6px; overflow: hidden; border: 1px solid #BBB; }
+  .chip-swatch { flex: 1; border-right: 1px solid rgba(0,0,0,0.08); }
+  .chip-swatch.dark { border-right: none; }
+  .chip-hex { display: flex; justify-content: space-between; margin-top: 4px; color: #666; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 9px; }
+
+  .elev-note { font-size: 10.5px; color: #777; margin: 2px 0 16px; font-style: italic; }
+
+  .mockup-pair { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
+  .mockup-col { flex: 1 1 440px; min-width: 320px; }
+  .mockup-mode-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; color: #777; font-weight: 700; }
+  .mockup { border-radius: 10px; overflow: hidden; border: 1px solid; display: flex; font-size: 12.5px; height: 430px; }
+  .sidebar { width: 176px; flex-shrink: 0; padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid; }
+  .brand { font-weight: 700; font-size: 14px; padding: 0 6px 12px; letter-spacing: -0.01em; }
+  .nav-list { display: flex; flex-direction: column; gap: 1px; }
+  .nav-item { padding: 7px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+  .nav-item.active { margin-bottom: 4px; }
+  .nav-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 10px 8px 3px; font-weight: 700; }
+  .main-pane { flex: 1; padding: 16px 18px; overflow: auto; }
+  .pane-title { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+  .pane-sub { font-size: 11.5px; margin-bottom: 14px; }
+  .tool-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .tool-card { border-radius: 8px; padding: 12px 9px; display: flex; flex-direction: column; gap: 9px; }
+  .tool-icon { width: 30px; height: 30px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; letter-spacing: -0.02em; }
+  .tool-name { font-size: 11px; font-weight: 600; }
+
+  .btn-strip-label { font-size: 11.5px; font-weight: 700; color: #444; margin: 22px 0 8px; }
+  .btn-strip { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn-panel { flex: 1 1 260px; min-width: 230px; border-radius: 10px; padding: 14px 14px 16px; }
+  .btn-panel-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; margin-bottom: 10px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { font-size: 12px; font-weight: 600; padding: 8px 14px; border-radius: 7px; border: none; font-family: inherit; }
+  .btn-ghost { background: transparent; border: 1px solid; }
+</style>
+
+<div class="page-head">
+  <h1>Umbra — Color Themes (Round 2 — Refinements)</h1>
+  <p>Two refinements from round 1's five variations, built strictly from developer feedback: all dark modes rejected as "inverted" (too close to true black) — rebuilt here with proper Material-style elevation, where raised surfaces get progressively <em>lighter</em>, not darker; card borders rejected as too heavy — removed, with card separation coming from surface-tier contrast alone; "Machined Metal" and "High-Contrast Snap" were the two liked directions and are refined here as Rust Calm and Clean Factory; and a new idea is tested — black (light) / near-white (dark) as a second, achromatic CTA-button accent, so orange stays reserved purely as the sparse signature touch.</p>
+</div>
+
+<section class="variation">
+  <div class="variation-head">
+    <h2>1. Rust Calm</h2>
+    <p class="register">Refines "Machined Metal." Same calm, burnt-rust orange register that read as "almost rust" — background kept comfortably not-too-bright, warm charcoal neutrals throughout.</p>
+    <p class="changed"><b>What changed from round 1:</b> dark mode rebuilt from near-black (#0A0A0B base) into a properly elevated warm-charcoal stack — base/surface/surface-2 now step from #141210 up to #272220, each tier lighter, never darker. Card and icon-chip borders removed entirely. Dark-mode accent nudged #C85D1E → #CD6222 so it still clears 4.5:1 as nav-label text against the new, lighter dark base. A near-black (light) / near-white (dark) achromatic CTA fill is introduced for primary buttons — see the button strip below.</p>
+  </div>
+
+  <div class="chip-row">
+    <div class="chip"><div class="chip-label">bg-base (elev. 0)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#EDEDEC"></div><div class="chip-swatch dark" style="background:#141210"></div></div><div class="chip-hex"><span>#EDEDEC</span><span>#141210</span></div></div>
+    <div class="chip"><div class="chip-label">bg-surface (elev. 1)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#F7F7F6"></div><div class="chip-swatch dark" style="background:#1C1916"></div></div><div class="chip-hex"><span>#F7F7F6</span><span>#1C1916</span></div></div>
+    <div class="chip"><div class="chip-label">bg-surface-2 (elev. 2)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#E0E0DE"></div><div class="chip-swatch dark" style="background:#272220"></div></div><div class="chip-hex"><span>#E0E0DE</span><span>#272220</span></div></div>
+    <div class="chip"><div class="chip-label">border (hairline)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#DDDBD8"></div><div class="chip-swatch dark" style="background:#2C2823"></div></div><div class="chip-hex"><span>#DDDBD8</span><span>#2C2823</span></div></div>
+    <div class="chip"><div class="chip-label">text-primary</div><div class="chip-swatches"><div class="chip-swatch" style="background:#141312"></div><div class="chip-swatch dark" style="background:#EDEAE6"></div></div><div class="chip-hex"><span>#141312</span><span>#EDEAE6</span></div></div>
+    <div class="chip"><div class="chip-label">text-secondary</div><div class="chip-swatches"><div class="chip-swatch" style="background:#4A4844"></div><div class="chip-swatch dark" style="background:#A8A29B"></div></div><div class="chip-hex"><span>#4A4844</span><span>#A8A29B</span></div></div>
+    <div class="chip"><div class="chip-label">text-tertiary</div><div class="chip-swatches"><div class="chip-swatch" style="background:#6E6B63"></div><div class="chip-swatch dark" style="background:#8B8378"></div></div><div class="chip-hex"><span>#6E6B63</span><span>#8B8378</span></div></div>
+    <div class="chip"><div class="chip-label">accent (orange)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#B8480F"></div><div class="chip-swatch dark" style="background:#CD6222"></div></div><div class="chip-hex"><span>#B8480F</span><span>#CD6222</span></div></div>
+    <div class="chip"><div class="chip-label">accent-hover</div><div class="chip-swatches"><div class="chip-swatch" style="background:#96390C"></div><div class="chip-swatch dark" style="background:#D6731F"></div></div><div class="chip-hex"><span>#96390C</span><span>#D6731F</span></div></div>
+    <div class="chip"><div class="chip-label">cta-mono (achromatic)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#1A1714"></div><div class="chip-swatch dark" style="background:#EDEAE6"></div></div><div class="chip-hex"><span>#1A1714</span><span>#EDEAE6</span></div></div>
+  </div>
+  <p class="elev-note">Dark elevation: bg-base (#141210) → bg-surface (#1C1916) → bg-surface-2 (#272220) — each tier lighter than the last, sidebar/cards read as "raised," not "sunken."</p>
+
+  <div class="mockup-pair">
+    <div class="mockup-col">
+      <div class="mockup-mode-label">Light mode</div>
+      <div class="mockup" style="background:#F7F7F6; color:#141312; border-color:#DDDBD8;">
+        <div class="sidebar" style="background:#EDEDEC; border-right-color:#DDDBD8;">
+          <div class="brand" style="color:#141312;">Umbra</div>
+          <div class="nav-list">
+            <div class="nav-item active" style="background:#B8480F1F; color:#B8480F; font-weight:700;">All Tools</div>
+            <div class="nav-section-label" style="color:#6E6B63;">Pinned</div>
+            <div class="nav-item">JSON Formatter</div>
+            <div class="nav-item">Base64</div>
+            <div class="nav-item">JWT Inspector</div>
+            <div class="nav-item">Image Convert</div>
+            <div class="nav-section-label" style="color:#6E6B63;">Recent</div>
+            <div class="nav-item">PDF Merge</div>
+            <div class="nav-item">Clipboard</div>
+          </div>
+        </div>
+        <div class="main-pane">
+          <div class="pane-title" style="color:#141312;">All Tools</div>
+          <div class="pane-sub" style="color:#4A4844;">7 tools, all running locally</div>
+          <div class="tool-grid">
+            <div class="tool-card" style="background:#E0E0DE;"><div class="tool-icon" style="background:#EDEDEC; color:#4A4844;">{}</div><div class="tool-name">JSON Formatter</div></div>
+            <div class="tool-card" style="background:#E0E0DE;"><div class="tool-icon" style="background:#EDEDEC; color:#4A4844;">64</div><div class="tool-name">Base64</div></div>
+            <div class="tool-card" style="background:#E0E0DE;"><div class="tool-icon" style="background:#EDEDEC; color:#4A4844;">JWT</div><div class="tool-name">JWT Inspector</div></div>
+            <div class="tool-card" style="background:#E0E0DE;"><div class="tool-icon" style="background:#EDEDEC; color:#4A4844;">PDF</div><div class="tool-name">PDF Merge</div></div>
+            <div class="tool-card" style="background:#E0E0DE;"><div class="tool-icon" style="background:#EDEDEC; color:#4A4844;">SPL</div><div class="tool-name">PDF Split</div></div>
+            <div class="tool-card" style="background:#E0E0DE;"><div class="tool-icon" style="background:#EDEDEC; color:#4A4844;">IMG</div><div class="tool-name">Image Convert</div></div>
+            <div class="tool-card" style="background:#E0E0DE;"><div class="tool-icon" style="background:#EDEDEC; color:#4A4844;">CLP</div><div class="tool-name">Clipboard History</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-col">
+      <div class="mockup-mode-label">Dark mode</div>
+      <div class="mockup" style="background:#1C1916; color:#EDEAE6; border-color:#2C2823;">
+        <div class="sidebar" style="background:#141210; border-right-color:#2C2823;">
+          <div class="brand" style="color:#EDEAE6;">Umbra</div>
+          <div class="nav-list">
+            <div class="nav-item active" style="background:#CD62221F; color:#CD6222; font-weight:700;">All Tools</div>
+            <div class="nav-section-label" style="color:#8B8378;">Pinned</div>
+            <div class="nav-item">JSON Formatter</div>
+            <div class="nav-item">Base64</div>
+            <div class="nav-item">JWT Inspector</div>
+            <div class="nav-item">Image Convert</div>
+            <div class="nav-section-label" style="color:#8B8378;">Recent</div>
+            <div class="nav-item">PDF Merge</div>
+            <div class="nav-item">Clipboard</div>
+          </div>
+        </div>
+        <div class="main-pane">
+          <div class="pane-title" style="color:#EDEAE6;">All Tools</div>
+          <div class="pane-sub" style="color:#A8A29B;">7 tools, all running locally</div>
+          <div class="tool-grid">
+            <div class="tool-card" style="background:#272220;"><div class="tool-icon" style="background:#141210; color:#A8A29B;">{}</div><div class="tool-name">JSON Formatter</div></div>
+            <div class="tool-card" style="background:#272220;"><div class="tool-icon" style="background:#141210; color:#A8A29B;">64</div><div class="tool-name">Base64</div></div>
+            <div class="tool-card" style="background:#272220;"><div class="tool-icon" style="background:#141210; color:#A8A29B;">JWT</div><div class="tool-name">JWT Inspector</div></div>
+            <div class="tool-card" style="background:#272220;"><div class="tool-icon" style="background:#141210; color:#A8A29B;">PDF</div><div class="tool-name">PDF Merge</div></div>
+            <div class="tool-card" style="background:#272220;"><div class="tool-icon" style="background:#141210; color:#A8A29B;">SPL</div><div class="tool-name">PDF Split</div></div>
+            <div class="tool-card" style="background:#272220;"><div class="tool-icon" style="background:#141210; color:#A8A29B;">IMG</div><div class="tool-name">Image Convert</div></div>
+            <div class="tool-card" style="background:#272220;"><div class="tool-icon" style="background:#141210; color:#A8A29B;">CLP</div><div class="tool-name">Clipboard History</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-strip-label">Button treatment — orange CTA vs. black/mono CTA (per feedback #5: orange stays reserved for the signature touch, not button fills)</div>
+  <div class="btn-strip">
+    <div class="btn-panel" style="background:#F7F7F6;">
+      <div class="btn-panel-label" style="color:#4A4844;">Light · orange CTA</div>
+      <div class="btn-row">
+        <button class="btn" style="background:#B8480F; color:#FFFFFF;">Merge PDFs</button>
+        <button class="btn btn-ghost" style="border-color:#DDDBD8; color:#4A4844;">Cancel</button>
+      </div>
+    </div>
+    <div class="btn-panel" style="background:#F7F7F6;">
+      <div class="btn-panel-label" style="color:#4A4844;">Light · black CTA</div>
+      <div class="btn-row">
+        <button class="btn" style="background:#1A1714; color:#FFFFFF;">Merge PDFs</button>
+        <button class="btn btn-ghost" style="border-color:#DDDBD8; color:#4A4844;">Cancel</button>
+      </div>
+    </div>
+    <div class="btn-panel" style="background:#1C1916;">
+      <div class="btn-panel-label" style="color:#A8A29B;">Dark · orange CTA</div>
+      <div class="btn-row">
+        <button class="btn" style="background:#CD6222; color:#14100C;">Merge PDFs</button>
+        <button class="btn btn-ghost" style="border-color:#2C2823; color:#A8A29B;">Cancel</button>
+      </div>
+    </div>
+    <div class="btn-panel" style="background:#1C1916;">
+      <div class="btn-panel-label" style="color:#A8A29B;">Dark · white/mono CTA</div>
+      <div class="btn-row">
+        <button class="btn" style="background:#EDEAE6; color:#171412;">Merge PDFs</button>
+        <button class="btn btn-ghost" style="border-color:#2C2823; color:#A8A29B;">Cancel</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="variation">
+  <div class="variation-head">
+    <h2>2. Clean Factory</h2>
+    <p class="register">Refines "High-Contrast Snap." Same less-red, true amber-orange hue that read as "ChatGPT," "a clean modern app," "a brand new car factory" — now on a cooler, calmer light background.</p>
+    <p class="changed"><b>What changed from round 1:</b> light-mode main background pulled down from near-white (#FFFFFF) to a cool, slightly-tinted gray (#F4F5F6) — borrowed from Precision Titanium's sidebar tone, per feedback. Dark mode rebuilt from near-black (#050505 base) into a properly elevated cool-neutral stack — #141415 → #1D1D1F → #28282B, each tier lighter. Card borders removed. Because this orange is bright enough that neither white nor its own hue clears 4.5:1 as small text on a light background, a separate AA-safe on-light variant (#C04E08) is used for the nav-active label; the brand orange itself is reserved for fills, dots, and icon accents. A black (light) / near-white (dark) achromatic CTA fill is introduced for primary buttons.</p>
+  </div>
+
+  <div class="chip-row">
+    <div class="chip"><div class="chip-label">bg-base (elev. 0)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#EFF0F1"></div><div class="chip-swatch dark" style="background:#141415"></div></div><div class="chip-hex"><span>#EFF0F1</span><span>#141415</span></div></div>
+    <div class="chip"><div class="chip-label">bg-surface (elev. 1)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#F4F5F6"></div><div class="chip-swatch dark" style="background:#1D1D1F"></div></div><div class="chip-hex"><span>#F4F5F6</span><span>#1D1D1F</span></div></div>
+    <div class="chip"><div class="chip-label">bg-surface-2 (elev. 2)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#E7E9EB"></div><div class="chip-swatch dark" style="background:#28282B"></div></div><div class="chip-hex"><span>#E7E9EB</span><span>#28282B</span></div></div>
+    <div class="chip"><div class="chip-label">border (hairline)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#E0E2E4"></div><div class="chip-swatch dark" style="background:#2C2C2F"></div></div><div class="chip-hex"><span>#E0E2E4</span><span>#2C2C2F</span></div></div>
+    <div class="chip"><div class="chip-label">text-primary</div><div class="chip-swatches"><div class="chip-swatch" style="background:#101113"></div><div class="chip-swatch dark" style="background:#F5F5F6"></div></div><div class="chip-hex"><span>#101113</span><span>#F5F5F6</span></div></div>
+    <div class="chip"><div class="chip-label">text-secondary</div><div class="chip-swatches"><div class="chip-swatch" style="background:#4C4F53"></div><div class="chip-swatch dark" style="background:#B4B4B6"></div></div><div class="chip-hex"><span>#4C4F53</span><span>#B4B4B6</span></div></div>
+    <div class="chip"><div class="chip-label">text-tertiary</div><div class="chip-swatches"><div class="chip-swatch" style="background:#6C6F73"></div><div class="chip-swatch dark" style="background:#838588"></div></div><div class="chip-hex"><span>#6C6F73</span><span>#838588</span></div></div>
+    <div class="chip"><div class="chip-label">accent (orange, fills)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#FF5E1A"></div><div class="chip-swatch dark" style="background:#FF6E30"></div></div><div class="chip-hex"><span>#FF5E1A</span><span>#FF6E30</span></div></div>
+    <div class="chip"><div class="chip-label">accent-text (AA-safe, light only)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#C04E08"></div><div class="chip-swatch dark" style="background:#FF6E30"></div></div><div class="chip-hex"><span>#C04E08</span><span>#FF6E30</span></div></div>
+    <div class="chip"><div class="chip-label">accent-hover</div><div class="chip-swatches"><div class="chip-swatch" style="background:#E64A0A"></div><div class="chip-swatch dark" style="background:#FF8B54"></div></div><div class="chip-hex"><span>#E64A0A</span><span>#FF8B54</span></div></div>
+    <div class="chip"><div class="chip-label">cta-mono (achromatic)</div><div class="chip-swatches"><div class="chip-swatch" style="background:#17181A"></div><div class="chip-swatch dark" style="background:#F0F0F1"></div></div><div class="chip-hex"><span>#17181A</span><span>#F0F0F1</span></div></div>
+  </div>
+  <p class="elev-note">Dark elevation: bg-base (#141415) → bg-surface (#1D1D1F) → bg-surface-2 (#28282B) — each tier lighter than the last, cool-neutral (no warm tint), matching the crisper "Clean Factory" register.</p>
+
+  <div class="mockup-pair">
+    <div class="mockup-col">
+      <div class="mockup-mode-label">Light mode</div>
+      <div class="mockup" style="background:#F4F5F6; color:#101113; border-color:#E0E2E4;">
+        <div class="sidebar" style="background:#EFF0F1; border-right-color:#E0E2E4;">
+          <div class="brand" style="color:#101113;">Umbra</div>
+          <div class="nav-list">
+            <div class="nav-item active" style="background:#FF5E1A1F; color:#C04E08; font-weight:700;">All Tools</div>
+            <div class="nav-section-label" style="color:#6C6F73;">Pinned</div>
+            <div class="nav-item">JSON Formatter</div>
+            <div class="nav-item">Base64</div>
+            <div class="nav-item">JWT Inspector</div>
+            <div class="nav-item">Image Convert</div>
+            <div class="nav-section-label" style="color:#6C6F73;">Recent</div>
+            <div class="nav-item">PDF Merge</div>
+            <div class="nav-item">Clipboard</div>
+          </div>
+        </div>
+        <div class="main-pane">
+          <div class="pane-title" style="color:#101113;">All Tools</div>
+          <div class="pane-sub" style="color:#4C4F53;">7 tools, all running locally</div>
+          <div class="tool-grid">
+            <div class="tool-card" style="background:#E7E9EB;"><div class="tool-icon" style="background:#EFF0F1; color:#4C4F53;">{}</div><div class="tool-name">JSON Formatter</div></div>
+            <div class="tool-card" style="background:#E7E9EB;"><div class="tool-icon" style="background:#EFF0F1; color:#4C4F53;">64</div><div class="tool-name">Base64</div></div>
+            <div class="tool-card" style="background:#E7E9EB;"><div class="tool-icon" style="background:#EFF0F1; color:#4C4F53;">JWT</div><div class="tool-name">JWT Inspector</div></div>
+            <div class="tool-card" style="background:#E7E9EB;"><div class="tool-icon" style="background:#EFF0F1; color:#4C4F53;">PDF</div><div class="tool-name">PDF Merge</div></div>
+            <div class="tool-card" style="background:#E7E9EB;"><div class="tool-icon" style="background:#EFF0F1; color:#4C4F53;">SPL</div><div class="tool-name">PDF Split</div></div>
+            <div class="tool-card" style="background:#E7E9EB;"><div class="tool-icon" style="background:#EFF0F1; color:#4C4F53;">IMG</div><div class="tool-name">Image Convert</div></div>
+            <div class="tool-card" style="background:#E7E9EB;"><div class="tool-icon" style="background:#EFF0F1; color:#4C4F53;">CLP</div><div class="tool-name">Clipboard History</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-col">
+      <div class="mockup-mode-label">Dark mode</div>
+      <div class="mockup" style="background:#1D1D1F; color:#F5F5F6; border-color:#2C2C2F;">
+        <div class="sidebar" style="background:#141415; border-right-color:#2C2C2F;">
+          <div class="brand" style="color:#F5F5F6;">Umbra</div>
+          <div class="nav-list">
+            <div class="nav-item active" style="background:#FF6E301F; color:#FF6E30; font-weight:700;">All Tools</div>
+            <div class="nav-section-label" style="color:#838588;">Pinned</div>
+            <div class="nav-item">JSON Formatter</div>
+            <div class="nav-item">Base64</div>
+            <div class="nav-item">JWT Inspector</div>
+            <div class="nav-item">Image Convert</div>
+            <div class="nav-section-label" style="color:#838588;">Recent</div>
+            <div class="nav-item">PDF Merge</div>
+            <div class="nav-item">Clipboard</div>
+          </div>
+        </div>
+        <div class="main-pane">
+          <div class="pane-title" style="color:#F5F5F6;">All Tools</div>
+          <div class="pane-sub" style="color:#B4B4B6;">7 tools, all running locally</div>
+          <div class="tool-grid">
+            <div class="tool-card" style="background:#28282B;"><div class="tool-icon" style="background:#141415; color:#B4B4B6;">{}</div><div class="tool-name">JSON Formatter</div></div>
+            <div class="tool-card" style="background:#28282B;"><div class="tool-icon" style="background:#141415; color:#B4B4B6;">64</div><div class="tool-name">Base64</div></div>
+            <div class="tool-card" style="background:#28282B;"><div class="tool-icon" style="background:#141415; color:#B4B4B6;">JWT</div><div class="tool-name">JWT Inspector</div></div>
+            <div class="tool-card" style="background:#28282B;"><div class="tool-icon" style="background:#141415; color:#B4B4B6;">PDF</div><div class="tool-name">PDF Merge</div></div>
+            <div class="tool-card" style="background:#28282B;"><div class="tool-icon" style="background:#141415; color:#B4B4B6;">SPL</div><div class="tool-name">PDF Split</div></div>
+            <div class="tool-card" style="background:#28282B;"><div class="tool-icon" style="background:#141415; color:#B4B4B6;">IMG</div><div class="tool-name">Image Convert</div></div>
+            <div class="tool-card" style="background:#28282B;"><div class="tool-icon" style="background:#141415; color:#B4B4B6;">CLP</div><div class="tool-name">Clipboard History</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-strip-label">Button treatment — orange CTA vs. black/mono CTA (per feedback #5: orange stays reserved for the signature touch, not button fills)</div>
+  <div class="btn-strip">
+    <div class="btn-panel" style="background:#F4F5F6;">
+      <div class="btn-panel-label" style="color:#4C4F53;">Light · orange CTA</div>
+      <div class="btn-row">
+        <button class="btn" style="background:#FF5E1A; color:#121214;">Merge PDFs</button>
+        <button class="btn btn-ghost" style="border-color:#E0E2E4; color:#4C4F53;">Cancel</button>
+      </div>
+    </div>
+    <div class="btn-panel" style="background:#F4F5F6;">
+      <div class="btn-panel-label" style="color:#4C4F53;">Light · black CTA</div>
+      <div class="btn-row">
+        <button class="btn" style="background:#17181A; color:#FFFFFF;">Merge PDFs</button>
+        <button class="btn btn-ghost" style="border-color:#E0E2E4; color:#4C4F53;">Cancel</button>
+      </div>
+    </div>
+    <div class="btn-panel" style="background:#1D1D1F;">
+      <div class="btn-panel-label" style="color:#B4B4B6;">Dark · orange CTA</div>
+      <div class="btn-row">
+        <button class="btn" style="background:#FF6E30; color:#121214;">Merge PDFs</button>
+        <button class="btn btn-ghost" style="border-color:#2C2C2F; color:#B4B4B6;">Cancel</button>
+      </div>
+    </div>
+    <div class="btn-panel" style="background:#1D1D1F;">
+      <div class="btn-panel-label" style="color:#B4B4B6;">Dark · white/mono CTA</div>
+      <div class="btn-row">
+        <button class="btn" style="background:#F0F0F1; color:#17181A;">Merge PDFs</button>
+        <button class="btn btn-ghost" style="border-color:#2C2C2F; color:#B4B4B6;">Cancel</button>
+      </div>
+    </div>
+  </div>
+</section>

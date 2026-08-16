@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Umbra — Shapes + Elevation (Round 4: Border Opacity Sweep, Light + Dark)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/*
+================================================================================
+UMBRA — SHAPES + ELEVATION, ROUND 4 (BORDER OPACITY SWEEP)
+Two things are now LOCKED from prior rounds:
+  - 4px corner radius (round 3: confirmed strongly preferred over 8px/12px)
+  - Border over tonal-lift as the surface-separation approach (round 3: shadow
+    ruled out as unconventional for persistent cards + broken in dark mode;
+    tonal-lift was the runner-up but border tested cleaner)
+
+What's still open: in every prior render, the border was a SOLID HEX value
+(#E2E4E7 light / #2C2C2F dark) — chosen by eye, tuned separately per mode.
+The developer flagged that this border may be too strong/visible and asked
+for more subtle variations to compare directly, side by side.
+
+THIS ROUND sweeps border-opacity as an RGBA value instead of solid hex —
+rgba(16,17,19,a) in light mode, rgba(255,255,255,a) in dark mode — at five
+alpha values: 4%, 6%, 8%, 10%, 12%. This is the whole point of the sweep:
+because the border color is now "black/white at N% opacity" rather than a
+hand-tuned hex per mode, the SAME percentage automatically produces a
+correctly-calibrated result in both light and dark without separate
+hex-tuning. Everything else this round is held constant — radius (4px),
+border width (1px), surface (plain white/base, no tonal shift), shadow
+(none), padding (20px) — none of those are variables here; only the
+opacity percentage changes between sections.
+
+PALETTE — "Clean Factory" (locked, do not vary)
+--------------------------------------------------------------------------
+LIGHT
+  page / canvas bg:                                       #F4F5F6
+  card surface (no tonal shift):                          #FFFFFF
+  text-primary (card titles):                              #101113
+  text-tertiary (card descriptions):                       #6C6F73
+  icon chip bg (constant, not a tested variable):          #EFF0F1
+  icon chip text:                                          #4C4F53
+  border neutral-black base for rgba:                      16,17,19  (#101113)
+DARK  (reusing the already-locked dark elevation stack from earlier this
+       session: bg-base #141415 → bg-surface #1D1D1F)
+  page / canvas bg (bg-base):                              #141415
+  card surface (no tonal shift):                           #1D1D1F
+  text-primary (card titles):                              #F5F5F6
+  text-tertiary (card descriptions):                       #838588
+  icon chip bg (constant, always the darkest/base tier):   #141415
+  icon chip text:                                          #B4B4B6
+  border neutral-white base for rgba:                      255,255,255 (#FFFFFF)
+ACCENT (shown in the intro/comparison callout only, not on cards):
+  orange fill:        #FF5E1A   text-safe on light: #C04E08   dark: #FF6E30
+  near-black button:  #18181B-range
+
+TYPOGRAPHY — locked, do not vary
+--------------------------------------------------------------------------
+UI text:            Geist, loaded via Google Fonts (weights 400/500/600/700)
+short-code in icon:  Geist Mono, weight 600
+
+VARIABLES UNDER TEST — exact rgba per variation, per mode, plus an
+approximate resolved hex-equivalent for reference (computed by alpha-
+compositing the rgba border color over each mode's CARD surface color —
+#FFFFFF light / #1D1D1F dark — since that is what the border pixel visually
+sits against on its inner edge; the outer edge sits against the page bg
+instead, so treat this hex as a reference approximation, not an exact
+render — the browser is rendering the true rgba value everywhere below,
+this hex equivalent is documentation only).
+--------------------------------------------------------------------------
+V1  4% border  — radius 4px, width 1px, surface #FFFFFF / #1D1D1F, no shadow
+    LIGHT  rgba(16,17,19,0.04)   ≈ #F5F5F6 resolved over #FFFFFF
+    DARK   rgba(255,255,255,0.04) ≈ #262628 resolved over #1D1D1F
+    padding 20px both modes.
+
+V2  6% border  — radius 4px, width 1px, surface #FFFFFF / #1D1D1F, no shadow
+    LIGHT  rgba(16,17,19,0.06)   ≈ #F1F1F1 resolved over #FFFFFF
+    DARK   rgba(255,255,255,0.06) ≈ #2B2B2C resolved over #1D1D1F
+    padding 20px both modes.
+
+V3  8% border — REFERENCE POINT (roughly matches the prior solid-hex
+    baseline #E2E4E7 / #2C2C2F shown in every render up to this round)
+    radius 4px, width 1px, surface #FFFFFF / #1D1D1F, no shadow
+    LIGHT  rgba(16,17,19,0.08)   ≈ #ECECEC resolved over #FFFFFF
+    DARK   rgba(255,255,255,0.08) ≈ #2F2F31 resolved over #1D1D1F
+    padding 20px both modes.
+
+V4  10% border — radius 4px, width 1px, surface #FFFFFF / #1D1D1F, no shadow
+    LIGHT  rgba(16,17,19,0.10)   ≈ #E7E7E7 resolved over #FFFFFF
+    DARK   rgba(255,255,255,0.10) ≈ #343435 resolved over #1D1D1F
+    padding 20px both modes.
+
+V5  12% border — radius 4px, width 1px, surface #FFFFFF / #1D1D1F, no shadow
+    LIGHT  rgba(16,17,19,0.12)   ≈ #E2E2E3 resolved over #FFFFFF
+    DARK   rgba(255,255,255,0.12) ≈ #383839 resolved over #1D1D1F
+    padding 20px both modes.
+
+Icon chip radius is a constant 8px throughout, pairing with the locked 4px
+card radius (matches round 3 V1's pairing). Icon chip size is a constant
+40×40px throughout. Padding is held constant at 20px everywhere — it is
+not a variable this round. Order below runs lightest/most-subtle (4%)
+to most-visible (12%), top to bottom, so the developer can read down the
+page as an ascending sweep.
+================================================================================
+*/
+
+:root {
+  --page-outer: #EFEFEF;
+  --hairline-outer: #E2E4E7;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--page-outer);
+}
+
+body {
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding: 40px 28px 100px;
+  color: #101113;
+}
+
+.page { max-width: 1480px; margin: 0 auto; }
+
+/* ---------- intro ---------- */
+.intro { margin-bottom: 40px; max-width: 980px; }
+.intro h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: -0.01em; }
+.intro p { font-size: 13.5px; color: #4C4F53; line-height: 1.6; margin: 0 0 10px; }
+.intro .note {
+  display: block;
+  font-size: 12.5px;
+  color: #4C4F53;
+  background: #FFFFFF;
+  border: 1px solid var(--hairline-outer);
+  border-radius: 8px;
+  padding: 12px 16px;
+  line-height: 1.6;
+  margin-top: 14px;
+}
+.intro .note b { color: #101113; }
+.intro .note.callout {
+  border-color: #FFD7BE;
+  background: #FFF6F0;
+}
+.intro .note.callout b { color: #C04E08; }
+
+/* ---------- variation section ---------- */
+.variation {
+  margin-bottom: 56px;
+  padding-top: 34px;
+  border-top: 1px solid var(--hairline-outer);
+}
+.variation:first-of-type { border-top: none; padding-top: 0; }
+
+.var-head { margin-bottom: 18px; display: flex; align-items: flex-start; gap: 18px; }
+.var-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #18181B;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Geist Mono', monospace;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+.var-pct {
+  font-family: 'Geist Mono', monospace;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #FF5E1A;
+  line-height: 1;
+  flex-shrink: 0;
+  min-width: 118px;
+}
+.var-head-text { padding-top: 4px; }
+.var-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.var-tag {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 10px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #C04E08;
+  background: #FFF1E8;
+  border: 1px solid #FFD7BE;
+  border-radius: 5px;
+  padding: 3px 7px;
+}
+.var-isolates {
+  font-size: 12.5px;
+  color: #4C4F53;
+  margin: 8px 0 0;
+  line-height: 1.55;
+  max-width: 780px;
+}
+
+/* ---------- spec chip rows, one per mode ---------- */
+.spec-rows { margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.spec-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.spec-row .mode-tag {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  width: 44px;
+  flex-shrink: 0;
+  color: #6C6F73;
+}
+.spec-chip {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #4C4F53;
+  background: #FFFFFF;
+  border: 1px solid var(--hairline-outer);
+  border-radius: 5px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.spec-chip b { color: #101113; font-weight: 600; }
+
+/* ---------- mode-row: light + dark panels side by side ---------- */
+.mode-row {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.mode-panel {
+  border-radius: 14px;
+  padding: 24px;
+  border: 1px solid var(--hairline-outer);
+}
+.mode-panel.light-mode { background: #F4F5F6; }
+.mode-panel.dark-mode  { background: #141415; border-color: #232326; }
+
+.mode-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.mode-panel.light-mode .mode-label { color: #6C6F73; }
+.mode-panel.dark-mode  .mode-label { color: #838588; }
+
+/* ---------- tool grid (shared skeleton) ---------- */
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-radius: 4px;
+  box-shadow: none;
+  padding: 20px;
+  border-width: 1px;
+  border-style: solid;
+}
+.tool-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+.tool-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.tool-desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin-top: -6px;
+}
+
+.mode-panel.light-mode .tool-name { color: #101113; }
+.mode-panel.light-mode .tool-desc { color: #6C6F73; }
+.mode-panel.light-mode .tool-icon { background: #EFF0F1; color: #4C4F53; }
+.mode-panel.light-mode .tool-card { background: #FFFFFF; }
+
+.mode-panel.dark-mode .tool-name { color: #F5F5F6; }
+.mode-panel.dark-mode .tool-desc { color: #838588; }
+.mode-panel.dark-mode .tool-icon { background: #141415; color: #B4B4B6; }
+.mode-panel.dark-mode .tool-card { background: #1D1D1F; }
+
+/* ================= opacity sweep — border colors only vary ================= */
+.mode-panel.light-mode.v1 .tool-card { border-color: rgba(16,17,19,0.04); }
+.mode-panel.dark-mode.v1  .tool-card { border-color: rgba(255,255,255,0.04); }
+
+.mode-panel.light-mode.v2 .tool-card { border-color: rgba(16,17,19,0.06); }
+.mode-panel.dark-mode.v2  .tool-card { border-color: rgba(255,255,255,0.06); }
+
+.mode-panel.light-mode.v3 .tool-card { border-color: rgba(16,17,19,0.08); }
+.mode-panel.dark-mode.v3  .tool-card { border-color: rgba(255,255,255,0.08); }
+
+.mode-panel.light-mode.v4 .tool-card { border-color: rgba(16,17,19,0.10); }
+.mode-panel.dark-mode.v4  .tool-card { border-color: rgba(255,255,255,0.10); }
+
+.mode-panel.light-mode.v5 .tool-card { border-color: rgba(16,17,19,0.12); }
+.mode-panel.dark-mode.v5  .tool-card { border-color: rgba(255,255,255,0.12); }
+
+@media (max-width: 980px) {
+  .mode-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .var-head { flex-wrap: wrap; }
+}
+@media (max-width: 560px) {
+  .tool-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="intro">
+    <h1>Shapes + Elevation, round 4 — border opacity sweep, light + dark</h1>
+    <p>Radius (4px) and border-over-tonal-lift are now locked from round 3. What's still open is how visible that border should be — every render so far used a hand-tuned solid hex (#E2E4E7 light / #2C2C2F dark) that may be too strong. This round swaps to <b>rgba</b> border color instead of solid hex, so the same opacity percentage produces a matched result in both modes automatically, and sweeps five values — 4%, 6%, 8%, 10%, 12% — so the developer can pick the subtlety level directly rather than tune two hex values by eye.</p>
+    <div class="note callout"><b>Why rgba instead of hex this round:</b> a solid hex border has to be re-tuned separately for light and dark to look equivalently subtle. <code>rgba(16,17,19,a)</code> in light mode and <code>rgba(255,255,255,a)</code> in dark mode — same alpha, opposite base color — produces a matched visual weight in both modes from one shared number. That's the entire point of testing opacity as the variable this round instead of another pair of hex codes.</div>
+    <div class="note"><b>How to compare:</b> scan down the page from V1 (4%, most subtle) to V5 (12%, most visible). V3 (8%) is flagged as the closest match to the old solid-hex baseline you've seen in every prior render — use it as your anchor, then judge whether you want to land lighter (V1/V2) or keep roughly where things already were (V3) or go slightly firmer (V4/V5).</div>
+  </div>
+
+  <!-- ============================= V1 — 4% ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">1</span>
+      <span class="var-pct">4%</span>
+      <div class="var-head-text">
+        <span class="var-title">Border opacity 4% — lightest, most subtle</span>
+        <div class="var-isolates">Barely-there separation. At this opacity the border may nearly disappear against busy backgrounds — the low end of the sweep.</div>
+        <div class="spec-rows">
+          <div class="spec-row"><span class="mode-tag">Light</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(16,17,19,0.04)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#F5F5F6</b></span>
+            <span class="spec-chip">surface: <b>#FFFFFF</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+          <div class="spec-row"><span class="mode-tag">Dark</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(255,255,255,0.04)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#262628</b></span>
+            <span class="spec-chip">surface: <b>#1D1D1F</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mode-row">
+      <div class="mode-panel light-mode v1">
+        <div class="mode-label">Light</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+      <div class="mode-panel dark-mode v1">
+        <div class="mode-label">Dark</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= V2 — 6% ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">2</span>
+      <span class="var-pct">6%</span>
+      <div class="var-head-text">
+        <span class="var-title">Border opacity 6%</span>
+        <div class="var-isolates">A small step up from V1 — still quite subtle, but the card edge should start to read reliably.</div>
+        <div class="spec-rows">
+          <div class="spec-row"><span class="mode-tag">Light</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(16,17,19,0.06)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#F1F1F1</b></span>
+            <span class="spec-chip">surface: <b>#FFFFFF</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+          <div class="spec-row"><span class="mode-tag">Dark</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(255,255,255,0.06)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#2B2B2C</b></span>
+            <span class="spec-chip">surface: <b>#1D1D1F</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mode-row">
+      <div class="mode-panel light-mode v2">
+        <div class="mode-label">Light</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+      <div class="mode-panel dark-mode v2">
+        <div class="mode-label">Dark</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= V3 — 8% (reference) ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">3</span>
+      <span class="var-pct">8%</span>
+      <div class="var-head-text">
+        <span class="var-title">Border opacity 8%</span><span class="var-tag">reference point</span>
+        <div class="var-isolates">Roughly where the prior solid-hex baseline (#E2E4E7 light / #2C2C2F dark, shown in every render up to this round) sits — included here so the sweep has an anchor back to what you've already been looking at.</div>
+        <div class="spec-rows">
+          <div class="spec-row"><span class="mode-tag">Light</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(16,17,19,0.08)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#ECECEC</b></span>
+            <span class="spec-chip">surface: <b>#FFFFFF</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+          <div class="spec-row"><span class="mode-tag">Dark</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(255,255,255,0.08)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#2F2F31</b></span>
+            <span class="spec-chip">surface: <b>#1D1D1F</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mode-row">
+      <div class="mode-panel light-mode v3">
+        <div class="mode-label">Light</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+      <div class="mode-panel dark-mode v3">
+        <div class="mode-label">Dark</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= V4 — 10% ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">4</span>
+      <span class="var-pct">10%</span>
+      <div class="var-head-text">
+        <span class="var-title">Border opacity 10%</span>
+        <div class="var-isolates">A step firmer than the V3 reference — the card edge should read clearly without approaching a hard line.</div>
+        <div class="spec-rows">
+          <div class="spec-row"><span class="mode-tag">Light</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(16,17,19,0.10)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#E7E7E7</b></span>
+            <span class="spec-chip">surface: <b>#FFFFFF</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+          <div class="spec-row"><span class="mode-tag">Dark</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(255,255,255,0.10)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#343435</b></span>
+            <span class="spec-chip">surface: <b>#1D1D1F</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mode-row">
+      <div class="mode-panel light-mode v4">
+        <div class="mode-label">Light</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+      <div class="mode-panel dark-mode v4">
+        <div class="mode-label">Dark</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= V5 — 12% ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">5</span>
+      <span class="var-pct">12%</span>
+      <div class="var-head-text">
+        <span class="var-title">Border opacity 12% — firmest, most visible</span>
+        <div class="var-isolates">The high end of the sweep — the border should be unambiguous here, closer to (but still lighter than) a hard-line separator.</div>
+        <div class="spec-rows">
+          <div class="spec-row"><span class="mode-tag">Light</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(16,17,19,0.12)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#E2E2E3</b></span>
+            <span class="spec-chip">surface: <b>#FFFFFF</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+          <div class="spec-row"><span class="mode-tag">Dark</span>
+            <span class="spec-chip">radius: <b>4px</b></span>
+            <span class="spec-chip">border: <b>1px solid rgba(255,255,255,0.12)</b></span>
+            <span class="spec-chip">≈ resolved: <b>#383839</b></span>
+            <span class="spec-chip">surface: <b>#1D1D1F</b></span>
+            <span class="spec-chip">shadow: <b>none</b></span>
+            <span class="spec-chip">padding: <b>20px</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mode-row">
+      <div class="mode-panel light-mode v5">
+        <div class="mode-label">Light</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+      <div class="mode-panel dark-mode v5">
+        <div class="mode-label">Dark</div>
+        <div class="tool-grid">
+          <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+          <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+          <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+          <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+          <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+          <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+          <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

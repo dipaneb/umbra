@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Umbra — Typography Pairing Comparison</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #F4F5F6;
+    --surface: #ffffff;
+    --text-primary: #18181B;
+    --text-secondary: #52525B;
+    --orange-fill: #FF5E1A;
+    --orange-on-text: #C04E08;
+    --black-btn: #18181B;
+    --hairline: rgba(24, 24, 27, 0.12);
+    --code-bg: #EBEDEE;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 32px 24px 96px;
+  }
+
+  .page {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+
+  /* ---------- intro ---------- */
+
+  .intro {
+    margin-bottom: 40px;
+  }
+
+  .net-note {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--orange-on-text);
+    background: #FFF1E8;
+    border: 1px solid rgba(255, 94, 26, 0.3);
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 20px;
+  }
+
+  .intro h1 {
+    font-size: 26px;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .intro p.sub {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  /* ---------- pairing section ---------- */
+
+  .pairing {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 32px 36px 28px;
+    margin-bottom: 28px;
+  }
+
+  .pairing-label {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+
+  .pairing-label .src {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+    color: #9a9aa2;
+  }
+
+  .display {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 44px;
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    margin: 0 0 22px;
+    color: var(--text-primary);
+  }
+
+  .section-divider {
+    border: none;
+    border-top: 1px solid var(--hairline);
+    margin: 22px 0;
+  }
+
+  /* ---------- UI mock: sidebar + cards ---------- */
+
+  .ui-row {
+    display: flex;
+    gap: 20px;
+    align-items: stretch;
+  }
+
+  .sidebar-mock {
+    font-family: var(--sans);
+    width: 190px;
+    flex-shrink: 0;
+    background: var(--black-btn);
+    border-radius: 8px;
+    padding: 14px 10px;
+  }
+
+  .sidebar-mock .sb-heading {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8b8b93;
+    padding: 4px 8px 8px;
+  }
+
+  .sidebar-mock .sb-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #d4d4d8;
+    padding: 7px 8px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+  }
+
+  .sidebar-mock .sb-item.active {
+    background: var(--orange-fill);
+    color: #1a0d05;
+    font-weight: 600;
+  }
+
+  .sidebar-mock .sb-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+
+  .sidebar-mock .sb-item.active .sb-dot {
+    opacity: 1;
+  }
+
+  .cards-mock {
+    font-family: var(--sans);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .tool-card {
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--bg);
+  }
+
+  .tool-card .tc-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    margin-bottom: 3px;
+    color: var(--text-primary);
+  }
+
+  .tool-card .tc-desc {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .btn-mock {
+    font-family: var(--sans);
+    display: inline-block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--black-btn);
+    border-radius: 6px;
+    padding: 6px 12px;
+    margin-top: 4px;
+  }
+
+  /* ---------- body copy ---------- */
+
+  .body-copy {
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    max-width: 62ch;
+  }
+
+  .body-copy .label {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  /* ---------- code block ---------- */
+
+  .code-label {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  .code-block {
+    font-family: var(--mono);
+    background: var(--code-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 16px 18px;
+    font-size: 13px;
+    line-height: 1.7;
+    overflow-x: auto;
+  }
+
+  .code-block .ck { color: var(--orange-on-text); }
+  .code-block .cv { color: #1d5fae; }
+  .code-block .cn { color: #0f7a4d; }
+  .code-block .punct { color: var(--text-secondary); }
+
+  .code-block .jwt-block {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--hairline);
+  }
+
+  /* ---------- caption ---------- */
+
+  .caption {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--text-secondary);
+    margin: 18px 0 0;
+    padding-left: 12px;
+    border-left: 2px solid var(--orange-fill);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="intro">
+    <div class="net-note">⚠ Requires an internet connection to render correctly — this page loads real typefaces live from Google Fonts (fonts.googleapis.com / fonts.gstatic.com). Offline, text falls back to your system font and the comparison won't be meaningful.</div>
+    <h1>Typography pairing comparison</h1>
+    <p class="sub">Umbra — 5 UI-sans + code-mono pairings, identical content and Clean Factory palette. Type is the only variable.</p>
+  </div>
+
+  <!-- 1. Geist Sans + Geist Mono -->
+  <section class="pairing" style="--sans:'Geist',sans-serif; --mono:'Geist Mono',monospace;">
+    <div class="pairing-label">01 · Geist Sans + Geist Mono <span class="src">— Vercel</span></div>
+    <h2 class="display">Geist Sans + Geist Mono</h2>
+
+    <div class="ui-row">
+      <div class="sidebar-mock">
+        <div class="sb-heading">Pinned</div>
+        <div class="sb-item active"><span class="sb-dot"></span>JSON Formatter</div>
+        <div class="sb-item"><span class="sb-dot"></span>Base64</div>
+        <div class="sb-item"><span class="sb-dot"></span>JWT Inspector</div>
+      </div>
+      <div class="cards-mock">
+        <div class="tool-card">
+          <div class="tc-title">JSON Formatter</div>
+          <div class="tc-desc">Format, validate, and minify JSON without leaving your desktop.</div>
+        </div>
+        <div class="tool-card">
+          <div class="tc-title">Base64</div>
+          <div class="tc-desc">Encode and decode text or files, entirely offline.</div>
+          <div class="btn-mock">Format</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="section-divider">
+
+    <div class="body-copy">
+      <span class="label">Body copy · 15px</span>
+      The JSON Formatter takes whatever you paste or drop — minified, malformed, or just ugly — and turns it into something you can actually read. Validation errors point at the exact line and column, and every pass runs locally, so nothing you paste ever leaves your machine.
+    </div>
+
+    <div style="margin-top:20px;">
+      <div class="code-label">Output · JSON &amp; decoded JWT</div>
+      <div class="code-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"tool"</span><span class="punct">:</span> <span class="cv">"json-formatter"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"status"</span><span class="punct">:</span> <span class="cv">"ok"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"linesFormatted"</span><span class="punct">:</span> <span class="cn">42</span><br>
+<span class="punct">}</span>
+<div class="jwt-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"sub"</span><span class="punct">:</span> <span class="cv">"local-user"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"iat"</span><span class="punct">:</span> <span class="cn">1723680000</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"alg"</span><span class="punct">:</span> <span class="cv">"HS256"</span><br>
+<span class="punct">}</span>
+</div>
+      </div>
+    </div>
+
+    <p class="caption">Slightly tighter apertures and lower contrast than Inter give Geist Sans a quieter, more "engineered" feel; Geist Mono's slashed zero and narrow default spacing keep the JSON block compact without sacrificing 0/O clarity.</p>
+  </section>
+
+  <!-- 2. Inter + JetBrains Mono -->
+  <section class="pairing" style="--sans:'Inter',sans-serif; --mono:'JetBrains Mono',monospace;">
+    <div class="pairing-label">02 · Inter + JetBrains Mono <span class="src">— the modern dev-tool default</span></div>
+    <h2 class="display">Inter + JetBrains Mono</h2>
+
+    <div class="ui-row">
+      <div class="sidebar-mock">
+        <div class="sb-heading">Pinned</div>
+        <div class="sb-item active"><span class="sb-dot"></span>JSON Formatter</div>
+        <div class="sb-item"><span class="sb-dot"></span>Base64</div>
+        <div class="sb-item"><span class="sb-dot"></span>JWT Inspector</div>
+      </div>
+      <div class="cards-mock">
+        <div class="tool-card">
+          <div class="tc-title">JSON Formatter</div>
+          <div class="tc-desc">Format, validate, and minify JSON without leaving your desktop.</div>
+        </div>
+        <div class="tool-card">
+          <div class="tc-title">Base64</div>
+          <div class="tc-desc">Encode and decode text or files, entirely offline.</div>
+          <div class="btn-mock">Format</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="section-divider">
+
+    <div class="body-copy">
+      <span class="label">Body copy · 15px</span>
+      The JSON Formatter takes whatever you paste or drop — minified, malformed, or just ugly — and turns it into something you can actually read. Validation errors point at the exact line and column, and every pass runs locally, so nothing you paste ever leaves your machine.
+    </div>
+
+    <div style="margin-top:20px;">
+      <div class="code-label">Output · JSON &amp; decoded JWT</div>
+      <div class="code-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"tool"</span><span class="punct">:</span> <span class="cv">"json-formatter"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"status"</span><span class="punct">:</span> <span class="cv">"ok"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"linesFormatted"</span><span class="punct">:</span> <span class="cn">42</span><br>
+<span class="punct">}</span>
+<div class="jwt-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"sub"</span><span class="punct">:</span> <span class="cv">"local-user"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"iat"</span><span class="punct">:</span> <span class="cn">1723680000</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"alg"</span><span class="punct">:</span> <span class="cv">"HS256"</span><br>
+<span class="punct">}</span>
+</div>
+      </div>
+    </div>
+
+    <p class="caption">Inter's tall x-height and wide-open apertures make the 15px body copy the easiest of the five to read at a glance; JetBrains Mono's dotted zero and taller ascenders keep bracket-dense JSON legible even at 13px.</p>
+  </section>
+
+  <!-- 3. Inter + IBM Plex Mono -->
+  <section class="pairing" style="--sans:'Inter',sans-serif; --mono:'IBM Plex Mono',monospace;">
+    <div class="pairing-label">03 · Inter + IBM Plex Mono <span class="src">— same sans, more technical mono</span></div>
+    <h2 class="display">Inter + IBM Plex Mono</h2>
+
+    <div class="ui-row">
+      <div class="sidebar-mock">
+        <div class="sb-heading">Pinned</div>
+        <div class="sb-item active"><span class="sb-dot"></span>JSON Formatter</div>
+        <div class="sb-item"><span class="sb-dot"></span>Base64</div>
+        <div class="sb-item"><span class="sb-dot"></span>JWT Inspector</div>
+      </div>
+      <div class="cards-mock">
+        <div class="tool-card">
+          <div class="tc-title">JSON Formatter</div>
+          <div class="tc-desc">Format, validate, and minify JSON without leaving your desktop.</div>
+        </div>
+        <div class="tool-card">
+          <div class="tc-title">Base64</div>
+          <div class="tc-desc">Encode and decode text or files, entirely offline.</div>
+          <div class="btn-mock">Format</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="section-divider">
+
+    <div class="body-copy">
+      <span class="label">Body copy · 15px</span>
+      The JSON Formatter takes whatever you paste or drop — minified, malformed, or just ugly — and turns it into something you can actually read. Validation errors point at the exact line and column, and every pass runs locally, so nothing you paste ever leaves your machine.
+    </div>
+
+    <div style="margin-top:20px;">
+      <div class="code-label">Output · JSON &amp; decoded JWT</div>
+      <div class="code-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"tool"</span><span class="punct">:</span> <span class="cv">"json-formatter"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"status"</span><span class="punct">:</span> <span class="cv">"ok"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"linesFormatted"</span><span class="punct">:</span> <span class="cn">42</span><br>
+<span class="punct">}</span>
+<div class="jwt-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"sub"</span><span class="punct">:</span> <span class="cv">"local-user"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"iat"</span><span class="punct">:</span> <span class="cn">1723680000</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"alg"</span><span class="punct">:</span> <span class="cv">"HS256"</span><br>
+<span class="punct">}</span>
+</div>
+      </div>
+    </div>
+
+    <p class="caption">Identical Inter body copy to pairing 02, but IBM Plex Mono's serif-flavored "l" and heavier stroke contrast read noticeably more "engineering console" — the mono alone shifts the register from neutral to deliberately technical.</p>
+  </section>
+
+  <!-- 4. DM Sans + DM Mono -->
+  <section class="pairing" style="--sans:'DM Sans',sans-serif; --mono:'DM Mono',monospace;">
+    <div class="pairing-label">04 · DM Sans + DM Mono <span class="src">— baseline, matches round-1 mockups</span></div>
+    <h2 class="display">DM Sans + DM Mono</h2>
+
+    <div class="ui-row">
+      <div class="sidebar-mock">
+        <div class="sb-heading">Pinned</div>
+        <div class="sb-item active"><span class="sb-dot"></span>JSON Formatter</div>
+        <div class="sb-item"><span class="sb-dot"></span>Base64</div>
+        <div class="sb-item"><span class="sb-dot"></span>JWT Inspector</div>
+      </div>
+      <div class="cards-mock">
+        <div class="tool-card">
+          <div class="tc-title">JSON Formatter</div>
+          <div class="tc-desc">Format, validate, and minify JSON without leaving your desktop.</div>
+        </div>
+        <div class="tool-card">
+          <div class="tc-title">Base64</div>
+          <div class="tc-desc">Encode and decode text or files, entirely offline.</div>
+          <div class="btn-mock">Format</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="section-divider">
+
+    <div class="body-copy">
+      <span class="label">Body copy · 15px</span>
+      The JSON Formatter takes whatever you paste or drop — minified, malformed, or just ugly — and turns it into something you can actually read. Validation errors point at the exact line and column, and every pass runs locally, so nothing you paste ever leaves your machine.
+    </div>
+
+    <div style="margin-top:20px;">
+      <div class="code-label">Output · JSON &amp; decoded JWT</div>
+      <div class="code-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"tool"</span><span class="punct">:</span> <span class="cv">"json-formatter"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"status"</span><span class="punct">:</span> <span class="cv">"ok"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"linesFormatted"</span><span class="punct">:</span> <span class="cn">42</span><br>
+<span class="punct">}</span>
+<div class="jwt-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"sub"</span><span class="punct">:</span> <span class="cv">"local-user"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"iat"</span><span class="punct">:</span> <span class="cn">1723680000</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"alg"</span><span class="punct">:</span> <span class="cv">"HS256"</span><br>
+<span class="punct">}</span>
+</div>
+      </div>
+    </div>
+
+    <p class="caption">Rounder terminals throughout give this pairing the softest, friendliest register of the five; DM Mono's narrower set width makes the JSON block visibly more compact than the JetBrains or Plex versions at the same font-size.</p>
+  </section>
+
+  <!-- 5. Space Grotesk + Space Mono -->
+  <section class="pairing" style="--sans:'Space Grotesk',sans-serif; --mono:'Space Mono',monospace;">
+    <div class="pairing-label">05 · Space Grotesk + Space Mono <span class="src">— quirkier, more personality</span></div>
+    <h2 class="display">Space Grotesk + Space Mono</h2>
+
+    <div class="ui-row">
+      <div class="sidebar-mock">
+        <div class="sb-heading">Pinned</div>
+        <div class="sb-item active"><span class="sb-dot"></span>JSON Formatter</div>
+        <div class="sb-item"><span class="sb-dot"></span>Base64</div>
+        <div class="sb-item"><span class="sb-dot"></span>JWT Inspector</div>
+      </div>
+      <div class="cards-mock">
+        <div class="tool-card">
+          <div class="tc-title">JSON Formatter</div>
+          <div class="tc-desc">Format, validate, and minify JSON without leaving your desktop.</div>
+        </div>
+        <div class="tool-card">
+          <div class="tc-title">Base64</div>
+          <div class="tc-desc">Encode and decode text or files, entirely offline.</div>
+          <div class="btn-mock">Format</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="section-divider">
+
+    <div class="body-copy">
+      <span class="label">Body copy · 15px</span>
+      The JSON Formatter takes whatever you paste or drop — minified, malformed, or just ugly — and turns it into something you can actually read. Validation errors point at the exact line and column, and every pass runs locally, so nothing you paste ever leaves your machine.
+    </div>
+
+    <div style="margin-top:20px;">
+      <div class="code-label">Output · JSON &amp; decoded JWT</div>
+      <div class="code-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"tool"</span><span class="punct">:</span> <span class="cv">"json-formatter"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"status"</span><span class="punct">:</span> <span class="cv">"ok"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"linesFormatted"</span><span class="punct">:</span> <span class="cn">42</span><br>
+<span class="punct">}</span>
+<div class="jwt-block">
+<span class="punct">{</span><br>
+&nbsp;&nbsp;<span class="ck">"sub"</span><span class="punct">:</span> <span class="cv">"local-user"</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"iat"</span><span class="punct">:</span> <span class="cn">1723680000</span><span class="punct">,</span><br>
+&nbsp;&nbsp;<span class="ck">"alg"</span><span class="punct">:</span> <span class="cv">"HS256"</span><br>
+<span class="punct">}</span>
+</div>
+      </div>
+    </div>
+
+    <p class="caption">The most distinctive of the five — Space Grotesk's unusual "G" and squared-off "R" are visible even at UI sizes, and Space Mono's wide, heavy-set characters make the code block feel deliberately unconventional rather than neutral, at some cost to density.</p>
+  </section>
+
+</div>
+</body>
+</html>

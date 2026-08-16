@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Umbra — Shapes + Elevation (Card Isolation)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/*
+================================================================================
+UMBRA — SHAPES + LIGHT-MODE ELEVATION EXPLORATION
+Goal: developer has said "not a big fan of cards" across every render shown so
+far, even after border weight was already fixed to hairline-only. The specific
+cause (radius? shadow? border? density?) hasn't been isolated. This file varies
+those variables ONE OR TWO AT A TIME across 6 versions of the same 7-tool grid
+so the actual problem can be pinpointed instead of guessed at.
+
+PALETTE — "Clean Factory" (locked, do not vary)
+--------------------------------------------------------------------------
+page background (single light mode bg, used everywhere on this page): #F4F5F6
+card surface, bordered/shadow variants (1-3):                          #FFFFFF
+card surface, flat/tonal variants (4-6) — deliberately a few points
+  off the page bg so the card still reads as its own region with
+  ZERO border and ZERO shadow doing that work:                         #EAEBED
+icon chip background (constant across all 6, not a tested variable):   #EAEBED
+icon chip text / mid-gray text-secondary:                              #52565C
+text-primary (card titles):                                            #18181B
+text-tertiary (card descriptions):                                     #6B6F76
+hairline border (variation 1 only):                                    #E2E4E7
+  — rgb(226,228,231), i.e. rgba(24,24,27,0.09) over the white surface
+
+TYPOGRAPHY — locked, do not vary
+--------------------------------------------------------------------------
+UI text:            Geist, loaded via Google Fonts (weights 400/500/600/700)
+short-code in icon:  Geist Mono, weight 600 (loaded via Google Fonts)
+
+VARIABLES UNDER TEST — exact values per variation
+--------------------------------------------------------------------------
+V1  Sharp, bordered (current baseline / control)
+    radius: 4px   border: 1px solid #E2E4E7   shadow: none
+    padding: 20px   surface: #FFFFFF
+
+V2  Sharp, shadow instead of border
+    radius: 4px   border: none
+    shadow: 0 1px 2px rgba(16,17,19,0.05), 0 3px 8px rgba(16,17,19,0.04)
+    padding: 20px   surface: #FFFFFF
+
+V3  Soft rounded, no border, subtle shadow
+    radius: 12px   border: none
+    shadow: 0 1px 2px rgba(16,17,19,0.05), 0 3px 8px rgba(16,17,19,0.04)
+    padding: 20px   surface: #FFFFFF
+
+V4  Soft rounded, pure flat (Notion/Linear tonal card)
+    radius: 12px   border: none   shadow: none
+    padding: 20px   surface: #EAEBED (tonal vs. #F4F5F6 page bg)
+
+V5  Larger radius, generous padding, flat
+    radius: 16px   border: none   shadow: none
+    padding: 28px  (vs. 20px baseline)   surface: #EAEBED
+
+V6  Sharp corners, tight/compact, flat
+    radius: 4px   border: none   shadow: none
+    padding: 12px  (vs. 20px baseline)   surface: #EAEBED
+
+Icon chip radius is not itself a tested variable — it is set to 8px for the
+sharp-corner variations (1, 2, 6) and 12px for the soft-rounded ones (3, 4, 5)
+purely so the icon doesn't visually fight its own card. Icon chip size is a
+constant 40x40px throughout.
+================================================================================
+*/
+
+:root {
+  --bg: #F4F5F6;
+  --surface-white: #FFFFFF;
+  --surface-tonal: #EAEBED;
+  --text-primary: #18181B;
+  --text-secondary: #52565C;
+  --text-tertiary: #6B6F76;
+  --hairline: #E2E4E7;
+  --shadow-subtle: 0 1px 2px rgba(16,17,19,0.05), 0 3px 8px rgba(16,17,19,0.04);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding: 40px 28px 100px;
+}
+
+.page { max-width: 1240px; margin: 0 auto; }
+
+/* ---------- intro ---------- */
+.intro { margin-bottom: 40px; max-width: 880px; }
+.intro h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: -0.01em; }
+.intro p { font-size: 13.5px; color: var(--text-secondary); line-height: 1.6; margin: 0 0 10px; }
+.intro .note {
+  display: inline-block;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  background: #FFFFFF;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 9px 14px;
+  line-height: 1.55;
+}
+.intro .note b { color: var(--text-primary); }
+
+/* ---------- variation section ---------- */
+.variation {
+  margin-bottom: 52px;
+  padding-top: 32px;
+  border-top: 1px solid var(--hairline);
+}
+.variation:first-of-type { border-top: none; padding-top: 0; }
+
+.var-head { margin-bottom: 16px; }
+.var-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #18181B;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Geist Mono', monospace;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+.var-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  vertical-align: middle;
+}
+.var-isolates {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin: 8px 0 0 34px;
+  line-height: 1.5;
+  max-width: 760px;
+}
+.var-caption {
+  margin: 10px 0 0 34px;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.spec-chip {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: #FFFFFF;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.spec-chip b { color: var(--text-primary); font-weight: 600; }
+
+/* ---------- tool grid (shared skeleton) ---------- */
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 18px;
+}
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tool-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-tonal);
+  color: var(--text-secondary);
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+.tool-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+.tool-desc {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+  margin-top: -6px;
+}
+
+/* ---------- V1: sharp, bordered (control) ---------- */
+.v1 .tool-card {
+  background: var(--surface-white);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  box-shadow: none;
+  padding: 20px;
+}
+.v1 .tool-icon { border-radius: 8px; }
+
+/* ---------- V2: sharp, shadow instead of border ---------- */
+.v2 .tool-card {
+  background: var(--surface-white);
+  border: none;
+  border-radius: 4px;
+  box-shadow: var(--shadow-subtle);
+  padding: 20px;
+}
+.v2 .tool-icon { border-radius: 8px; }
+
+/* ---------- V3: soft rounded, no border, subtle shadow ---------- */
+.v3 .tool-card {
+  background: var(--surface-white);
+  border: none;
+  border-radius: 12px;
+  box-shadow: var(--shadow-subtle);
+  padding: 20px;
+}
+.v3 .tool-icon { border-radius: 12px; }
+
+/* ---------- V4: soft rounded, pure flat / tonal ---------- */
+.v4 .tool-card {
+  background: var(--surface-tonal);
+  border: none;
+  border-radius: 12px;
+  box-shadow: none;
+  padding: 20px;
+}
+.v4 .tool-icon { border-radius: 12px; background: #E1E3E6; }
+
+/* ---------- V5: larger radius, generous padding, flat ---------- */
+.v5 .tool-card {
+  background: var(--surface-tonal);
+  border: none;
+  border-radius: 16px;
+  box-shadow: none;
+  padding: 28px;
+}
+.v5 .tool-icon { border-radius: 12px; background: #E1E3E6; }
+
+/* ---------- V6: sharp corners, tight/compact, flat ---------- */
+.v6 .tool-card {
+  background: var(--surface-tonal);
+  border: none;
+  border-radius: 4px;
+  box-shadow: none;
+  padding: 12px;
+}
+.v6 .tool-icon { border-radius: 8px; background: #E1E3E6; }
+.v6 .tool-card { gap: 8px; }
+.v6 .tool-desc { margin-top: -4px; }
+
+@media (max-width: 900px) {
+  .tool-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="intro">
+    <h1>Shapes + Elevation — isolating why the cards aren't landing</h1>
+    <p>Same 7-tool grid, same content, same locked palette and type — only radius, border, shadow, and padding change between the six versions below. The goal isn't to pick a winner yet; it's to find out which single variable (or combination) is actually the problem, since "not a fan of cards" has come up repeatedly even after the border was already trimmed to hairline-only.</p>
+    <div class="note"><b>How to react:</b> for each version, name what specifically feels off (or right) — e.g. "V1 and V2 both feel too boxed in, V4 is closer" isolates radius/density as the issue rather than border. "Still don't like any of them" is also useful data — it may mean the grid itself, not the card, needs to change shape.</div>
+  </div>
+
+  <!-- ============================= V1 ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">1</span><span class="var-title">Sharp, bordered — current baseline / control</span>
+      <div class="var-isolates">What's been shown in every render so far, included here as the reference point everything else is judged against. Isolates nothing new — it's the known quantity.</div>
+      <div class="var-caption">
+        <span class="spec-chip">radius: <b>4px</b></span>
+        <span class="spec-chip">border: <b>1px solid #E2E4E7</b></span>
+        <span class="spec-chip">shadow: <b>none</b></span>
+        <span class="spec-chip">padding: <b>20px</b></span>
+        <span class="spec-chip">surface: <b>#FFFFFF</b></span>
+      </div>
+    </div>
+    <div class="tool-grid v1">
+      <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+      <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+      <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+      <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+      <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+      <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+      <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+    </div>
+  </section>
+
+  <!-- ============================= V2 ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">2</span><span class="var-title">Sharp, shadow instead of border</span>
+      <div class="var-isolates">Same 4px radius and padding as the control — only the edge treatment changes: the hairline border is removed entirely and replaced with a barely-there soft shadow for separation. Isolates: <b>border vs. shadow</b> as the elevation cue, radius held constant.</div>
+      <div class="var-caption">
+        <span class="spec-chip">radius: <b>4px</b></span>
+        <span class="spec-chip">border: <b>none</b></span>
+        <span class="spec-chip">shadow: <b>0 1px 2px rgba(16,17,19,.05), 0 3px 8px rgba(16,17,19,.04)</b></span>
+        <span class="spec-chip">padding: <b>20px</b></span>
+        <span class="spec-chip">surface: <b>#FFFFFF</b></span>
+      </div>
+    </div>
+    <div class="tool-grid v2">
+      <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+      <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+      <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+      <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+      <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+      <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+      <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+    </div>
+  </section>
+
+  <!-- ============================= V3 ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">3</span><span class="var-title">Soft rounded, no border, subtle shadow</span>
+      <div class="var-isolates">Same shadow and padding as V2, but radius jumps from 4px to 12px. If this feels notably better than V2, radius is a real contributor; if it feels about the same, radius probably isn't the culprit. Isolates: <b>radius</b> (sharp vs. soft), shadow held constant.</div>
+      <div class="var-caption">
+        <span class="spec-chip">radius: <b>12px</b></span>
+        <span class="spec-chip">border: <b>none</b></span>
+        <span class="spec-chip">shadow: <b>0 1px 2px rgba(16,17,19,.05), 0 3px 8px rgba(16,17,19,.04)</b></span>
+        <span class="spec-chip">padding: <b>20px</b></span>
+        <span class="spec-chip">surface: <b>#FFFFFF</b></span>
+      </div>
+    </div>
+    <div class="tool-grid v3">
+      <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+      <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+      <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+      <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+      <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+      <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+      <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+    </div>
+  </section>
+
+  <!-- ============================= V4 ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">4</span><span class="var-title">Soft rounded, pure flat — the "Notion/Linear" card</span>
+      <div class="var-isolates">Same 12px radius as V3, but both border and shadow are dropped entirely — the card reads as its own region purely through a slightly different fill tone (#EAEBED) against the page background (#F4F5F6). No edge treatment at all. Isolates: <b>elevation cue itself</b> — shadow vs. nothing, border vs. nothing.</div>
+      <div class="var-caption">
+        <span class="spec-chip">radius: <b>12px</b></span>
+        <span class="spec-chip">border: <b>none</b></span>
+        <span class="spec-chip">shadow: <b>none</b></span>
+        <span class="spec-chip">padding: <b>20px</b></span>
+        <span class="spec-chip">surface: <b>#EAEBED (tonal, vs. #F4F5F6 page)</b></span>
+      </div>
+    </div>
+    <div class="tool-grid v4">
+      <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+      <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+      <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+      <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+      <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+      <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+      <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+    </div>
+  </section>
+
+  <!-- ============================= V5 ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">5</span><span class="var-title">Larger radius, generous padding, flat</span>
+      <div class="var-isolates">Same flat/tonal treatment as V4, but pushes radius further (16px) and padding up from 20px to 28px — noticeably more breathing room per card. Tests whether spaciousness/density, not just corner shape, is part of the discomfort. Isolates: <b>radius + padding</b> together, both increased.</div>
+      <div class="var-caption">
+        <span class="spec-chip">radius: <b>16px</b></span>
+        <span class="spec-chip">border: <b>none</b></span>
+        <span class="spec-chip">shadow: <b>none</b></span>
+        <span class="spec-chip">padding: <b>28px</b> (vs. 20px baseline)</span>
+        <span class="spec-chip">surface: <b>#EAEBED</b></span>
+      </div>
+    </div>
+    <div class="tool-grid v5">
+      <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+      <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+      <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+      <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+      <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+      <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+      <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+    </div>
+  </section>
+
+  <!-- ============================= V6 ============================= -->
+  <section class="variation">
+    <div class="var-head">
+      <span class="var-num">6</span><span class="var-title">Sharp corners, tight/compact, flat</span>
+      <div class="var-isolates">Opposite direction from V5: back to a sharp 4px radius, flat/tonal like V4-V5, but padding is pulled in from 20px to 12px — noticeably denser than every other version. Tests whether a tighter, more utilitarian card (less "card-like," more like a dense list tile) reads better than a spacious one. Isolates: <b>radius (back to sharp) + padding</b> (reduced, opposite of V5).</div>
+      <div class="var-caption">
+        <span class="spec-chip">radius: <b>4px</b></span>
+        <span class="spec-chip">border: <b>none</b></span>
+        <span class="spec-chip">shadow: <b>none</b></span>
+        <span class="spec-chip">padding: <b>12px</b> (vs. 20px baseline)</span>
+        <span class="spec-chip">surface: <b>#EAEBED</b></span>
+      </div>
+    </div>
+    <div class="tool-grid v6">
+      <div class="tool-card"><div class="tool-icon">{}</div><div class="tool-name">JSON Formatter</div><div class="tool-desc">Format, validate, and minify JSON in one place.</div></div>
+      <div class="tool-card"><div class="tool-icon">64</div><div class="tool-name">Base64</div><div class="tool-desc">Encode and decode Base64 text and files.</div></div>
+      <div class="tool-card"><div class="tool-icon">JWT</div><div class="tool-name">JWT Inspector</div><div class="tool-desc">Decode and inspect JWT tokens, no server round-trip.</div></div>
+      <div class="tool-card"><div class="tool-icon">PDF</div><div class="tool-name">PDF Merge</div><div class="tool-desc">Combine multiple PDFs into a single file.</div></div>
+      <div class="tool-card"><div class="tool-icon">SPL</div><div class="tool-name">PDF Split</div><div class="tool-desc">Break a PDF into separate pages or ranges.</div></div>
+      <div class="tool-card"><div class="tool-icon">IMG</div><div class="tool-name">Image Convert</div><div class="tool-desc">Convert and compress images between formats.</div></div>
+      <div class="tool-card"><div class="tool-icon">CLP</div><div class="tool-name">Clipboard</div><div class="tool-desc">Search and reuse your clipboard history.</div></div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
