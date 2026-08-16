@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Accessibility Fixes — Before/After</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page-bg: #FAFAFA;
+    --panel-bg: #FFFFFF;
+    --panel-border: #E4E5E7;
+    --ink: #18181B;
+    --ink-soft: #52525B;
+    --ink-faint: #8A8D93;
+    --before-tint-bg: rgba(220, 38, 38, 0.10);
+    --before-tint-border: rgba(185, 28, 28, 0.45);
+    --before-tint-text: #B91C1C;
+    --after-tint-bg: rgba(22, 163, 74, 0.10);
+    --after-tint-border: rgba(21, 128, 61, 0.45);
+    --after-tint-text: #15803D;
+    --fail-text: #B91C1C;
+    --pass-text: #15803D;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--page-bg);
+    color: var(--ink);
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  body {
+    padding: 40px 24px 80px;
+  }
+
+  .doc {
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  .doc-header {
+    margin-bottom: 36px;
+  }
+
+  .doc-header h1 {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .doc-header p {
+    font-size: 14px;
+    color: var(--ink-soft);
+    margin: 0;
+    line-height: 1.5;
+    max-width: 680px;
+  }
+
+  section.fix {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 28px 32px 32px;
+    margin-bottom: 24px;
+  }
+
+  .fix-header {
+    margin-bottom: 6px;
+  }
+
+  .fix-index {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+
+  .fix-header h2 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.005em;
+  }
+
+  .fix-header code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    background: #F1F1F3;
+    color: #3F3F46;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .fix-reason {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin: 6px 0 22px;
+    line-height: 1.5;
+    border-left: 2px solid #E4E5E7;
+    padding-left: 10px;
+  }
+
+  .mode-block {
+    margin-bottom: 20px;
+  }
+
+  .mode-block:last-child {
+    margin-bottom: 0;
+  }
+
+  .mode-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 10px;
+  }
+
+  .swatch-stage {
+    border-radius: 8px;
+    padding: 28px;
+    display: flex;
+    gap: 40px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .stage-light {
+    background: #F4F5F6;
+    border: 1px solid #E4E5E7;
+  }
+
+  .stage-dark {
+    background: #141415;
+    border: 1px solid #26262A;
+  }
+
+  .stage-panel-light2 {
+    background: #F4F5F6;
+    border: 1px solid #E4E5E7;
+  }
+
+  .stage-panel-dark2 {
+    background: #28282B;
+    border: 1px solid #38383C;
+  }
+
+  .item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .item-pair {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+
+  .item-pair.tight {
+    gap: 10px;
+  }
+
+  .tag {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 9px;
+    border-radius: 20px;
+    border: 1px solid transparent;
+    line-height: 1.6;
+  }
+
+  .tag.before {
+    background: var(--before-tint-bg);
+    border-color: var(--before-tint-border);
+    color: var(--before-tint-text);
+  }
+
+  .tag.after {
+    background: var(--after-tint-bg);
+    border-color: var(--after-tint-border);
+    color: var(--after-tint-text);
+  }
+
+  /* On dark stages, tint chips need slightly stronger fill to read well */
+  .stage-dark .tag.before,
+  .stage-panel-dark2 .tag.before {
+    background: rgba(248, 113, 113, 0.16);
+    border-color: rgba(248, 113, 113, 0.5);
+    color: #FCA5A5;
+  }
+
+  .stage-dark .tag.after,
+  .stage-panel-dark2 .tag.after {
+    background: rgba(74, 222, 128, 0.14);
+    border-color: rgba(74, 222, 128, 0.45);
+    color: #86EFAC;
+  }
+
+  .btn {
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+    padding: 10px 20px;
+    border-radius: 4px;
+    border: none;
+    display: inline-block;
+    white-space: nowrap;
+  }
+
+  .btn-primary-light-before { background: #FF5E1A; color: #FFFFFF; }
+  .btn-primary-light-after  { background: #FF5E1A; color: #18181B; }
+  .btn-primary-dark-before  { background: #FF6E30; color: #FFFFFF; }
+  .btn-primary-dark-after   { background: #FF6E30; color: #18181B; }
+
+  .btn-destructive-before { background: #F2665C; color: #FFFFFF; }
+  .btn-destructive-after  { background: #F2665C; color: #141415; }
+
+  .ratio {
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .ratio .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ratio.fail { color: var(--fail-text); }
+  .ratio.pass { color: var(--pass-text); }
+
+  .stage-dark .ratio.fail,
+  .stage-panel-dark2 .ratio.fail { color: #F87171; }
+  .stage-dark .ratio.pass,
+  .stage-panel-dark2 .ratio.pass { color: #4ADE80; }
+
+  .nav-label {
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+  }
+
+  .nav-label.before { color: #C04E08; }
+  .nav-label.after  { color: #B64A07; }
+
+  .badge-text {
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    font-size: 12.5px;
+  }
+
+  .badge-light-before { color: #8A8D93; }
+  .badge-light-after  { color: #606266; }
+  .badge-dark-before  { color: #6B6E74; }
+  .badge-dark-after   { color: #A6A8AB; }
+
+  .row-of-two {
+    display: flex;
+    gap: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <div class="doc-header">
+    <h1>Accessibility Fixes — Before/After</h1>
+    <p>Design-token color changes made to resolve WCAG AA 4.5:1 contrast failures found in the accessibility review. Each section below shows the failing (before) and passing (after) values rendered in their real usage context, for individual approval.</p>
+  </div>
+
+  <!-- 1. Primary button text color -->
+  <section class="fix">
+    <div class="fix-header">
+      <div class="fix-index">Fix 1 of 4</div>
+      <h2>Primary button text color — <code>--color-button-primary-text</code></h2>
+    </div>
+    <p class="fix-reason">White text on orange button fill failed WCAG AA 4.5:1 for normal text in both light and dark mode; switched to near-black text on the same orange fills.</p>
+
+    <div class="mode-block">
+      <div class="mode-label">Light mode &middot; fill #FF5E1A</div>
+      <div class="swatch-stage stage-light">
+        <div class="item">
+          <span class="tag before">Before</span>
+          <button class="btn btn-primary-light-before">Merge PDFs</button>
+          <div class="ratio fail"><span class="num">3.06:1</span> &middot; Fail</div>
+        </div>
+        <div class="item">
+          <span class="tag after">After</span>
+          <button class="btn btn-primary-light-after">Merge PDFs</button>
+          <div class="ratio pass"><span class="num">5.79:1</span> &middot; Pass</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mode-block">
+      <div class="mode-label">Dark mode &middot; fill #FF6E30</div>
+      <div class="swatch-stage stage-dark">
+        <div class="item">
+          <span class="tag before">Before</span>
+          <button class="btn btn-primary-dark-before">Merge PDFs</button>
+          <div class="ratio fail"><span class="num">2.79:1</span> &middot; Fail</div>
+        </div>
+        <div class="item">
+          <span class="tag after">After</span>
+          <button class="btn btn-primary-dark-after">Merge PDFs</button>
+          <div class="ratio pass"><span class="num">6.35:1</span> &middot; Pass</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Destructive button text color (dark mode only) -->
+  <section class="fix">
+    <div class="fix-header">
+      <div class="fix-index">Fix 2 of 4</div>
+      <h2>Destructive button text color (dark mode only) — <code>--color-button-destructive-text-dark</code></h2>
+    </div>
+    <p class="fix-reason">White text on the destructive red fill (#F2665C) failed WCAG AA 4.5:1 in dark mode; switched to near-black text. Light mode was already passing and is unchanged.</p>
+
+    <div class="mode-block">
+      <div class="mode-label">Dark mode &middot; fill #F2665C</div>
+      <div class="swatch-stage stage-dark">
+        <div class="item">
+          <span class="tag before">Before</span>
+          <button class="btn btn-destructive-before">Clear stored data</button>
+          <div class="ratio fail"><span class="num">3.07:1</span> &middot; Fail</div>
+        </div>
+        <div class="item">
+          <span class="tag after">After</span>
+          <button class="btn btn-destructive-after">Clear stored data</button>
+          <div class="ratio pass"><span class="num">5.99:1</span> &middot; Pass</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Orange on-text color -->
+  <section class="fix">
+    <div class="fix-header">
+      <div class="fix-index">Fix 3 of 4</div>
+      <h2>Orange &ldquo;on-text&rdquo; color — <code>--color-text-orange</code></h2>
+    </div>
+    <p class="fix-reason">Orange text (e.g. an active nav label) at #C04E08 on the app background failed WCAG AA 4.5:1 by a narrow margin; darkened slightly to #B64A07 to clear the threshold.</p>
+
+    <div class="mode-block">
+      <div class="mode-label">On background #F4F5F6</div>
+      <div class="swatch-stage stage-light">
+        <div class="item-pair tight">
+          <div class="item">
+            <span class="tag before">Before</span>
+            <span class="nav-label before">PDF Merge</span>
+            <div class="ratio fail"><span class="num">4.44:1</span> &middot; Fail</div>
+          </div>
+          <div class="item">
+            <span class="tag after">After</span>
+            <span class="nav-label after">PDF Merge</span>
+            <div class="ratio pass"><span class="num">4.84:1</span> &middot; Pass</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Tertiary / neutral text color -->
+  <section class="fix">
+    <div class="fix-header">
+      <div class="fix-index">Fix 4 of 4</div>
+      <h2>Tertiary / neutral text color — <code>--color-text-tertiary</code></h2>
+    </div>
+    <p class="fix-reason">Neutral text used for small metadata (e.g. a badge count) failed WCAG AA 4.5:1 in both modes; darkened for light mode and lightened for dark mode. The dark-mode value was the worst offender, nearly disappearing on the #28282B surface.</p>
+
+    <div class="mode-block">
+      <div class="mode-label">Light mode &middot; on #F4F5F6</div>
+      <div class="swatch-stage stage-panel-light2">
+        <div class="item">
+          <span class="tag before">Before</span>
+          <span class="badge-text badge-light-before">7 tools</span>
+          <div class="ratio fail"><span class="num">3.05:1</span> &middot; Fail</div>
+        </div>
+        <div class="item">
+          <span class="tag after">After</span>
+          <span class="badge-text badge-light-after">7 tools</span>
+          <div class="ratio pass"><span class="num">5.60:1</span> &middot; Pass</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mode-block">
+      <div class="mode-label">Dark mode &middot; on #28282B (worst-case surface)</div>
+      <div class="swatch-stage stage-panel-dark2">
+        <div class="item">
+          <span class="tag before">Before</span>
+          <span class="badge-text badge-dark-before">7 tools</span>
+          <div class="ratio fail"><span class="num">2.88:1</span> &middot; Fail</div>
+        </div>
+        <div class="item">
+          <span class="tag after">After</span>
+          <span class="badge-text badge-dark-after">7 tools</span>
+          <div class="ratio pass"><span class="num">6.17:1</span> &middot; Pass</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

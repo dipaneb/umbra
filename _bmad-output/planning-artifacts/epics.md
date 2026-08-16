@@ -33,9 +33,9 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 
 - FR1: All tools presented in a persistent sidebar/launcher; selecting a tool opens it in the main pane.
 - FR2: Command-palette search (global `⌘K`) finds tools by name and aliases/synonyms ("b64" → Base64) and opens them.
-- FR3: UI ships light-mode-first; dark theme deferred to v2.
+- FR3: UI ships light-mode-first; dark theme deferred to v2. **Scope update (2026-08-15):** both palettes are designed together in `DESIGN.md` (Step 3.2); mode selection follows OS by default with a manual override persisted via AD-10. Implementation timing unchanged. See `step-1-1-roundtable-notes.md`.
 - FR4: Each tool provides one-action paste-from-clipboard input and copy-to-clipboard output where the tool shape allows.
-- FR5: App restores last used tool and window geometry on launch, controlled by a toggle in a minimal Settings pane (default on).
+- FR5: App restores last used tool and window geometry on launch, controlled by a toggle in a minimal Settings pane (default on). **Scope update (2026-08-15):** pane is sectioned, Privacy-first, adds per-item reset alongside the existing single-action clear, and renames that action toward erase-data phrasing. See `step-1-1-roundtable-notes.md`. **Further update (2026-08-16):** restore-toggle default flips to off — grid-home is the default landing surface. See Epic 7, Story 7.6.
 
 **F2 — JSON formatter/viewer (MVP)**
 
@@ -88,7 +88,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 **F10 — Distribution & updates (P2)**
 
 - FR30: macOS release builds signed with a Developer ID certificate and notarized; app opens on a fresh Mac with no Gatekeeper bypass. Windows/Linux packaging arrives with their builds (P3), not P2.
-- FR31: App self-updates with user confirmation before install; the update check is the sole permitted network call, disclosed in README and in-app (INV-1 carve-out).
+- FR31: App self-updates with user confirmation before install; the update check is the sole permitted network call, disclosed in README and in-app (INV-1 carve-out). **Scope update (2026-08-15):** update offer uses a quiet, escalating-visibility signal (tracks already-shown/declined state to avoid repeat prompts); security-flagged releases get a distinct urgent state via a release-manifest `notes` convention. Decline semantics, marker syntax, and a release-checklist step remain open. See `step-1-1-roundtable-notes.md`.
 - FR32: Versioned GitHub releases; Conventional Commits from day one (changelog itself deferred to backlog).
 
 **F11 — Landing page (P2)**
@@ -213,6 +213,33 @@ Anyone can download a signed, notarized Umbra from the landing page, and install
 
 The Bucket becomes a real file workbench: PDF merge/split/extract-text, image format conversion and compression — plus the FR29 choice (regex-explain vs OCR→structured) carried as an explicit decision story, then implemented behind an AD-8-style port.
 **FRs covered:** FR27, FR28, FR29
+
+### Epic 7: Rebrand — shell chrome alignment
+
+> Added 2026-08-16 via `bmad-correct-course` (Phase 5, Step 5.1 of
+> `brand-ux-product-discovery-roadmap.md`). See
+> `sprint-change-proposal-2026-08-16.md` for the full impact analysis and rationale. `DESIGN.md`
+> and `EXPERIENCE.md` (locked 2026-08-16) were authored after Epics 1, 5, and 6 already shipped
+> their UI with no design system to inherit. This epic retrofits the app shell — tokens, dark
+> mode, grid-home, sidebar, pinned/recent, settings, and the update-signal — onto that now-final
+> spec. Stories 1.5, 1.10, and 5.2 are deliberately left unamended as an honest record of what
+> shipped pre-brand; this epic supersedes their shell-level behavior going forward without
+> rewriting their history. Tool logic (Epics 2–4, 6) is untouched — AD-6 keeps tools as islands.
+> Sequenced after Epic 6; no dependency on Epic 8.
+**FRs covered:** FR3, FR5, FR31
+
+### Epic 8: Tool-by-tool reimagination
+
+> Added 2026-08-16 via `bmad-correct-course` (Phase 5, Step 5.1). See
+> `sprint-change-proposal-2026-08-16.md`. Each existing tool undergoes fresh, open discovery —
+> not a UI reskin — before any redesign work happens, using the same decision-story shape Story
+> 6.3 already established for FR29 (a written, evidenced decision record gates implementation).
+> Stories are deliberately chartered, not fully spec'd: their real acceptance criteria don't
+> exist yet because the scope decisions they depend on haven't been made. Nine independent
+> stories, one per registered tool, sequenced after Epic 7 so each redesign lands on the
+> finished token system/shell instead of needing its own later retrofit.
+**FRs covered:** none newly assigned — each story may revise FR6–FR29 coverage once its own
+Task 1 decision record exists; that revision is this epic's output, not predicted here.
 
 ## Epic 1: Umbra launches — shell + JSON tool
 
@@ -986,3 +1013,348 @@ So that Umbra's AI stays useful and trustworthy without the cloud.
 **Given** keyboard-only usage,
 **When** operating the feature,
 **Then** controls are labeled, focus is visible, and the flow is mouse-free (NFR5).
+
+## Epic 7: Rebrand — shell chrome alignment
+
+> Added 2026-08-16 via `bmad-correct-course`. See "Epic 7" in the Epic List above and
+> `sprint-change-proposal-2026-08-16.md` for full rationale. Stories are sequenced: 7.1 and 7.2
+> establish infrastructure (tokens, icons, dark-mode mechanism) that 7.3–7.8 consume; 7.3–7.8
+> have no ordering dependency on each other beyond that.
+
+### Story 7.1: Design tokens and icon system land in the shell
+
+As the developer,
+I want `DESIGN.md`'s color/type/spacing/radius/elevation tokens implemented as CSS custom properties, plus a real icon system, wired into the app's global styles,
+So that every later Epic 7/8 story consumes one source of truth instead of hardcoded values and raw emoji.
+
+**Acceptance Criteria:**
+
+**Given** `DESIGN.md`'s token tables (colors, typography, spacing, rounded, components),
+**When** the shell's global stylesheet is inspected,
+**Then** every token exists as a CSS custom property under `:root`, named to match `DESIGN.md` (e.g. `--color-accent-signature`, `--font-body-size`).
+
+**Given** dark-mode token values (the `-dark` suffixed entries in `DESIGN.md`),
+**When** tokens are wired,
+**Then** they activate via a `prefers-color-scheme: dark` media query only — no manual light/dark class yet; a user-facing override is Story 7.2's job, not this one's.
+
+**Given** Geist Sans and Geist Mono (`DESIGN.md` Typography),
+**When** fonts are loaded,
+**Then** they are bundled as local font files (SIL OFL 1.1, no attribution/royalty requirement) — never fetched over the network, so the NFR1/INV-1 network-monitor tour doesn't regress.
+
+**Given** the app's root layout,
+**When** this story completes,
+**Then** `body` adopts `--color-bg-base`/`--color-text-primary` as an end-to-end smoke test that the token layer resolves correctly — but no other shell component (sidebar, settings, palette, update dialog) is retrofitted yet; that's each subsequent story's own scope.
+
+**Given** the Tool Registry's `icon` field (currently raw emoji/text, e.g. `"{}"`),
+**When** this story starts,
+**Then** an icon system is chosen and documented with rationale — candidate: an SVG icon library distributed as tree-shakeable Vue components (e.g. Lucide, MIT-licensed, geometric/minimal-stroke style consistent with the mark's "hard-edged, no soft curves" aesthetic) — verified current and license-checked for NFR7 (All-Rights-Reserved bundling) at story start, following this project's existing convention for open technical picks (e.g. Story 6.1's `lopdf` candidate verification),
+**And** the registry's `icon` field is repurposed from raw text to an icon-name key resolved through the chosen system — AD-5 stays the single source; Stories 7.3 (Grid-home) and 7.4 (Sidebar) both consume this mechanism rather than each inventing their own.
+
+### Story 7.2: Dark-mode switching
+
+As a privacy-conscious developer,
+I want to switch the app between light and dark and have every subsequent screen already work in both,
+So that the whole app is verifiable in both modes as it's built, not retrofitted at the end.
+
+**Acceptance Criteria:**
+
+**Given** the `settings` store (AD-10),
+**When** this story lands,
+**Then** it gains `shell.themeOverride: "system" | "light" | "dark"` (default `"system"`), the single writer for theme state.
+
+**Given** the resolved theme (override, or OS `prefers-color-scheme` when set to `"system"`),
+**When** it changes,
+**Then** the root element's `data-theme` attribute updates immediately — the whole app repaints with no reload, and Story 7.1's CSS custom properties resolve against `[data-theme="dark"]` in addition to the `prefers-color-scheme` fallback already wired in 7.1.
+
+**Given** a control to change the override,
+**When** this story ships,
+**Then** a minimal, functional toggle exists (placed in the current flat `SettingsView.vue`, unstyled) purely so 7.3 onward can be built and tested in both modes — its permanent, sectioned, token-styled home is Story 7.6's (Settings restructure) job, not this one's; this story owns the mechanism, not its final UI.
+
+**Given** `DESIGN.md`'s already-verified WCAG AA contrast pairs for both palettes,
+**When** this story ships,
+**Then** no new contrast work is needed — this story is wiring, not design.
+
+### Story 7.3: Grid-home replaces the placeholder empty state
+
+As a privacy-conscious developer,
+I want the main pane's default state to show a tile per tool,
+So that I can see and launch any tool at a glance instead of finding an empty placeholder.
+
+**Acceptance Criteria:**
+
+**Given** the app is at the `"/"` route with no tool restored,
+**When** the main pane renders,
+**Then** it shows one Card per registered tool, sourced solely from the Tool Registry (AD-5) — nothing enumerates tools independently.
+
+**Given** a Card's internal layout,
+**When** rendered,
+**Then** it matches `DESIGN.md`'s resolved spec: icon-badge (rendered via Story 7.1's icon system, not raw emoji) top-left, bold title, description text below it, stacked left-aligned inside standard card padding — consuming Story 7.1's tokens.
+
+**Given** a Card,
+**When** operated,
+**Then** clicking anywhere opens the tool; it's focusable in tab order and activates on Enter/Space as well as click; its accessible name equals the tool's name, not just its visual title text (NFR5).
+
+**Given** each registry entry,
+**When** a Card renders its description text,
+**Then** the Tool Registry gains a `description` field (every existing entry backfilled with one line) — AD-5's registry stays the single source; no separate description list is invented elsewhere.
+
+**Given** the grid layout,
+**When** multiple tools are registered,
+**Then** cards lay out in a responsive grid using `DESIGN.md`'s `spacing.4` (16px) gutter — this story is the "real screen mock" confirmation `DESIGN.md`'s Layout & Spacing section flags as pending.
+
+**Given** restore-last-tool is enabled and a last tool exists (Story 7.6 sets the default),
+**When** the app launches,
+**Then** grid-home is skipped and the app opens straight to the last-used tool — same behavior Story 1.10 already ships, just no longer landing on a bare placeholder when it's off.
+
+**Not covered by this story:** `EXPERIENCE.md` Flow 1's first-launch guided highlight tour — a distinct onboarding mechanism, not required for grid-home to function. Left as a candidate for its own future story.
+
+### Story 7.4: Sidebar gets an active-nav state and token styling
+
+As a privacy-conscious developer,
+I want the sidebar to show which tool is currently open and to look like the rest of the app,
+So that I always know where I am and the app reads as one coherent product.
+
+**Acceptance Criteria:**
+
+**Given** the sidebar (`AppSidebar.vue`),
+**When** rendered,
+**Then** it consumes Story 7.1's tokens (Geist type, spacing, `border-hairline`) and Story 7.1's icon system, replacing the current hardcoded hex values (`#e0e0e0`, `#396cd8`) and raw emoji.
+
+**Given** a tool is open,
+**When** its sidebar entry is compared to the others,
+**Then** it shows the active-state background tint (`accent-signature-tint` light / dark) per `DESIGN.md`'s Nav item component — exactly one item active at a time.
+
+**Given** the active item,
+**When** inspected by assistive tech,
+**Then** it exposes its current state via an `aria-current`-style attribute, not just the visual tint — closing the gap flagged in Story 1.5's own deferred-work entry (2026-07-24: "No visual indicator of the currently active tool in the sidebar").
+
+**Given** a non-active item,
+**When** hovered,
+**Then** it shows a neutral (non-orange) hover affordance — orange stays reserved for the active state per `DESIGN.md`'s "budget of one" rule.
+
+**Given** the sidebar's collapse behavior (`EXPERIENCE.md` IA table: "Collapses to icons"),
+**When** collapsed,
+**Then** each item retains its full accessible name via a visually-hidden label or equivalent; the collapse control is keyboard-operable and its state persists through a new `shell.sidebarCollapsed` key in the `settings` store (AD-10).
+
+**Given** the Settings link at the bottom of the sidebar,
+**When** Story 7.7 lands the update-signal,
+**Then** this story's markup provides the anchor point it attaches to; this story does not itself implement the dot.
+
+**Not covered by this story:** the pinned/recent grouping — Story 7.5.
+
+### Story 7.5: Pin and revisit recent tools in the sidebar
+
+As a privacy-conscious developer,
+I want to pin frequently-used tools and see recently-opened ones,
+So that I can reach my most common tools without scanning the full list.
+
+**Acceptance Criteria:**
+
+**Given** a tool in the sidebar's full list,
+**When** I trigger its pin action (a control revealed on hover/focus, keyboard-operable per NFR5),
+**Then** it moves into a "Pinned" section at the top of the sidebar, persisted via a new `shell.pinnedTools: string[]` key in the `settings` store (AD-10).
+
+**Given** tools I've opened recently,
+**When** they aren't pinned,
+**Then** a "Recent" section (last 5) appears between Pinned and the full list, tracked automatically from navigation — no manual action — via a new `shell.recentTools: string[]` key, most-recent-first, with pinned tools excluded to avoid duplication.
+
+**Given** the full tool list,
+**When** Pinned/Recent sections exist,
+**Then** every tool still appears in the full list below them (AD-5 — nothing hidden, just grouped), matching `EXPERIENCE.md`'s "full tool list *plus* a pinned/recent section," not a replacement.
+
+**Given** a pinned tool,
+**When** I unpin it,
+**Then** it returns to the full list and may reappear in Recent per the normal recency rule.
+
+**Given** Story 7.6's Settings persisted-data enumeration,
+**When** it lists `shell.*` keys,
+**Then** `pinnedTools` and `recentTools` appear there with their own per-item reset — consistent with AD-10's transparency contract, not a special case.
+
+**Given** the Settings pane (Story 7.6),
+**When** its Appearance/General section is viewed,
+**Then** two independent toggles exist — "Show pinned tools" and "Show recent tools" (each default on) — persisted as `shell.pinnedToolsVisible` / `shell.recentToolsVisible` in the `settings` store, separate from the `pinnedTools`/`recentTools` data arrays themselves.
+
+**Given** either toggle is switched off,
+**When** the sidebar renders,
+**Then** that section is hidden, but its underlying data keeps being tracked and persisted unchanged — unpinning nothing, still recording navigation into `recentTools` in the background — so switching the toggle back on immediately shows accurate, undisturbed state rather than an empty list. The toggle controls visibility only, never data.
+
+### Story 7.6: Settings becomes sectioned, with per-item reset and the restore-default flip
+
+As a returning Umbra user,
+I want Settings organized by what it's protecting and each piece of stored data individually manageable,
+So that persistence stays fully transparent as more of it accumulates.
+
+**Acceptance Criteria:**
+
+**Given** the Settings pane,
+**When** restructured,
+**Then** it's sectioned — Privacy first (existing update-check disclosure stays), then Appearance (the dark-mode override from Story 7.2 gets its permanent, token-styled home here; the pinned/recent visibility toggles from Story 7.5 also live here), then a Persisted Data section enumerating every `shell.*`/`<tool-id>.*` key.
+
+**Given** each key in Persisted Data,
+**When** listed,
+**Then** it has its own reset action alongside its value — per-item reset, additive to the existing all-clear action, not replacing it.
+
+**Given** the existing "Clear all" button,
+**When** relabeled,
+**Then** it reads "Clear stored data" (`EXPERIENCE.md` Voice and Tone) — identical INV-3 all-clear behavior, renamed only.
+
+**Given** a fresh install with no `shell.restoreSessionEnabled` value yet in `settings.json`,
+**When** settings initializes,
+**Then** `restoreEnabled` defaults to `false` — flipping Story 1.10's shipped `true` default, per the PRD FR5 addendum and `EXPERIENCE.md`'s IA note.
+*Note: existing installs that already have this key written keep their persisted value unchanged — the new default only applies where nothing was ever written, so no user's behavior silently changes underneath them.*
+
+**Given** the settings store's single-writer rule (AD-10),
+**When** 7.2's, 7.5's, and this story's new keys are audited,
+**Then** all of them write through the same `settings` Pinia store — no new persistence mechanism is introduced.
+
+### Story 7.7: The update-signal becomes a passive, escalation-aware dot
+
+As a privacy-conscious developer,
+I want update notifications to wait for me instead of interrupting me on every launch,
+So that staying current never feels like the app is nagging.
+
+**Acceptance Criteria:**
+
+**Given** a new release exists (`checkForUpdate()` resolves non-null),
+**When** the check completes,
+**Then** no dialog opens automatically — a dot appears on the Settings sidebar item instead, replacing `UpdateDialog.vue`'s current auto-show-on-mount behavior.
+
+**Given** the dot's color,
+**When** the release's `latest.json` `notes` field is inspected,
+**Then** it renders orange (`accent-signature`, "Update available") by default, or red (`accent-destructive`, "Security update available") if `notes` matches a documented severity marker — this story defines and documents that marker syntax (e.g. a leading `[security]` tag), since Tauri's `latest.json` has no native severity field (confirmed via Context7 per the PRD's FR31 note).
+
+**Given** the dot,
+**When** clicked or keyboard-activated,
+**Then** the existing update-consent dialog (`UpdateDialog.vue`'s markup, reused via `DESIGN.md`'s floating-surface token) opens with version/notes and the Not Now / Install & Restart actions — same install flow as today, just no longer auto-triggered.
+
+**Given** "Not Now" is clicked,
+**When** the dialog closes,
+**Then** the dismissal is persisted (new `shell.updateSignal.dismissedVersion` key, AD-10) and the dot remains visible on subsequent launches — no re-nagging toast, closing the gap against today's shipped behavior (a blocking modal on every launch until installed).
+
+**Given** the update-check itself fails (offline, network error),
+**When** this occurs,
+**Then** the signal simply doesn't advance past its last-known state — no error toast, no retry prompt; the check re-attempts on the next scheduled interval.
+
+**Given** this story's new persisted keys,
+**When** audited,
+**Then** they're documented as an extension of AD-10 (a new `shell.updateSignal.*` namespace) in `ARCHITECTURE.md`/`ARCHITECTURE-SPINE.md` — this story is also where that architecture-doc gap gets closed.
+
+**Given** the dot's accessible name,
+**When** read by assistive tech,
+**Then** it changes between "Update available" and "Security update available" — legible through assistive tech, not just visually.
+
+### Story 7.8: Clipboard-suggestion surface
+
+As a privacy-conscious developer,
+I want Umbra to notice when I've copied something it recognizes and surface the right tool,
+So that I don't have to remember or hunt for which tool handles it.
+
+**Acceptance Criteria:**
+
+**Given** clipboard content changes (a real clipboard-change event, not a polling timer — `EXPERIENCE.md` Interaction Primitives),
+**When** the content matches a known shape,
+**Then** a highlighted "Clipboard match" entry appears at the top of the sidebar showing the matched tool's icon, name, and a truncated content preview.
+
+**Given** clipboard content detection,
+**When** implemented,
+**Then** it is fully deterministic and local — no AI/ML inference, no new dependency — matching content against shape rules (JWT: three dot-separated base64url segments; JSON: parses successfully; Base64: matches the alphabet with valid padding) in `src/shell/`, consistent with this project's established "deterministic first" philosophy (FR19's cron parser) and AD-7's zero-network-surface rule.
+
+**Given** a tool that wants clipboard-suggestion eligibility,
+**When** it's registered,
+**Then** it declares an optional `clipboardMatch: { test: (content) => boolean, specificity: number }` on its Tool Registry entry — `test` is the shape predicate, `specificity` is an author-declared integer (higher = more structurally distinctive) — the shell iterates every registered entry's matcher rather than hardcoding a tool list, so this scales past today's 7 tools without shell-level code changes.
+
+**Given** clipboard content that matches more than one tool,
+**When** detection runs,
+**Then** all matches are candidates, sorted by `specificity`, and — if more exist than the configured limit (see below) — only the top N show, each as its own "Clipboard match" callout stacked above Story 7.5's Pinned section, never one callout listing several tools. Ties on `specificity` are broken by stable registry order — deterministic, never random.
+
+**Given** the Settings Privacy section,
+**When** viewed,
+**Then** it exposes one control — "Clipboard suggestions to show" — an integer 0–5 (default 3), persisted as `shell.clipboardSuggestionMaxCount`. This single setting satisfies both the INV-1 disclosure requirement (visibly named in Privacy, on by default) and the disable path (`0` = off) — no separate boolean toggle alongside it.
+
+**Given** `shell.clipboardSuggestionMaxCount` is `0`,
+**When** clipboard content changes,
+**Then** detection doesn't run at all — not just hidden output, no matching work happens.
+
+**Given** the surface appears,
+**When** it renders,
+**Then** its appearance is announced via a polite live-region-equivalent cue, scaling to the count (e.g. "3 tools suggested from clipboard" vs. naming one tool) so a user mid-task elsewhere learns it appeared without needing visual focus there.
+
+**Given** multiple suggestions appear,
+**When** each is keyboard-navigated,
+**Then** every one is individually focusable and reachable in the sidebar's tab sequence.
+
+**Given** the user activates a suggestion,
+**When** the tool opens,
+**Then** the clipboard content is already available to paste in one action (FR4) — not auto-pasted without user action.
+
+**Given** a new clipboard copy occurs while suggestions are showing,
+**When** the new content is processed,
+**Then** the entries swap or clear per the new match — never stack.
+
+**Given** clipboard content only superficially resembles a shape (false positive),
+**When** the suggestion is opened,
+**Then** the tool shows its own precise inline-error/no-valid-input state rather than crashing or silently mis-suggesting.
+
+**Given** the clipboard currently holds image data,
+**When** detection runs,
+**Then** the surface suggests the Bucket (OCR) tool based on a format/MIME check alone — no image bytes are read or processed until the user opens the suggestion (AD-4, INV-1).
+
+**Given** cross-platform clipboard-change-event availability — flagged as an unresolved engineering risk in `EXPERIENCE.md`,
+**When** this story implements it,
+**Then** that risk is resolved here; if the event isn't reliably available on a target platform, that's surfaced as an explicit scope decision (matching FR28's HEIC-descope precedent), never silently dropped.
+
+## Epic 8: Tool-by-tool reimagination
+
+> Added 2026-08-16 via `bmad-correct-course`. See "Epic 8" in the Epic List above and
+> `sprint-change-proposal-2026-08-16.md`. These 9 stories are deliberately chartered rather
+> than fully spec'd — Task 1 of each must produce a written decision record before Task 2's
+> real acceptance criteria can be written, the same gating discipline Story 6.3 already
+> established for the FR29 decision. No ordering dependency between the 9 stories; all depend
+> on Epic 7 being done first.
+
+**Shared story shape (applies to Stories 8.1–8.9):**
+
+As the developer,
+I want to reconsider **[Tool]**'s feature set through open discovery before redesigning its UI,
+So that the redesign reflects a deliberately chosen scope, not a visual reskin of whatever shipped first.
+
+- **Task 1 — Discovery.** Run `bmad-party-mode` (or `bmad-forge-idea` for a narrower pressure-test), framed explicitly as open scope discovery for this one tool — existing implementation is reference only, not a decision to preserve. Output: a written decision record (Story 6.3's pattern) stating what's kept, cut, and added, with rationale.
+- **Task 2 — Redesign.** From Task 1's record, produce the tool's updated UX/UI (consuming Epic 7's tokens and component patterns) and write real Given/When/Then acceptance criteria — deferred until Task 1 exists, since ACs for a scope nobody's chosen yet would be fiction.
+
+**Boundary note:** Task 1 gates Task 2 — no implementation starts before the decision record exists.
+
+### Story 8.1: Reimagine the JSON Formatter/Viewer
+
+Discovery + redesign per the shared shape above, scoped to the JSON tool (`src/tools/json/JsonView.vue`, `crates/umbra-core/src/json.rs`).
+
+### Story 8.2: Reimagine Base64 Encode/Decode
+
+Discovery + redesign per the shared shape above, scoped to the Base64 tool (`src/tools/base64/Base64View.vue`, `crates/umbra-core/src/base64.rs`).
+
+### Story 8.3: Reimagine the UUID Generator
+
+Discovery + redesign per the shared shape above, scoped to the UUID tool (`src/tools/uuid/UuidView.vue`).
+
+### Story 8.4: Reimagine the Hash Generator
+
+Discovery + redesign per the shared shape above, scoped to the Hash tool (`src/tools/hash/HashView.vue`).
+
+### Story 8.5: Reimagine the JWT Inspector
+
+Discovery + redesign per the shared shape above, scoped to the JWT tool (`src/tools/jwt/JwtView.vue`, `crates/umbra-core/src/jwt.rs`).
+
+### Story 8.6: Reimagine NL ↔ Cron
+
+Discovery + redesign per the shared shape above, scoped to the Cron tool (`src/tools/cron/CronView.vue`, `crates/umbra-core/src/cron.rs`).
+
+### Story 8.7: Reimagine the Bucket — OCR
+
+Discovery + redesign per the shared shape above, scoped to the Bucket's OCR sub-feature (`src/tools/bucket/BucketView.vue`, `crates/umbra-core/src/ocr.rs`).
+
+### Story 8.8: Reimagine the Bucket — PDF
+
+Discovery + redesign per the shared shape above, scoped to the Bucket's PDF sub-feature (`src/tools/bucket/BucketView.vue`, `crates/umbra-core/src/pdf.rs`).
+
+### Story 8.9: Reimagine the Bucket — Images
+
+Discovery + redesign per the shared shape above, scoped to the Bucket's image sub-feature (`src/tools/bucket/BucketView.vue`, `crates/umbra-core/src/image_convert.rs`).
