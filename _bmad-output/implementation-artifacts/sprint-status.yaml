@@ -42,6 +42,48 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-16
+# note: story 7-1 code review complete 2026-08-16 (bmad-code-review, three-layer adversarial
+# pass) -- moved review -> done. Acceptance Auditor found zero AC violations. 5 patch findings
+# applied and re-verified green (246/246 tests): DESIGN.md Card amendment reworded to stop
+# implying a live Card exists (that's Story 7.3's job); DESIGN.md's frontmatter typography table
+# corrected Geist -> Geist Sans/Geist Mono to match the actually-bundled font names; both
+# Fontsource packages pinned to exact 5.3.0 instead of ^5.3.0; icons.ts now exports
+# ALL_ICON_NAMES derived from ICONS so icons.spec.ts can't silently skip a future IconName case;
+# AppSidebar.spec.ts/CommandPalette.spec.ts's icon-leak guards switched from a case-sensitivity-
+# dependent not.toContain to an exact .toBe(tool.name) match. 5 findings deferred as pre-existing
+# or explicitly out of scope (see deferred-work.md); 3 dismissed as noise.
+# note: story 7-1 moved to review 2026-08-16 (implementation complete: Tasks 0-10 done, Task
+# 11's manual pnpm tauri dev GUI smoke check and system-appearance dark-mode toggle deferred to
+# the developer -- this sandboxed session has no display server, same limitation as every prior
+# story. Two real environment findings not anticipated at drafting: Fontsource's actual bundled
+# @font-face declares font-family: "Geist Sans"/"Geist Mono", not DESIGN.md's literal "Geist" --
+# using "Geist" verbatim would have silently failed to match the loaded font; and this project's
+# Vitest config stubs ?raw/?inline CSS imports to empty strings (test.css defaults to
+# css.include: []), so tokens.spec.ts uses fs.readFileSync as the story originally specified
+# instead, with node:fs/node:url/node:path suppressed via // @ts-expect-error (no @types/node in
+# this project, matching vite.config.ts's own existing precedent for an untyped Node global).
+# Task 10's own grep re-check found two more real .icon consumers beyond the two the story's
+# drafting session found -- dropZone.spec.ts and paletteSearch.spec.ts's test fixtures -- fixed
+# by updating their icon values to valid IconName strings. Full verification green: 244/244 Vue
+# tests (214 baseline + 30 new/updated), 213/213 Rust tests (unchanged, zero Rust files touched),
+# lint/typecheck/build/cargo fmt all clean, pnpm why confirms zero transitive deps on all 3 new
+# packages, and a direct grep of the built dist/assets/*.css confirms zero http(s):// references.
+# note: story 7-1 created 2026-08-16 (first story of Epic 7, explicitly directed by the
+# developer rather than auto-discovered -- "tackle epic 7, skip the end of epic 6" -- so
+# Epic 6's remaining backlog stories (6-3, 6-4) are deliberately left untouched at backlog;
+# epic-6 stays in-progress. epic-7 moves backlog -> in-progress, first story in the epic.
+# Live-verified this story's two new dependencies (@phosphor-icons/vue, @fontsource/geist-sans
+# + @fontsource/geist-mono) against the npm registry rather than trusting epics.md's own
+# Lucide candidate -- developer chose Phosphor instead. Found and resolved a real discrepancy
+# between epics.md's AC5 (registry icon field needs a real SVG icon library) and DESIGN.md's
+# own locked Card spec (which currently keeps the icon-badge as monospace-shorthand text,
+# exactly what's already in registry.ts) -- developer confirmed following AC5 literally and
+# amending DESIGN.md to match as an explicit dated task within this story (Task 6), not a
+# silent rewrite. A fresh-context validation subagent independently re-derived the story
+# against every source doc and three live dependency claims and caught one real critical gap
+# before finalizing: CommandPalette.vue renders the registry's icon field identically to
+# AppSidebar.vue, so the icon-field data-type change would have silently broken the cmd-k
+# palette too -- fixed with a narrow, non-retrofit rendering-only task (5b) in both files.
 # note: epic-7 and epic-8 added 2026-08-16 via bmad-correct-course (Phase 5, Step 5.1 of
 # brand-ux-product-discovery-roadmap.md), both status backlog. Trigger: DESIGN.md/EXPERIENCE.md
 # (locked 2026-08-16) were authored after Epics 1/5/6 already shipped UI with no design system
@@ -520,8 +562,8 @@ development_status:
   6-4-ship-the-chosen-ai-feature: backlog
   epic-6-retrospective: optional
 
-  epic-7: backlog
-  7-1-design-tokens-and-icon-system-land-in-the-shell: backlog
+  epic-7: in-progress
+  7-1-design-tokens-and-icon-system-land-in-the-shell: done
   7-2-dark-mode-switching: backlog
   7-3-grid-home-replaces-the-placeholder-empty-state: backlog
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: backlog

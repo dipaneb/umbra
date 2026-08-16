@@ -2,6 +2,7 @@ import { computed, ref, type Component } from "vue";
 import { defineStore } from "pinia";
 import type { RouteRecordRaw } from "vue-router";
 import { createLatestWinsRunner } from "../shell/invoke";
+import type { IconName } from "../shell/icons";
 import type { ToolError } from "../shell/toolError";
 
 export interface ToolRegistryEntry {
@@ -9,7 +10,7 @@ export interface ToolRegistryEntry {
   name: string;
   aliases: string[];
   route: string;
-  icon: string;
+  icon: IconName;
   component: () => Promise<Component>;
   drop?: { acceptedMimeTypes: string[]; handler: string };
   // AD-14/AD-15: declares a tool's clipboard-image-paste handler, mirroring `drop` — keeps the
@@ -56,7 +57,7 @@ const TOOLS: ToolRegistryEntry[] = [
     name: "JSON",
     aliases: ["json", "formatter"],
     route: "/tools/json",
-    icon: "{ }",
+    icon: "json",
     component: () => import("../tools/json/JsonView.vue"),
   },
   {
@@ -64,7 +65,7 @@ const TOOLS: ToolRegistryEntry[] = [
     name: "Base64",
     aliases: ["base64", "b64", "decode"],
     route: "/tools/base64",
-    icon: "64",
+    icon: "base64",
     component: () => import("../tools/base64/Base64View.vue"),
     // Tauri's native drop event carries only filesystem paths, never a
     // browser-supplied MIME type — this field is presence-of-`.drop`-means-
@@ -76,7 +77,7 @@ const TOOLS: ToolRegistryEntry[] = [
     name: "UUID",
     aliases: ["uuid", "guid"],
     route: "/tools/uuid",
-    icon: "ID",
+    icon: "uuid",
     component: () => import("../tools/uuid/UuidView.vue"),
   },
   {
@@ -84,7 +85,7 @@ const TOOLS: ToolRegistryEntry[] = [
     name: "Hash",
     aliases: ["hash", "checksum", "sha256", "sha512", "md5", "sha1", "digest"],
     route: "/tools/hash",
-    icon: "#",
+    icon: "hash",
     component: () => import("../tools/hash/HashView.vue"),
     drop: { acceptedMimeTypes: [], handler: "hash_compute_file" },
   },
@@ -93,7 +94,7 @@ const TOOLS: ToolRegistryEntry[] = [
     name: "JWT",
     aliases: ["jwt", "token", "decode"],
     route: "/tools/jwt",
-    icon: "JWT",
+    icon: "jwt",
     component: () => import("../tools/jwt/JwtView.vue"),
   },
   {
@@ -101,7 +102,7 @@ const TOOLS: ToolRegistryEntry[] = [
     name: "Cron",
     aliases: ["cron", "crontab", "schedule"],
     route: "/tools/cron",
-    icon: "CRN",
+    icon: "cron",
     component: () => import("../tools/cron/CronView.vue"),
   },
   {
@@ -121,7 +122,7 @@ const TOOLS: ToolRegistryEntry[] = [
       "webp",
     ],
     route: "/tools/bucket",
-    icon: "OCR",
+    icon: "bucket",
     component: () => import("../tools/bucket/BucketView.vue"),
     drop: { acceptedMimeTypes: [], handler: "bucket_extract_text" },
     paste: { handler: "bucket_extract_text_from_clipboard" },

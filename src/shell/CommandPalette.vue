@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useRegistryStore } from "../stores/registry";
+import { resolveIcon } from "./icons";
 import { searchTools } from "./paletteSearch";
 
 const registry = useRegistryStore();
@@ -120,7 +121,10 @@ onUnmounted(() => {
           :aria-selected="index === activeIndex"
           :class="{ active: index === activeIndex }"
         >
-          <span aria-hidden="true">{{ tool.icon }}</span>
+          <component
+            :is="resolveIcon(tool.icon)"
+            aria-hidden="true"
+          />
           {{ tool.name }}
         </li>
       </ul>

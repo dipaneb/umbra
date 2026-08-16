@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { assertUniqueToolIds, useRegistryStore, type ToolRegistryEntry } from "./registry";
+import { resolveIcon } from "../shell/icons";
 
 function entry(id: string): ToolRegistryEntry {
   return {
@@ -8,7 +9,7 @@ function entry(id: string): ToolRegistryEntry {
     name: id,
     aliases: [],
     route: `/tools/${id}`,
-    icon: "?",
+    icon: "json",
     component: () => Promise.reject(new Error("not used in this test")),
   };
 }
@@ -39,6 +40,17 @@ describe("assertUniqueToolIds", () => {
 
   it("does not throw for an empty registry", () => {
     expect(() => assertUniqueToolIds([])).not.toThrow();
+  });
+});
+
+describe("TOOLS icon field (AC5)", () => {
+  it("resolves a real icon component for every registry entry's icon", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+
+    registry.tools.forEach((tool) => {
+      expect(resolveIcon(tool.icon)).toBeDefined();
+    });
   });
 });
 

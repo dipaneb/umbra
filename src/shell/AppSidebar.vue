@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRegistryStore } from "../stores/registry";
+import { resolveIcon } from "./icons";
 
 const registry = useRegistryStore();
 </script>
@@ -12,7 +13,10 @@ const registry = useRegistryStore();
         :key="tool.id"
       >
         <RouterLink :to="tool.route">
-          <span aria-hidden="true">{{ tool.icon }}</span>
+          <component
+            :is="resolveIcon(tool.icon)"
+            aria-hidden="true"
+          />
           {{ tool.name }}
         </RouterLink>
       </li>

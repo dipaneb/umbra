@@ -7,7 +7,7 @@ const json: ToolRegistryEntry = {
   name: "JSON",
   aliases: ["json", "formatter"],
   route: "/tools/json",
-  icon: "{ }",
+  icon: "json",
   component: () => Promise.resolve({ template: "<div />" }),
 };
 
@@ -16,7 +16,7 @@ const base64: ToolRegistryEntry = {
   name: "Base64",
   aliases: ["b64"],
   route: "/tools/b64",
-  icon: "#",
+  icon: "base64",
   component: () => Promise.resolve({ template: "<div />" }),
 };
 
@@ -35,7 +35,7 @@ describe("searchTools", () => {
       name: "Formatter",
       aliases: [],
       route: "/tools/fmt",
-      icon: "*",
+      icon: "json",
       component: () => Promise.resolve({ template: "<div />" }),
     };
 
@@ -59,7 +59,7 @@ describe("searchTools", () => {
       name: "Cb6x",
       aliases: [],
       route: "/tools/cb6x",
-      icon: "*",
+      icon: "hash",
       component: () => Promise.resolve({ template: "<div />" }),
     };
 

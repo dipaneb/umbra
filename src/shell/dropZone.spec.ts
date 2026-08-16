@@ -21,7 +21,7 @@ const base64Tool: ToolRegistryEntry = {
   name: "Base64",
   aliases: ["base64", "b64"],
   route: "/tools/base64",
-  icon: "64",
+  icon: "base64",
   component: () => import("../tools/base64/Base64View.vue"),
   drop: { acceptedMimeTypes: [], handler: "base64_encode_file" },
 };
@@ -31,7 +31,7 @@ const jsonTool: ToolRegistryEntry = {
   name: "JSON",
   aliases: ["json"],
   route: "/tools/json",
-  icon: "{ }",
+  icon: "json",
   component: () => import("../tools/json/JsonView.vue"),
 };
 
@@ -78,7 +78,7 @@ const bucketTool: ToolRegistryEntry = {
   name: "Bucket",
   aliases: ["bucket", "ocr"],
   route: "/tools/bucket",
-  icon: "OCR",
+  icon: "bucket",
   component: () => import("../tools/bucket/BucketView.vue"),
   drop: { acceptedMimeTypes: [], handler: "bucket_extract_text" },
   paste: { handler: "bucket_extract_text_from_clipboard" },
