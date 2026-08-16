@@ -33,28 +33,28 @@ colors:
   accent-neutral-chip-dark: '#2C2C2F'
 typography:
   display:
-    fontFamily: Geist
+    fontFamily: Geist Sans
     fontSize: 28px
     fontWeight: '600'
     lineHeight: '1.2'
     letterSpacing: -0.01em
   heading:
-    fontFamily: Geist
+    fontFamily: Geist Sans
     fontSize: 18px
     fontWeight: '600'
     lineHeight: '1.3'
   body:
-    fontFamily: Geist
+    fontFamily: Geist Sans
     fontSize: 14px
     fontWeight: '400'
     lineHeight: '1.5'
   label:
-    fontFamily: Geist
+    fontFamily: Geist Sans
     fontSize: 13px
     fontWeight: '500'
     lineHeight: '1.4'
   caption:
-    fontFamily: Geist
+    fontFamily: Geist Sans
     fontSize: 12px
     fontWeight: '400'
     lineHeight: '1.4'
@@ -175,7 +175,7 @@ Visual specs for the elements already exercised through this session's renders (
 - **Button — Primary/Signature.** `{components.button-primary}`. Orange fill, white text — a known AA trade-off (see Colors), accepted deliberately over the near-black alternative. One per screen, at most — this is the "main CTA," e.g. "Merge PDFs."
 - **Button — Default.** `{components.button-default}`. Black fill (near-white in dark mode) — the workhorse for most buttons: settings, secondary actions like "Clear all," icon buttons, drop-zone accents, link-style text actions.
 - **Button — Destructive.** `{components.button-destructive}`. Red fill, white text in both modes — dark mode is a known accepted AA trade-off (see Colors), same visual-preference call as the primary button. Reserved per the Colors section's rule — not a default for delete-shaped icons.
-- **Card.** `{components.card}`. See Elevation & Depth. Internal layout resolved at Step 4.3's screen mock: icon-badge (small `{rounded.sm}` tag, monospace-style shorthand — e.g. `{}`, `64`, `#`, `JWT`) top-left, bold title below it, description text below the title — stacked, left-aligned, inside the standard card padding. See [`mockups/step4.3-mockups-light.png`](mockups/step4.3-mockups-light.png) / [`-dark.png`](mockups/step4.3-mockups-dark.png), Screen 01 (Nav shell / Grid-home).
+- **Card.** `{components.card}`. See Elevation & Depth. Internal layout resolved at Step 4.3's screen mock: icon-badge (small `{rounded.sm}` tag, a real Phosphor SVG icon) top-left, bold title below it, description text below the title — stacked, left-aligned, inside the standard card padding. See [`mockups/step4.3-mockups-light.png`](mockups/step4.3-mockups-light.png) / [`-dark.png`](mockups/step4.3-mockups-dark.png), Screen 01 (Nav shell / Grid-home). *(Amended 2026-08-16, Story 7.1 — the icon-badge originally shipped as monospace-shorthand text (`{}`, `64`, `#`, `JWT`), matching the registry's pre-Story-7.1 `icon` field values. Story 7.1 built a real Phosphor icon system (`@phosphor-icons/vue`) and repurposed the registry's `icon` field to icon-name keys resolved through it, per epics.md's own AC5 — a deliberate, developer-confirmed decision to follow AC5 literally rather than let this section's original text stand uncorrected. The `IconName → Component` resolver (`src/shell/icons.ts`) and the registry's icon-name keys exist as of Story 7.1; no Card component exists yet — Story 7.3 is what actually builds the Card and renders one of these Phosphor SVGs in the top-left `{rounded.sm}` icon-badge slot this section describes. Nothing else about the Card layout has changed.)*
 - **Update-signal.** Resolved at Step 4.3, **simplified from the originally-planned 3-tier escalation to 2 states** (see `EXPERIENCE.md` State Patterns for the full behavioral rationale): routine — `{colors.accent-signature}` dot (orange), accessible name "Update available"; security-urgent — `{colors.accent-destructive}` dot (red), accessible name "Security update available". Anchored on the Settings sidebar item (resolves the "exact anchor TBD" note from `EXPERIENCE.md`). Pure mark, no text, same Notification Dot component as elsewhere — the urgent state is a second color variant of it, not a new component. See mockups above, Screen 01.
 - **Clipboard-suggestion highlight.** Resolved at Step 4.3: a bordered/tinted callout pinned above the sidebar's tool list, labeled "Clipboard match," showing the matched tool's icon, name, and a truncated content preview. Distinct from a normal nav item without being a popup/interrupt. See mockups above, Screen 01.
 - **Floating surface.** `{components.floating-surface}`. Modals, popovers, dropdowns, tooltips — see Elevation & Depth for the border-vs-shadow rule this exists to serve.

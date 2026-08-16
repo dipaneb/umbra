@@ -3,6 +3,8 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { createAppRouter } from "../router";
 import CommandPalette from "./CommandPalette.vue";
+import { resolveIcon } from "./icons";
+import { useRegistryStore } from "../stores/registry";
 
 let wrapper: VueWrapper | undefined;
 
@@ -170,6 +172,28 @@ describe("CommandPalette", () => {
     dispatch({ key: "Enter" });
 
     await vi.waitFor(() => expect(wrapper?.find(".palette-overlay").exists()).toBe(false));
+  });
+
+  it("renders each result's registry icon as a resolved icon component, not raw text (AC5)", async () => {
+    const { wrapper, pinia } = await setup();
+
+    dispatch({ key: "k", metaKey: true });
+    await wrapper.vm.$nextTick();
+
+    const registry = useRegistryStore(pinia);
+    const options = wrapper.findAll("li[role='option']");
+
+    options.forEach((option, index) => {
+      const tool = registry.tools[index];
+      const icon = option.findComponent(resolveIcon(tool.icon));
+      expect(icon.exists()).toBe(true);
+      // Exact match, not `not.toContain(tool.icon)` — the icon component
+      // renders no text, so the option's only real text content is the tool
+      // name. An exact match rules out any raw icon string leaking in,
+      // regardless of case, rather than relying on today's icon/name pairs
+      // happening to differ by case.
+      expect(option.text()).toBe(tool.name);
+    });
   });
 
   it("removes the window keydown listener on unmount (AD-14)", async () => {
