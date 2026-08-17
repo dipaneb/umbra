@@ -42,6 +42,36 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-17
+# note: story 7-4 created 2026-08-17 (developer explicitly chose to continue Epic 7's
+# top-to-bottom order rather than strict sprint-status.yaml auto-discovery, which would have
+# picked 6-3 next -- same explicit-continuation pattern as 7-1/7-2/7-3; epic-7 stays
+# in-progress, not first story in epic so no epic-status transition). baseline_commit set to
+# origin/main's tip (a89b172, Story 7.3's squash-merge, #80) -- local main and origin/main
+# both resolve to it directly, clean tree except the pre-existing untracked .claude/workflows/
+# dir unrelated to this story. Read the actual current source directly rather than trusting
+# epics.md's description alone: src/shell/AppSidebar.vue (hardcoded #e0e0e0/#396cd8, raw "⚙"
+# emoji, plain RouterLink with no active styling), src/stores/settings.ts (confirmed
+# restoreEnabled's plain-boolean shape as the right template for the new sidebarCollapsed key,
+# not themeOverride's union-validated shape), src/shell/icons.ts (confirmed IconName is a
+# closed union over exactly the 7 registry tool ids -- the Settings-gear and collapse-toggle
+# icons must be imported directly from @phosphor-icons/vue, not routed through resolveIcon),
+# and deferred-work.md (Story 1.5's 2026-07-24 "no active-nav indicator" deferral is this
+# story's direct origin; corrected a citation slip caught by validation -- only Story 7.3's
+# code review, not 7.2's, actually deferred AppSidebar.vue's hardcoded #396cd8 by name). Live
+# Context7 lookup against vue-router's actual RouterLink.ts source (^5.2.0, installed) found
+# the story's single highest-value finding: a plain <RouterLink :to="..."> already renders
+# aria-current="page" and applies router-link-exact-active automatically, with zero JS --
+# AC3 is satisfied by *not* switching to GridHome.vue's custom v-slot wrapper pattern, the
+# opposite risk shape from Story 7.3. Also found and resolved before finalizing:
+# --color-accent-signature-on-text is defined only in tokens.css's light theme block, so the
+# active nav label's color rule needs a CSS var() fallback to the dark-safe
+# --color-accent-signature value, or it silently loses its orange color in dark mode. A
+# fresh-context validation subagent independently re-verified every citation, technical claim
+# (vue-router's live source, tokens.css's theme-block asymmetry, IconName's exhaustiveness,
+# AppSidebar.spec.ts's existing assertions), and the baseline commit against the real source
+# files -- found and the developer fixed one real citation error (the 7.2-vs-7.3
+# deferred-work misattribution above) before finalizing; zero functional or architectural
+# defects found.)
 # note: story 7-3 moved to done 2026-08-17 (code review complete: 1 decision-needed + 4 patch
 # findings resolved, 4 items deferred to deferred-work.md, 7 dismissed as noise after
 # verification against source and spec. The decision (missing page-level "Tools" heading/
@@ -697,7 +727,7 @@ development_status:
   7-1-design-tokens-and-icon-system-land-in-the-shell: done
   7-2-dark-mode-switching: done
   7-3-grid-home-replaces-the-placeholder-empty-state: done
-  7-4-sidebar-gets-an-active-nav-state-and-token-styling: backlog
+  7-4-sidebar-gets-an-active-nav-state-and-token-styling: ready-for-dev
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: backlog
   7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: backlog
   7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: backlog
