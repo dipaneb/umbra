@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useSettingsStore } from "../stores/settings";
+import { useSettingsStore, type ThemeOverride } from "../stores/settings";
 
 const settings = useSettingsStore();
 const persistedEntries = ref<[string, unknown][]>([]);
@@ -15,6 +15,13 @@ function onToggleRestore(event: Event): void {
   const checked = (event.target as HTMLInputElement).checked;
   void settings.setRestoreEnabled(checked).catch((error: unknown) => {
     console.error("settings: failed to persist restore toggle", error);
+  });
+}
+
+function onChangeTheme(event: Event): void {
+  const value = (event.target as HTMLSelectElement).value as ThemeOverride;
+  void settings.setThemeOverride(value).catch((error: unknown) => {
+    console.error("settings: failed to persist theme override", error);
   });
 }
 
@@ -52,6 +59,27 @@ async function onClearAll(): Promise<void> {
       Restore last tool and window position on launch
     </label>
 
+    <!-- Minimal mechanism only — this control's sectioned, token-styled home
+         is Story 7.6's job, not this one's. -->
+    <label class="theme-toggle">
+      Theme
+      <select
+        aria-label="Theme"
+        :value="settings.themeOverride"
+        @change="onChangeTheme"
+      >
+        <option value="system">
+          System
+        </option>
+        <option value="light">
+          Light
+        </option>
+        <option value="dark">
+          Dark
+        </option>
+      </select>
+    </label>
+
     <h2>Persisted data</h2>
     <ul
       v-if="persistedEntries.length"
@@ -79,7 +107,8 @@ async function onClearAll(): Promise<void> {
 </template>
 
 <style scoped>
-.restore-toggle {
+.restore-toggle,
+.theme-toggle {
   display: flex;
   align-items: center;
   gap: 0.5em;
@@ -98,6 +127,7 @@ async function onClearAll(): Promise<void> {
 }
 
 input:focus-visible,
+select:focus-visible,
 button:focus-visible {
   outline: 2px solid #396cd8;
   outline-offset: 2px;

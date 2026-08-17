@@ -8,6 +8,7 @@ import { createAppRouter } from "./router";
 import { useRegistryStore } from "./stores/registry";
 import { useSettingsStore } from "./stores/settings";
 import { attachWindowGeometryListeners } from "./shell/windowGeometry";
+import { attachThemeListener } from "./shell/theme";
 
 async function bootstrap(): Promise<void> {
   const pinia = createPinia();
@@ -22,6 +23,12 @@ async function bootstrap(): Promise<void> {
   // "app never appears".
   try {
     await settings.init();
+
+    // Attaching here (not after the finally block below) applies the theme
+    // once, immediately — before mount()/show() — and wires up ongoing
+    // reactivity (OS changes, in-app toggle changes) before any restore step
+    // below gets a chance to throw and skip past it.
+    attachThemeListener(settings);
 
     if (settings.restoreEnabled) {
       const lastTool = settings.lastTool;

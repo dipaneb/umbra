@@ -41,7 +41,71 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-16
+last_updated: 2026-08-17
+# note: story 7-2 moved to done 2026-08-17 (code review complete: 1 decision-needed + 4 patch
+# findings resolved, 3 pre-existing items deferred to deferred-work.md, 6 dismissed as noise
+# after verification against source. The decision (resolveTheme always writing a concrete
+# data-theme even for "system", versus Task 2's literal "leave it unset" instruction) was
+# resolved by collapsing to a single mechanism: the bare :root color values and the
+# @media (prefers-color-scheme: dark) block were deleted outright, leaving
+# :root[data-theme="light"]/:root[data-theme="dark"] as the sole declaration site for every
+# color/shadow token -- sound specifically because this is a Tauri webview (JS always runs)
+# whose pre-paint bootstrap already guarantees data-theme is set before the invisible-until-
+# shown window can paint, so the CSS-only fallback was never actually load-bearing. Patches
+# applied: ThemeOverride now validated at both the settings.json load boundary and
+# resolveTheme's fallthrough; the redundant double theme-computation on launch removed by
+# moving attachThemeListener inside main.ts's try block (ahead of restore steps that could
+# throw); color-scheme added to both data-theme blocks so native controls follow an explicit
+# override; tokens.spec.ts's single-property parity check replaced with full-coverage tests.
+# Full verification green: 262/262 Vue tests (246 baseline + 16 net new), lint/typecheck/build
+# all clean, Rust suite unchanged (zero src-tauri/ files touched).)
+# note: story 7-2 moved to review 2026-08-16 (implementation complete: Tasks 0-7 done, Task 8's
+# manual pnpm tauri dev GUI smoke check (all three theme states against both OS appearance
+# settings, flash-of-wrong-theme check, relaunch persistence, explicit-Light-while-OS-Dark
+# specificity check) deferred to the developer -- this sandboxed session has no display
+# server, same limitation as every prior story. Settings store gained shell.themeOverride
+# (ref/init/setThemeOverride/clearAll, mirroring restoreEnabled's exact shape). New
+# src/shell/theme.ts implements resolveTheme/applyResolvedTheme/attachThemeListener exactly
+# to the story's specified signatures, wired into main.ts's pre-paint bootstrap (initial
+# apply before mount()/show(), attachThemeListener after, mirroring windowGeometry.ts's
+# app-lifetime-listener pattern). tokens.css gained the two data-theme attribute-selector
+# blocks the story's own Dev Notes flagged as its single highest-risk part (both dark AND
+# light required, not just dark, due to CSS specificity) -- the existing @media fallback from
+# Story 7.1 is untouched. SettingsView.vue got a minimal, unstyled <select aria-label="Theme">
+# per AC3's explicit "mechanism, not final UI" scope (Story 7.6 owns the styled version). One
+# implementation note recorded inline under Task 2: resolveTheme's specified signature always
+# returns a concrete light/dark value (never "unset"), so data-theme is always set to a
+# concrete value even when override is "system" -- behaviorally identical to leaving it unset
+# in that case since both attribute blocks are exact duplicates of the corresponding bare-
+# :root/media-query block, but a literal reading of the given function signatures rather than
+# threading a third state through them. Full verification green: 259/259 Vue tests (246
+# baseline + 13 new across theme.spec.ts (new, 8 tests), tokens.spec.ts (+1),
+# settings.spec.ts (+3), SettingsView.spec.ts (+1)), 213/213 Rust tests (unchanged, zero
+# src-tauri/ files touched, confirmed via git status), lint/typecheck/build all clean.)
+# note: story 7-2 moved to in-progress 2026-08-16 (branched
+# feat/story-7-2-dark-mode-switching from main at 017bb42, confirming the
+# story's baseline_commit against both local and origin/main)
+# note: story 7-2 created 2026-08-16 (developer explicitly chose to continue Epic 7 --
+# strict top-to-bottom sprint-status.yaml auto-discovery would have picked 6-3 next, but
+# 6-3/6-4 remain deliberately deferred per the same explicit direction that created Story
+# 7-1; epic-7 stays in-progress, not first story in epic so no epic-status transition).
+# baseline_commit set to 017bb42 (Story 7.1's squash-merge, #78) -- local main and
+# origin/main both resolve to it directly, clean tree, no content-diff reconciliation
+# needed. Read Story 7.1's actual shipped files directly (src/styles/tokens.css,
+# src/stores/settings.ts, src/shell/SettingsView.vue, src/main.ts, src/App.vue,
+# src/shell/windowGeometry.ts) rather than trusting epics.md's description alone. Found
+# and documented the story's central technical requirement: tokens.css's dark values
+# currently activate only via a `prefers-color-scheme` media query, and a bare
+# `:root[data-theme="dark"]` block alone would NOT let an explicit "Light" override win
+# when the OS is set to dark (media-query `:root` and bare `:root` share specificity,
+# so source order wins) -- both a `[data-theme="dark"]` AND a `[data-theme="light"]`
+# attribute-selector block are required. A fresh-context validation subagent
+# independently re-verified every citation and this specificity claim against the real
+# source files (confirmed correct) and found two real gaps fixed before finalizing: AC3's
+# quote was missing epics.md's "(Settings restructure)" parenthetical after "Story 7.6's",
+# and the Tasks list had no test coverage task for the new Settings toggle itself
+# (SettingsView.spec.ts's stubbedSettingsStore() helper needs themeOverride/
+# setThemeOverride stubs and a test mirroring the existing restore-checkbox test).
 # note: story 7-1 code review complete 2026-08-16 (bmad-code-review, three-layer adversarial
 # pass) -- moved review -> done. Acceptance Auditor found zero AC violations. 5 patch findings
 # applied and re-verified green (246/246 tests): DESIGN.md Card amendment reworded to stop
@@ -564,7 +628,7 @@ development_status:
 
   epic-7: in-progress
   7-1-design-tokens-and-icon-system-land-in-the-shell: done
-  7-2-dark-mode-switching: backlog
+  7-2-dark-mode-switching: done
   7-3-grid-home-replaces-the-placeholder-empty-state: backlog
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: backlog
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: backlog
