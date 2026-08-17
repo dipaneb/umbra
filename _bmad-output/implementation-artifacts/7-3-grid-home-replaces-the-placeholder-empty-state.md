@@ -4,7 +4,7 @@ baseline_commit: 9d22ee4ae20bde909c626881438216fe9731b871
 
 # Story 7.3: Grid-home replaces the placeholder empty state
 
-Status: review
+Status: done
 
 ## Story
 
@@ -78,6 +78,22 @@ so that I can see and launch any tool at a glance instead of finding an empty pl
 - [x] **Task 8: Manual verification — outside a sandboxed coding session's reach**
   - [x] `pnpm tauri dev`: confirm grid-home renders on launch with restore-last-tool off; confirm every card's icon/title/description look correct in both light and dark (Story 7.2's toggle); confirm keyboard-only navigation — Tab through every card, activate one with Enter, activate a different one with Space, confirm both actually open the tool (the real risk Task 4 flags); confirm restore-last-tool on + a valid last tool still skips grid-home entirely and opens straight to that tool (AC6, unchanged mechanism). **Deferred to the developer** — this sandboxed session has no display server, same limitation as every prior story.
 
+### Review Findings
+
+**Patch:**
+
+- [x] [Review][Patch] Icon renders as a bare 24×24 SVG with no badge container — DESIGN.md's Card spec (line 178, Components section) explicitly calls for "icon-badge (small `{rounded.sm}` tag...)"; confirmed directly against the Screen 01 mockup image, which shows each icon inside a small light-gray rounded chip, not floating unstyled. `GridHome.vue`'s `.icon` class applies no background, no padding, and no radius — AC2's "matches DESIGN.md's resolved spec" for Card internal layout is not met, and no test in `GridHome.spec.ts` checks the icon's container/styling so this ships silently. **Fixed:** icon now wrapped in a `span.icon-badge` styled with `background: var(--color-accent-neutral-chip)`, `border-radius: var(--radius-sm)`, and `padding: 4px` — both tokens already existed in `src/styles/tokens.css` in both light/dark blocks, previously unused. [`src/shell/GridHome.vue:24-30,56-64`]
+- [x] [Review][Patch] `grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))` uses `auto-fill` instead of `auto-fit`. With exactly 7 hardcoded tools (`src/stores/registry.ts`), any viewport wide enough to fit one more 220px column than there are cards leaves an empty implicit track that still claims an equal `1fr` share — every real card renders narrower than intended. **Fixed:** changed to `auto-fit`, which collapses empty tracks so the 7 real cards fill the available width instead. [`src/shell/GridHome.vue:39`]
+- [x] [Review][Patch] `GridHome.spec.ts`'s href test only asserted `card.attributes("href")).toBeTruthy()` — it never checked the href actually resolves to the expected tool's route. A bug that pointed every card at the same wrong route would still have passed this test as long as the href were non-empty. **Fixed:** now asserts `card.attributes("href")` equals `registry.tools[index].route` for every card. [`src/shell/GridHome.spec.ts:75-84`]
+- [x] [Review][Patch] Click/Space navigation tests picked cards by unlabeled magic index (`cards[2]` for the click test, `cards[1]` for the Space test) with no comment tying the index to the `uuid`/`base64` tool it corresponds to. **Fixed:** both tests now look up their target card via `registry.tools.findIndex((tool) => tool.id === "uuid" / "base64")` instead of a hardcoded index. [`src/shell/GridHome.spec.ts:48-61,86-95`]
+
+**Defer:**
+
+- [x] [Review][Defer] `.card:focus-visible`'s outline color is hardcoded (`#396cd8`) rather than token-driven. [`src/shell/GridHome.vue:78-81`] — deferred, pre-existing: the identical unTokenized value already exists in `src/shell/AppSidebar.vue:53-55` and `src/shell/CommandPalette.vue:185`; this story only reuses the existing convention rather than introducing it. Story 7.2's own code review deferred the same gap for the same reason.
+- [x] [Review][Defer] Holding Space down on a focused card fires repeat `keydown` events, each invoking `navigate()` again while the prior navigation (a genuine dynamic `import()`) is still in flight. [`src/shell/GridHome.vue:22`] — deferred: Vue Router's redundant-navigation handling means repeated pushes to the same in-flight/current target don't produce duplicate history entries or a crash, so the practical impact is negligible; a `!$event.repeat` guard would be a cheap hardening but isn't blocking.
+- [x] [Review][Defer] No defensive rendering (heading-adjacent empty-state text) if `registry.tools` were ever empty. [`src/shell/GridHome.vue:8-34`] — deferred, pre-existing/unreachable: `TOOLS` is a module-level hardcoded literal guarded by `assertUniqueToolIds` at load time; there is currently no code path that produces an empty registry at runtime. Worth a one-line guard if the registry ever becomes dynamically loaded, not before.
+- [x] [Review][Defer] Page-level "Tools" heading and tool-count subtitle from the confirmed screen mock (Screen 01) are entirely absent — `GridHome.vue` renders only the card grid, no heading, no subtitle, no landmark of its own. [`src/shell/GridHome.vue:8-34`] — deferred, developer's call: the page doesn't need a title and subtitle.
+
 ## Dev Notes
 
 - **Architecture fit:** Pure frontend, presentation-layer change. AD-5 (`ARCHITECTURE-SPINE.md`) — the Tool Registry stays the single source; this story only adds a `description` field to the same one source, never a second list. AD-6 ("tools are islands") — `GridHome.vue` reads `registry.tools` only, touches no tool-specific code. No `src-tauri/`/Rust changes, no new dependency (reuses `@phosphor-icons/vue` via Story 7.1's `resolveIcon`, and `vue-router`'s existing `RouterLink`/`custom`/`v-slot` API — already the project's router, no version drift to check since nothing new is added).
@@ -117,6 +133,7 @@ so that I can see and launch any tool at a glance instead of finding an empty pl
 ## Change Log
 
 - 2026-08-17: Implementation complete — Tasks 0-7 done, Task 8's manual `pnpm tauri dev` GUI smoke check deferred to the developer (no display server in this sandboxed session). Status moved to "review".
+- 2026-08-17: Code review complete (bmad-code-review, three-layer adversarial pass — Blind Hunter, Edge Case Hunter, Acceptance Auditor). 1 decision-needed item (missing page-level "Tools" heading/subtitle from the confirmed screen mock) resolved by the developer as deferred — the page doesn't need a title and subtitle. 4 patch findings fixed: the icon now renders inside a proper icon-badge (`--color-accent-neutral-chip` + `--radius-sm`, matching DESIGN.md's Card spec and the confirmed mockup), the grid switched from `auto-fill` to `auto-fit` to stop empty tracks narrowing real cards on wide viewports, the href test now asserts against the actual expected route instead of just truthiness, and the click/Space navigation tests now look up their target card by tool id instead of a hardcoded array index. 4 items deferred to `deferred-work.md` (3 pre-existing/low-impact, 1 the developer's explicit scope call). 7 findings dismissed after verification — most notably, the "aria-label swallows the description from screen readers" finding raised independently by two review layers turned out to be exactly what AC3 requires ("accessible name equals the tool's name, not just its visual title text"), not a defect. Full verification green: 268/268 Vue tests, `eslint --max-warnings 0` clean, `vue-tsc --noEmit` clean. Status moved to "done".
 
 ## Dev Agent Record
 

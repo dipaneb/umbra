@@ -42,6 +42,24 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-17
+# note: story 7-3 moved to done 2026-08-17 (code review complete: 1 decision-needed + 4 patch
+# findings resolved, 4 items deferred to deferred-work.md, 7 dismissed as noise after
+# verification against source and spec. The decision (missing page-level "Tools" heading/
+# tool-count subtitle from the confirmed Screen 01 mockup -- not named by any written AC) was
+# resolved by the developer as deferred: the page doesn't need a title and subtitle. Patches:
+# the icon now renders inside a proper icon-badge (--color-accent-neutral-chip fill,
+# --radius-sm corners) matching DESIGN.md's Card spec and the confirmed mockup -- verified
+# directly against the mockup image, since the previous bare-icon render silently missed the
+# badge container entirely; grid-template-columns switched auto-fill -> auto-fit so an empty
+# implicit track can't narrow the 7 real cards on wide viewports; GridHome.spec.ts's href test
+# now asserts against the actual expected route rather than mere truthiness; the click/Space
+# navigation tests now look up their target card by tool id (registry.tools.findIndex) instead
+# of a hardcoded array index. Two independently-raised findings (aria-label allegedly hiding
+# the description from screen readers; Space activating regardless of held modifiers) were
+# dismissed after verification -- the first is literally what AC3's own wording requires
+# ("accessible name equals the tool's name, not just its visual title text"), the second
+# matches standard native-<button> Space-activation semantics. Full verification green:
+# 268/268 Vue tests, eslint --max-warnings 0 clean, vue-tsc --noEmit clean.)
 # note: story 7-3 moved to review 2026-08-17 (implementation complete: Tasks 0-7 done, Task 8's
 # manual pnpm tauri dev GUI smoke check (grid-home render, light/dark card appearance,
 # keyboard-only Tab/Enter/Space navigation, restore-last-tool skip) deferred to the developer --
@@ -678,7 +696,7 @@ development_status:
   epic-7: in-progress
   7-1-design-tokens-and-icon-system-land-in-the-shell: done
   7-2-dark-mode-switching: done
-  7-3-grid-home-replaces-the-placeholder-empty-state: review
+  7-3-grid-home-replaces-the-placeholder-empty-state: done
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: backlog
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: backlog
   7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: backlog

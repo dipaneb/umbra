@@ -21,11 +21,13 @@ const registry = useRegistryStore();
         @click="navigate"
         @keydown.space.prevent="navigate()"
       >
-        <component
-          :is="resolveIcon(tool.icon)"
-          class="icon"
-          aria-hidden="true"
-        />
+        <span class="icon-badge">
+          <component
+            :is="resolveIcon(tool.icon)"
+            class="icon"
+            aria-hidden="true"
+          />
+        </span>
         <span class="title">{{ tool.name }}</span>
         <span class="description">{{ tool.description }}</span>
       </a>
@@ -36,7 +38,7 @@ const registry = useRegistryStore();
 <style scoped>
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--spacing-4);
 }
 
@@ -51,6 +53,15 @@ const registry = useRegistryStore();
   border-radius: var(--radius-default);
   color: inherit;
   text-decoration: none;
+}
+
+.icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: var(--color-accent-neutral-chip);
+  border-radius: var(--radius-sm);
 }
 
 .icon {

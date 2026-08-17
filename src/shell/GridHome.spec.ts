@@ -46,8 +46,10 @@ describe("GridHome", () => {
   });
 
   it("navigates to the tool's route when a card is clicked", async () => {
-    const { wrapper, router } = await mountGridHome();
-    const card = wrapper.findAll("a.card")[2];
+    const { wrapper, pinia, router } = await mountGridHome();
+    const registry = useRegistryStore(pinia);
+    const uuidIndex = registry.tools.findIndex((tool) => tool.id === "uuid");
+    const card = wrapper.findAll("a.card")[uuidIndex];
 
     await card.trigger("click");
 
@@ -71,18 +73,21 @@ describe("GridHome", () => {
   // tool) is deferred to Task 8's manual pnpm tauri dev check, same as every
   // other real-browser-only verification in this story.
   it("renders each card as a real, focusable <a> with a resolved href, the structural precondition Enter's native browser activation depends on", async () => {
-    const { wrapper } = await mountGridHome();
+    const { wrapper, pinia } = await mountGridHome();
+    const registry = useRegistryStore(pinia);
     const cards = wrapper.findAll("a.card");
 
-    cards.forEach((card) => {
+    cards.forEach((card, index) => {
       expect(card.element.tagName).toBe("A");
-      expect(card.attributes("href")).toBeTruthy();
+      expect(card.attributes("href")).toBe(registry.tools[index].route);
     });
   });
 
   it("navigates to the tool's route when a focused card is activated with Space", async () => {
-    const { wrapper, router } = await mountGridHome();
-    const card = wrapper.findAll("a.card")[1];
+    const { wrapper, pinia, router } = await mountGridHome();
+    const registry = useRegistryStore(pinia);
+    const baseIndex = registry.tools.findIndex((tool) => tool.id === "base64");
+    const card = wrapper.findAll("a.card")[baseIndex];
 
     await card.trigger("keydown", { key: " " });
 
