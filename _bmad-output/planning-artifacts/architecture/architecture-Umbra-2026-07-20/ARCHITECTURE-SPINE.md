@@ -70,7 +70,7 @@ graph LR
 
 - **Binds:** sidebar, command palette, routing
 - **Prevents:** tool metadata (name, alias, icon, route) drifting across three separately maintained lists
-- **Rule:** one Tool Registry entry — `{ id, name, aliases, route, icon, drop declarations, shortcut declarations }` — is the single source that generates the sidebar, the palette index, and the route table. Nothing else enumerates tools. `[ADOPTED]`
+- **Rule:** one Tool Registry entry — `{ id, name, description, aliases, route, icon, drop declarations, shortcut declarations }` — is the single source that generates the sidebar, the palette index, and the route table. Nothing else enumerates tools. `[ADOPTED]` *(Amended 2026-08-17, Story 7.3 — `description` was added so grid-home's tool cards can render a one-line summary sourced from the registry itself, rather than inventing a second description list elsewhere.)*
 
 ### AD-6 — Tools are islands
 

@@ -5,6 +5,7 @@ import type { ToolRegistryEntry } from "../stores/registry";
 const json: ToolRegistryEntry = {
   id: "json",
   name: "JSON",
+  description: "test",
   aliases: ["json", "formatter"],
   route: "/tools/json",
   icon: "json",
@@ -14,6 +15,7 @@ const json: ToolRegistryEntry = {
 const base64: ToolRegistryEntry = {
   id: "b64",
   name: "Base64",
+  description: "test",
   aliases: ["b64"],
   route: "/tools/b64",
   icon: "base64",
@@ -33,6 +35,7 @@ describe("searchTools", () => {
     const formatter: ToolRegistryEntry = {
       id: "fmt",
       name: "Formatter",
+      description: "test",
       aliases: [],
       route: "/tools/fmt",
       icon: "json",
@@ -57,6 +60,7 @@ describe("searchTools", () => {
     const cb6x: ToolRegistryEntry = {
       id: "cb6x",
       name: "Cb6x",
+      description: "test",
       aliases: [],
       route: "/tools/cb6x",
       icon: "hash",

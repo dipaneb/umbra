@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory, type Router } from "vue-router";
 import type { Pinia } from "pinia";
 import { useRegistryStore } from "../stores/registry";
-import EmptyState from "../shell/EmptyState.vue";
+import GridHome from "../shell/GridHome.vue";
 import SettingsView from "../shell/SettingsView.vue";
 
 export function createAppRouter(pinia: Pinia): Router {
@@ -13,7 +13,7 @@ export function createAppRouter(pinia: Pinia): Router {
       {
         path: "/",
         name: "home",
-        component: EmptyState,
+        component: GridHome,
       },
       {
         path: "/settings",

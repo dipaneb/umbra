@@ -78,7 +78,7 @@ This is also why AD-12 requires every release PR to record an executed network-m
 
 ## Islands, not a monolith (AD-5, AD-6)
 
-Adding tool #20 should not require touching the sidebar, the palette, *and* a router file by hand — that's exactly the kind of three-places-to-update drift this architecture exists to prevent. A tool registers once, in one place (`{ id, name, aliases, route, icon, drop declarations, shortcut declarations }`), and that single entry generates the sidebar, the `⌘K` palette index, and the route table (AD-5).
+Adding tool #20 should not require touching the sidebar, the palette, *and* a router file by hand — that's exactly the kind of three-places-to-update drift this architecture exists to prevent. A tool registers once, in one place (`{ id, name, description, aliases, route, icon, drop declarations, shortcut declarations }`), and that single entry generates the sidebar, the `⌘K` palette index, and the route table (AD-5). *(Amended 2026-08-17, Story 7.3 — `description` was added so grid-home's tool cards can render a one-line summary sourced from the registry itself, rather than inventing a second description list elsewhere.)*
 
 Tools then behave as islands: no tool reads another tool's internal state (AD-6). The only state allowed to cross tool boundaries lives in two Pinia stores, `settings` and `registry` — anything else is local to the tool that owns it. This is what makes it safe for the P3 cadence (FR35 — one small tool shipped roughly every week or two, Sept→March) to add tools without a growing risk of cross-tool breakage each time.
 

@@ -8,6 +8,7 @@ import type { ToolError } from "../shell/toolError";
 export interface ToolRegistryEntry {
   id: string;
   name: string;
+  description: string;
   aliases: string[];
   route: string;
   icon: IconName;
@@ -55,6 +56,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "json",
     name: "JSON",
+    description: "Format, validate, and explore JSON as a collapsible tree.",
     aliases: ["json", "formatter"],
     route: "/tools/json",
     icon: "json",
@@ -63,6 +65,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "base64",
     name: "Base64",
+    description: "Encode and decode text or files to and from Base64.",
     aliases: ["base64", "b64", "decode"],
     route: "/tools/base64",
     icon: "base64",
@@ -75,6 +78,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "uuid",
     name: "UUID",
+    description: "Generate UUID v4 or v7 identifiers, single or in bulk.",
     aliases: ["uuid", "guid"],
     route: "/tools/uuid",
     icon: "uuid",
@@ -83,6 +87,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "hash",
     name: "Hash",
+    description: "Compute SHA-256, SHA-512, MD5, and SHA-1 digests of text or files.",
     aliases: ["hash", "checksum", "sha256", "sha512", "md5", "sha1", "digest"],
     route: "/tools/hash",
     icon: "hash",
@@ -92,6 +97,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "jwt",
     name: "JWT",
+    description: "Decode a JWT's header and payload, entirely offline.",
     aliases: ["jwt", "token", "decode"],
     route: "/tools/jwt",
     icon: "jwt",
@@ -100,6 +106,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "cron",
     name: "Cron",
+    description: "Translate between plain English and cron expressions.",
     aliases: ["cron", "crontab", "schedule"],
     route: "/tools/cron",
     icon: "cron",
@@ -108,6 +115,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "bucket",
     name: "Bucket",
+    description: "Extract text from images, and merge, split, or convert PDFs and images.",
     aliases: [
       "bucket",
       "ocr",

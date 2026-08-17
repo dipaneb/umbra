@@ -19,6 +19,7 @@ import DropZone from "./DropZone.vue";
 const base64Tool: ToolRegistryEntry = {
   id: "base64",
   name: "Base64",
+  description: "test",
   aliases: ["base64", "b64"],
   route: "/tools/base64",
   icon: "base64",
@@ -29,6 +30,7 @@ const base64Tool: ToolRegistryEntry = {
 const jsonTool: ToolRegistryEntry = {
   id: "json",
   name: "JSON",
+  description: "test",
   aliases: ["json"],
   route: "/tools/json",
   icon: "json",
@@ -76,6 +78,7 @@ describe("routeDrop", () => {
 const bucketTool: ToolRegistryEntry = {
   id: "bucket",
   name: "Bucket",
+  description: "test",
   aliases: ["bucket", "ocr"],
   route: "/tools/bucket",
   icon: "bucket",
