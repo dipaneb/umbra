@@ -218,6 +218,168 @@ describe("useSettingsStore", () => {
     expect(settings.sidebarCollapsed).toBe(false);
   });
 
+  it("defaults pinnedTools and recentTools to [] when absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.pinnedTools).toEqual([]);
+    expect(settings.recentTools).toEqual([]);
+  });
+
+  it("defaults pinnedToolsVisible and recentToolsVisible to true when absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.pinnedToolsVisible).toBe(true);
+    expect(settings.recentToolsVisible).toBe(true);
+  });
+
+  it("falls back to [] when persisted pinnedTools is not an array", async () => {
+    fakeStore.set("shell.pinnedTools", "json");
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.pinnedTools).toEqual([]);
+  });
+
+  it("falls back to [] when persisted recentTools is not an array", async () => {
+    fakeStore.set("shell.recentTools", { not: "an array" });
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.recentTools).toEqual([]);
+  });
+
+  it("drops non-string entries from a persisted pinnedTools array", async () => {
+    fakeStore.set("shell.pinnedTools", ["json", 5, "uuid", null]);
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.pinnedTools).toEqual(["json", "uuid"]);
+  });
+
+  it("togglePinned pins an unpinned tool and persists the array", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.togglePinned("json");
+
+    expect(settings.pinnedTools).toEqual(["json"]);
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.pinnedTools", ["json"]);
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("togglePinned unpins an already-pinned tool and persists the array", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.togglePinned("json");
+    fakeStore.set.mockClear();
+    fakeStore.save.mockClear();
+
+    await settings.togglePinned("json");
+
+    expect(settings.pinnedTools).toEqual([]);
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.pinnedTools", []);
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("recordRecentTool adds a tool to the front of recentTools", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.recordRecentTool("json");
+
+    expect(settings.recentTools).toEqual(["json"]);
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.recentTools", ["json"]);
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("recordRecentTool dedupes by moving an already-present id to the front", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.recordRecentTool("json");
+    await settings.recordRecentTool("uuid");
+
+    await settings.recordRecentTool("json");
+
+    expect(settings.recentTools).toEqual(["json", "uuid"]);
+  });
+
+  it("recordRecentTool caps recentTools at 5, dropping the oldest", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    for (const id of ["a", "b", "c", "d", "e"]) {
+      await settings.recordRecentTool(id);
+    }
+    await settings.recordRecentTool("f");
+
+    expect(settings.recentTools).toEqual(["f", "e", "d", "c", "b"]);
+  });
+
+  it("recordRecentTool persists unconditionally, ignoring restoreEnabled", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setRestoreEnabled(false);
+    fakeStore.set.mockClear();
+    fakeStore.save.mockClear();
+
+    await settings.recordRecentTool("json");
+
+    expect(settings.recentTools).toEqual(["json"]);
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.recentTools", ["json"]);
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("setPinnedToolsVisible persists and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setPinnedToolsVisible(false);
+
+    expect(settings.pinnedToolsVisible).toBe(false);
+    expect(fakeStore.set).toHaveBeenCalledWith(
+      "shell.pinnedToolsVisible",
+      false,
+    );
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("setRecentToolsVisible persists and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setRecentToolsVisible(false);
+
+    expect(settings.recentToolsVisible).toBe(false);
+    expect(fakeStore.set).toHaveBeenCalledWith(
+      "shell.recentToolsVisible",
+      false,
+    );
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("clearAll resets pinnedTools, recentTools, and both visibility flags", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.togglePinned("json");
+    await settings.recordRecentTool("uuid");
+    await settings.setPinnedToolsVisible(false);
+    await settings.setRecentToolsVisible(false);
+
+    await settings.clearAll();
+
+    expect(settings.pinnedTools).toEqual([]);
+    expect(settings.recentTools).toEqual([]);
+    expect(settings.pinnedToolsVisible).toBe(true);
+    expect(settings.recentToolsVisible).toBe(true);
+  });
+
   it("degrades to defaults and does not throw when settings.json fails to load", async () => {
     load.mockRejectedValueOnce(new Error("corrupt settings.json"));
     const settings = useSettingsStore();

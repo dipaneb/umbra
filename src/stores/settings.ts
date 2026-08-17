@@ -21,6 +21,12 @@ function isThemeOverride(value: unknown): value is ThemeOverride {
   );
 }
 
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((v): v is string => typeof v === "string"))]
+    : [];
+}
+
 // Story 1.8's tree-parse debounce uses 200ms for latency-sensitive work;
 // geometry writes have no such urgency, so a slightly longer interval cuts
 // disk writes further during a drag.
@@ -36,6 +42,10 @@ export const useSettingsStore = defineStore("settings", () => {
   const windowGeometry = ref<WindowGeometry | undefined>(undefined);
   const themeOverride = ref<ThemeOverride>("system");
   const sidebarCollapsed = ref<boolean>(false);
+  const pinnedTools = ref<string[]>([]);
+  const recentTools = ref<string[]>([]);
+  const pinnedToolsVisible = ref<boolean>(true);
+  const recentToolsVisible = ref<boolean>(true);
 
   async function init(): Promise<void> {
     try {
@@ -53,6 +63,16 @@ export const useSettingsStore = defineStore("settings", () => {
         : "system";
       sidebarCollapsed.value =
         (await store.get<boolean>("shell.sidebarCollapsed")) ?? false;
+      pinnedTools.value = toStringArray(
+        await store.get<unknown>("shell.pinnedTools"),
+      );
+      recentTools.value = toStringArray(
+        await store.get<unknown>("shell.recentTools"),
+      );
+      pinnedToolsVisible.value =
+        (await store.get<boolean>("shell.pinnedToolsVisible")) ?? true;
+      recentToolsVisible.value =
+        (await store.get<boolean>("shell.recentToolsVisible")) ?? true;
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -81,6 +101,43 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!backingStore) return;
     const store = backingStore;
     await store.set("shell.sidebarCollapsed", value);
+    await store.save();
+  }
+
+  async function setPinnedToolsVisible(value: boolean): Promise<void> {
+    pinnedToolsVisible.value = value;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.pinnedToolsVisible", value);
+    await store.save();
+  }
+
+  async function setRecentToolsVisible(value: boolean): Promise<void> {
+    recentToolsVisible.value = value;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.recentToolsVisible", value);
+    await store.save();
+  }
+
+  async function togglePinned(toolId: string): Promise<void> {
+    pinnedTools.value = pinnedTools.value.includes(toolId)
+      ? pinnedTools.value.filter((id) => id !== toolId)
+      : [...pinnedTools.value, toolId];
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.pinnedTools", pinnedTools.value);
+    await store.save();
+  }
+
+  async function recordRecentTool(toolId: string): Promise<void> {
+    recentTools.value = [
+      toolId,
+      ...recentTools.value.filter((id) => id !== toolId),
+    ].slice(0, 5);
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.recentTools", recentTools.value);
     await store.save();
   }
 
@@ -121,6 +178,10 @@ export const useSettingsStore = defineStore("settings", () => {
     windowGeometry.value = undefined;
     themeOverride.value = "system";
     sidebarCollapsed.value = false;
+    pinnedTools.value = [];
+    recentTools.value = [];
+    pinnedToolsVisible.value = true;
+    recentToolsVisible.value = true;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -133,10 +194,18 @@ export const useSettingsStore = defineStore("settings", () => {
     windowGeometry,
     themeOverride,
     sidebarCollapsed,
+    pinnedTools,
+    recentTools,
+    pinnedToolsVisible,
+    recentToolsVisible,
     init,
     setRestoreEnabled,
     setThemeOverride,
     setSidebarCollapsed,
+    setPinnedToolsVisible,
+    setRecentToolsVisible,
+    togglePinned,
+    recordRecentTool,
     recordLastTool,
     recordWindowGeometry,
     entries,

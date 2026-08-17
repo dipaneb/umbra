@@ -34,6 +34,13 @@ async function bootstrap(): Promise<void> {
       const lastTool = settings.lastTool;
       if (lastTool && registry.tools.some((tool) => tool.id === lastTool)) {
         await router.replace({ name: lastTool });
+        // router.afterEach below isn't registered until after this restore
+        // navigation runs, so the restored tool needs its own explicit call
+        // to land in Recent — otherwise every restore-enabled relaunch would
+        // silently skip the one tool the user is actually looking at.
+        settings.recordRecentTool(lastTool).catch((error: unknown) => {
+          console.error("settings: failed to record recent tool", error);
+        });
       }
 
       const geometry = settings.windowGeometry;
@@ -57,7 +64,12 @@ async function bootstrap(): Promise<void> {
       typeof to.name === "string" &&
       registry.tools.some((tool) => tool.id === to.name)
     ) {
-      settings.recordLastTool(to.name);
+      settings.recordLastTool(to.name).catch((error: unknown) => {
+        console.error("settings: failed to record last tool", error);
+      });
+      settings.recordRecentTool(to.name).catch((error: unknown) => {
+        console.error("settings: failed to record recent tool", error);
+      });
     }
   });
   await attachWindowGeometryListeners(settings.recordWindowGeometry);
