@@ -42,6 +42,108 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-17
+# note: story 7-5 post-code-review correction round 2026-08-17 (status stays "done", no
+# transition -- developer live-tested the code-review patch round and found two real,
+# undocumented interaction gaps between "Show pinned tools" and pin/Recent, neither caught by
+# the story's ACs nor the formal review layers since both only manifest from combining an
+# already-pinned tool with the visibility toggle off. Fixed: (1) the pin/unpin button now
+# requires settings.pinnedToolsVisible in its v-if, not just !sidebarCollapsed -- previously a
+# user could pin/unpin tools while blind to their own pinned state, which read as broken; the
+# row's existing `a { flex: 1 }` rule absorbs the freed width automatically, no new CSS needed.
+# (2) recentEntries' pinned-tools exclusion filter now only applies while pinnedToolsVisible is
+# true (AC2's own stated reason for excluding pinned tools from Recent is "to avoid
+# duplication" -- with Pinned hidden there's nothing to duplicate against, so a pinned tool's
+# own recent usage was vanishing from Recent with no visible explanation of why). Both fixes
+# are pure computed() re-derivations off existing reactive state, so toggling the visibility
+# checkbox off/on cannot desync -- verified explicitly with a new round-trip test (pin, record
+# recent, assert excluded+button-present while visible, hide Pinned and assert the opposite,
+# re-show and assert it reverts exactly) plus a standalone absent-not-hidden test for the pin
+# button. Live-verified in Chrome: Pinned section and its heading disappear on toggle-off,
+# hovering a row shows zero pin icon and the highlight spans the full row width, toggle-on
+# brings the pinned tool straight back undisturbed. The Recent-list half of the fix couldn't be
+# exercised live in this plain-browser session (same pre-existing bootstrap()/finally-throw
+# limitation already on record for this story) -- covered instead by the unit test, which calls
+# recordRecentTool directly on the store. Full verification green: 310/310 Vue tests (308 + 2
+# net new), eslint --max-warnings 0, vue-tsc --noEmit, vite build all clean, zero src-tauri/
+# files touched.)
+# note: story 7-5 moved to done 2026-08-17 (code review complete via bmad-code-review, diff
+# 6acc563..HEAD: 0 decision-needed, 6 patches applied and re-verified green, 3 items deferred
+# to deferred-work.md, 10 dismissed after verification (mostly against this story's own Dev
+# Notes/Completion Notes, which had already resolved several as deliberate design choices --
+# e.g. recordRecentTool's unconditional tracking matches AC7's own "toggle controls visibility
+# only, never data" text; the duplicate aria-current when a tool is pinned+active was the
+# developer's explicit sign-off in the prior correction round). The highest-value find: the
+# restore-on-launch router.replace() in main.ts's bootstrap() runs before router.afterEach is
+# registered, so the tool a restoreEnabled relaunch lands on was silently never added to
+# Recent -- fixed with an explicit recordRecentTool call right after the restore navigation.
+# Also fixed: main.ts's two afterEach persistence calls were unawaited/uncaught (now .catch'd,
+# matching this story's own SettingsView.vue pattern); toStringArray didn't dedupe persisted
+# ids (duplicate v-for keys risk on hand-edited settings.json); the pin-toggle's click handler
+# had no error handling unlike its sibling checkboxes in the same diff; section headings were
+# plain <p> tags with no aria-labelledby linking them to their <ul> (real NFR5/VoiceOver gap
+# given this story's own accessibility emphasis); and a genuinely untested interaction (a tool
+# already in Recent, pinned, then unpinned) got its own new test. Deferred: no per-item reset
+# for the four new shell.* keys (AC5's literal text, but explicitly Story 7.6's job per this
+# story's own scope note, mirroring the 7.2->7.6 precedent), an unreachable stale-id-occupies-
+# a-Recent-slot edge case (registry has never shrunk), and the same init()-vs-optimistic-write
+# race every other settings key already has. Full verification green after patches: 308/308
+# Vue tests (307 + 1 net new), eslint --max-warnings 0, vue-tsc --noEmit, vite build all clean.)
+# note: story 7-5 post-review correction round 2026-08-17 (status stays "review", no
+# transition -- developer manually tested the running app and reported six sidebar issues.
+# Three were confirmed intentional/already-correct per the story's own ACs and left unchanged
+# after discussion: a pinned/recent tool still appearing in the full All-tools list (AC3's
+# literal "nothing hidden, just grouped"), the active tool's highlight applying to every one
+# of its appearances when simultaneously pinned/recent and active (developer's explicit
+# choice, matching Story 7.4's "every row keeps active-state" precedent), and pinned tools
+# already correctly excluded from Recent (AC2, no change needed). Three were real gaps, fixed
+# in AppSidebar.vue: "All tools" now gets a heading parallel to Pinned/Recent, plus a
+# `.nav-section + .nav-section` divider between sections (adjacent-sibling selector, correct
+# for 1/2/3 visible sections with zero conditional template logic, reusing the existing
+# --color-border-hairline token); collapsed-mode section headings ("PINNED"/"RECENT") now
+# v-if-remove entirely instead of overflowing into the main content pane, matching the pin
+# button's existing collapsed-mode precedent; the Settings link is now genuinely pinned to
+# the sidebar's bottom (nav made a column flex container, tool sections wrapped in a new
+# .nav-scroll region with the standard flex/min-height/overflow-y scroll-child pattern,
+# .settings-link given a mandatory flex:none override so it doesn't balloon to half the
+# sidebar competing with .nav-scroll for space) -- this also fixes a latent pre-existing gap
+# where a tall tool list on a short window had no way to scroll to items below the fold. Six
+# new AppSidebar.spec.ts tests lock in the fixes (307/307 total, up from 301). Live-verified
+# again in Chrome against the same running pnpm tauri dev server, in both light and dark theme
+# (the hairline divider token is low-alpha -- confirmed actually visible, not just present in
+# the DOM). Full verification green: eslint --max-warnings 0, vue-tsc --noEmit, vite build all
+# clean, git status confirms zero src-tauri/ files touched, same two files touched (
+# AppSidebar.vue, AppSidebar.spec.ts) -- no new files in the File List.)
+# note: story 7-5 moved to review 2026-08-17 (implementation complete: Tasks 0-5 done, Task 6's
+# manual pnpm tauri dev GUI smoke check partially performed live via an already-running dev
+# server (port 1420) opened directly in Chrome, mirroring Story 7.4's own precedent -- VoiceOver's
+# actual announced text and confirmation inside the real packaged Tauri window remain deferred to
+# the developer, this sandboxed session has no display server, same limitation as every prior
+# story. Live-confirmed: mouse and keyboard-only pin/unpin (AC1, AC4), the pin button's absence
+# (not just hidden) when collapsed, and both new Settings visibility toggles including AC7's
+# "re-enabling shows undisturbed data" behavior. A real, structural finding surfaced by that live
+# check, not previously flagged: main.ts's router.afterEach registration (both the pre-existing
+# recordLastTool call and this story's new recordRecentTool call) sits after bootstrap()'s
+# try/finally block, and a Tauri-only call inside that finally (getCurrentWindow().show()) throws
+# when there's no real Tauri IPC bridge -- confirmed via the browser console -- aborting the rest
+# of bootstrap() before router.afterEach ever registers. This ordering and the finally-throw both
+# predate this story (unchanged by its one-line addition), explaining why recordLastTool has never
+# had live-browser or unit coverage either -- not a regression introduced here, and it does not
+# affect the real packaged Tauri window, where a genuine IPC bridge is present. Recent's own
+# write/render logic is instead fully covered by direct unit tests that call recordRecentTool
+# without going through the router hook. Full verification green: 301/301 Vue tests (277 baseline
+# + 24 net new), eslint --max-warnings 0 clean (after fixing 2 vue/attributes-order warnings on
+# the new pin button), vue-tsc --noEmit clean, vite build clean, git status confirms zero
+# src-tauri/ files touched.)
+# note: story 7-5 moved to in-progress 2026-08-17 (branched
+# feat/story-7-5-pin-and-revisit-recent-tools-in-the-sidebar from
+# docs/story-7-5-create-story at 02b6297, not from main directly -- the story file itself
+# only existed on that docs branch (one commit ahead of main/origin main at 6acc563, which
+# matches the story's own recorded baseline_commit exactly) and had not yet been merged.
+# Branching from the docs branch's tip carries the story file forward without losing it,
+# while still being byte-for-byte main@6acc563 plus that one story-file commit -- content-
+# equivalent to Task 0's literal "branch from origin/main at 6acc563" instruction for every
+# file except the story file this session needs to edit -- same pattern as Story 7.4's own
+# analogous branch-from-docs-tip resolution.
 # note: story 7-5 created 2026-08-17 (developer explicitly chose to continue Epic 7's
 # top-to-bottom order over strict sprint-status.yaml auto-discovery, which would have picked
 # 6-3 next -- same explicit-continuation pattern as every Epic 7 story since 7-2; epic-7 stays
@@ -837,7 +939,7 @@ development_status:
   7-2-dark-mode-switching: done
   7-3-grid-home-replaces-the-placeholder-empty-state: done
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: done
-  7-5-pin-and-revisit-recent-tools-in-the-sidebar: ready-for-dev
+  7-5-pin-and-revisit-recent-tools-in-the-sidebar: done
   7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: backlog
   7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: backlog
   7-8-clipboard-suggestion-surface: backlog

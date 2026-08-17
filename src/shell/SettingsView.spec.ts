@@ -12,6 +12,8 @@ function stubbedSettingsStore() {
   settings.setRestoreEnabled = vi.fn().mockResolvedValue(undefined);
   settings.clearAll = vi.fn().mockResolvedValue(undefined);
   settings.setThemeOverride = vi.fn().mockResolvedValue(undefined);
+  settings.setPinnedToolsVisible = vi.fn().mockResolvedValue(undefined);
+  settings.setRecentToolsVisible = vi.fn().mockResolvedValue(undefined);
   return settings;
 }
 
@@ -48,6 +50,38 @@ describe("SettingsView", () => {
     await select.setValue("light");
 
     expect(settings.setThemeOverride).toHaveBeenCalledWith("light");
+  });
+
+  it("toggling the 'Show pinned tools' checkbox calls setPinnedToolsVisible and reflects the current state", async () => {
+    const settings = stubbedSettingsStore();
+    settings.pinnedToolsVisible = false;
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    const checkbox = wrapper.find(
+      'input[aria-label="Show pinned tools in the sidebar"]',
+    );
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false);
+
+    await checkbox.setValue(true);
+
+    expect(settings.setPinnedToolsVisible).toHaveBeenCalledWith(true);
+  });
+
+  it("toggling the 'Show recent tools' checkbox calls setRecentToolsVisible and reflects the current state", async () => {
+    const settings = stubbedSettingsStore();
+    settings.recentToolsVisible = false;
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    const checkbox = wrapper.find(
+      'input[aria-label="Show recent tools in the sidebar"]',
+    );
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false);
+
+    await checkbox.setValue(true);
+
+    expect(settings.setRecentToolsVisible).toHaveBeenCalledWith(true);
   });
 
   it("renders entries dynamically from the store, not a fixed set", async () => {

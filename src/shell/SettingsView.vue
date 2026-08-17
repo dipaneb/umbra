@@ -25,6 +25,20 @@ function onChangeTheme(event: Event): void {
   });
 }
 
+function onTogglePinnedVisible(event: Event): void {
+  const checked = (event.target as HTMLInputElement).checked;
+  void settings.setPinnedToolsVisible(checked).catch((error: unknown) => {
+    console.error("settings: failed to persist pinned-tools visibility", error);
+  });
+}
+
+function onToggleRecentVisible(event: Event): void {
+  const checked = (event.target as HTMLInputElement).checked;
+  void settings.setRecentToolsVisible(checked).catch((error: unknown) => {
+    console.error("settings: failed to persist recent-tools visibility", error);
+  });
+}
+
 async function onClearAll(): Promise<void> {
   try {
     await settings.clearAll();
@@ -80,6 +94,28 @@ async function onClearAll(): Promise<void> {
       </select>
     </label>
 
+    <!-- Minimal mechanism only — these controls' sectioned, token-styled home
+         is Story 7.6's job, not this one's. -->
+    <label class="pinned-visible-toggle">
+      <input
+        type="checkbox"
+        aria-label="Show pinned tools in the sidebar"
+        :checked="settings.pinnedToolsVisible"
+        @change="onTogglePinnedVisible"
+      >
+      Show pinned tools
+    </label>
+
+    <label class="recent-visible-toggle">
+      <input
+        type="checkbox"
+        aria-label="Show recent tools in the sidebar"
+        :checked="settings.recentToolsVisible"
+        @change="onToggleRecentVisible"
+      >
+      Show recent tools
+    </label>
+
     <h2>Persisted data</h2>
     <ul
       v-if="persistedEntries.length"
@@ -108,7 +144,9 @@ async function onClearAll(): Promise<void> {
 
 <style scoped>
 .restore-toggle,
-.theme-toggle {
+.theme-toggle,
+.pinned-visible-toggle,
+.recent-visible-toggle {
   display: flex;
   align-items: center;
   gap: 0.5em;
