@@ -42,6 +42,38 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-17
+# note: story 7-6 created 2026-08-17 (developer explicitly chose to continue Epic 7's
+# top-to-bottom order over strict sprint-status.yaml auto-discovery, which would have picked
+# 6-3 next -- same explicit-continuation pattern as every Epic 7 story since 7-2; epic-7 stays
+# in-progress, not first story in epic so no epic-status transition). baseline_commit set to
+# origin/main's tip (e3dfd05, Story 7.5's squash-merge, #83) -- local main and origin/main both
+# resolve to it directly, clean tree except the pre-existing untracked .claude/workflows/ dir.
+# Four parallel research subagents (architecture, UX design, previous-story/git, current source)
+# independently analyzed this story's context, followed by a fresh-context validation subagent
+# that re-derived every citation against the actual source files. The validation pass caught a
+# real backwards citation before finalizing: the drafting session had resolved a wording conflict
+# (epics.md's AC3 literally says rename the all-clear button to "Clear stored data"; the locked
+# Screen 03 mockup instead shows two distinct strings, "Clear all stored data" for the all-clear
+# button and "Clear stored data" for each new per-item reset button) by citing DESIGN.md:141 and
+# EXPERIENCE.md:48 as corroborating the mockup's split -- but both of those actually name the
+# identical single string epics.md uses, contradicting the split rather than supporting it.
+# Corrected before finalizing: the story now discloses the conflict honestly (recommended
+# default is still the mockup's two-string split, since it's the newest pixel-verified artifact
+# and resolves a real ambiguity the prose sources don't address -- two differently-scoped
+# destructive buttons reading identically once per-item reset exists), but explicitly tells the
+# developer to re-open Screen 03 and confirm before implementing, rather than presenting it as
+# fully settled. Also confirmed live against the installed package (not assumed): the exact
+# @tauri-apps/plugin-store version in use (2.4.4) exposes a real Store.delete(key) method
+# (dist-js/index.d.ts:139), which the story uses as the per-item reset mechanism -- deleting the
+# key outright rather than rewriting its default value, so a reset key actually disappears from
+# the generic entries()-driven Persisted Data list, mirroring true never-persisted state. A real,
+# non-obvious bug was caught and folded into Task 3 before finalizing: settings.ts:176's
+# clearAll() hardcodes restoreEnabled back to true, which would silently diverge from the new
+# false default (Task 4) if left unchanged -- "Clear all stored data" would leave a user's
+# restoreEnabled at a different value than a genuinely fresh install. Two minor citation
+# line-count typos (SettingsView.vue stated as 144 lines, actually 173; settings.ts stated as
+# 215, actually 214) were also caught and fixed; every specific line-range citation in the story
+# was independently re-verified as exactly correct against the real files.
 # note: story 7-5 post-code-review correction round 2026-08-17 (status stays "done", no
 # transition -- developer live-tested the code-review patch round and found two real,
 # undocumented interaction gaps between "Show pinned tools" and pin/Recent, neither caught by
@@ -940,7 +972,7 @@ development_status:
   7-3-grid-home-replaces-the-placeholder-empty-state: done
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: done
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: done
-  7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: backlog
+  7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: ready-for-dev
   7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: backlog
   7-8-clipboard-suggestion-surface: backlog
   epic-7-retrospective: optional
