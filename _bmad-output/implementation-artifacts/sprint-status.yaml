@@ -42,6 +42,93 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-17
+# note: story 7-4 moved to done 2026-08-17 (code review complete: 1 decision-needed + 4 patch
+# findings resolved, 6 items deferred to deferred-work.md, 4 dismissed as noise after
+# verification against source. The decision (whether the focus ring's reuse of
+# --color-accent-signature stretches DESIGN.md's "budget of one" rule to cover a role it doesn't
+# explicitly name) was resolved by the developer: keep orange, focus rings are transient
+# interaction state rather than a persistent visual role. The 4 patches: corrected the story
+# file's own self-contradicting test-count claim (Debug Log said 277/9/6, Completion Notes said
+# 275/7/4 -- the diff confirmed 277/9/6 was correct); added the missing AC2 joint-invariant
+# assertions so each active-state test also confirms the *other* nav element isn't
+# simultaneously exact-active; replaced the collapsed-width formula's bare "2.2" magic number
+# with a shared --nav-item-vertical-padding custom property tied to a's own padding, and pinned
+# each icon's size="1em" explicitly instead of relying on an unstated Phosphor library default;
+# added aria-controls="sidebar-nav" to the collapse-toggle button. All three review layers (Blind
+# Hunter, Edge Case Hunter, Acceptance Auditor) ran in parallel without prior conversation
+# context; most raw findings collapsed into defer once checked against the actual settings.ts
+# source -- several described patterns (unguarded stored-value type, unserialized concurrent
+# writes, missing .catch) that already exist identically in restoreEnabled/setThemeOverride/
+# recordLastTool, not regressions unique to this story's sidebarCollapsed addition. 277/277 Vue
+# tests, eslint --max-warnings 0, and vue-tsc --noEmit all clean after the four patches.)
+# note: story 7-4 moved to review 2026-08-17 (implementation complete: Tasks 0-5 done, Task 6's
+# manual pnpm tauri dev GUI smoke check (light/dark active-tint verification, neutral-hover
+# confirmation, keyboard-only collapse-button operation, VoiceOver accessible-name check on
+# collapsed items) deferred to the developer -- this sandboxed session has no display server,
+# same limitation as every prior story. The story's own central finding was verified
+# empirically, not just by reading vue-router's source: the AC2/AC3 active-nav tests
+# (router-link-exact-active class + aria-current="page") were written before touching the
+# component, expecting them to fail against the unmodified AppSidebar.vue -- they passed
+# immediately, confirming the plain <RouterLink> already in place gives both for free with
+# zero component changes needed. Closed the real dark-mode gap the story's Dev Notes flagged
+# (--color-accent-signature-on-text defined only in tokens.css's light [data-theme] block) with
+# a CSS var() fallback to --color-accent-signature, the AA-safe dark-mode value, in one rule.
+# Added shell.sidebarCollapsed to the settings store mirroring restoreEnabled's plain-boolean
+# shape exactly, plus this codebase's first .visually-hidden utility (confirmed via grep: zero
+# prior matches for sr-only/visually-hidden) so each collapsed nav item's accessible name
+# survives collapse -- the exact screen-reader trap review-accessibility.md flagged against
+# this IA row. Caught and fixed one real gap before finalizing: the first pass only styled
+# what DESIGN.md's prose names (tint background, on-text label color) and missed three visual
+# details prose doesn't carry but the locked mockup (mockups/step4.3-mockups-light.png) does --
+# the active tint is inset from the sidebar edges (not full-bleed), its corners are rounded,
+# and the label is bold. DESIGN.md's own machine-readable components: block confirms this
+# wasn't a misreading -- it has no nav-item entry at all. Measured the mockup directly (PIL
+# pixel-color-transition scan against its own 200px-sidebar scale reference) rather than
+# eyeballing: ~13px inset (--spacing-sidebar-padding, already used elsewhere in this story) and
+# a radius consistent with --radius-default (the Card/button precedent; DESIGN.md forbids a
+# radius outside its 4-value scale). Re-verified visually with a standalone static-HTML preview
+# built from the real tokens.css, rendered in Chrome and compared against a cropped mockup
+# region. Caught and fixed a second, real regression this correction itself introduced: nav's
+# new own horizontal padding, combined with a's pre-existing padding and the collapsed-width
+# formula, left the entire collapsed content box consumed by a's padding alone before the icon
+# got any space -- every collapsed icon flex-shrank to 0 width, invisible, confirmed live via
+# getBoundingClientRect against the developer's own already-running pnpm tauri dev server
+# (inspected through Chrome, not guessed). This exact bug shape is invisible to
+# AppSidebar.spec.ts's jsdom-based tests by construction -- jsdom has no real layout engine, so
+# no vitest assertion could have caught it; Task 6's manual-check wording was strengthened to
+# explicitly re-flag it. Fixed with a collapsed-specific override removing a's padding and
+# centering its (now sole) icon; re-verified live in the same browser session, both collapsed
+# and expanded, round-tripping cleanly. Third correction: the developer noticed the bold active
+# label (correction 1) left its icon visually thin, a real mismatch -- font-weight can't bolden
+# an SVG's filled paths, so this needed @phosphor-icons/vue's own per-icon weight prop
+# ("bold" vs "regular", confirmed against PhGear.vue.d.ts), which in turn needed useRoute() to
+# compare the current route against tool.id/"settings" -- a narrow, deliberate exception to
+# Task 3's "don't hand-roll active detection" guidance, which was about not re-deriving what
+# RouterLink already gives via CSS/aria-current; no equivalent native mechanism exists for a
+# dynamic component prop. TDD'd with two new tests; resolveIcon()'s generic Component return
+# type loses Phosphor's specific prop typing, so .props("weight") doesn't type-check -- fixed
+# by reading .props() whole and casting to Record<string, unknown>. Fourth correction: the
+# developer noticed the collapsed row's highlight box wasn't square -- measured live
+# (getBoundingClientRect): 23x28.6px box around a perfect 13x13 icon. Root cause: the
+# collapsed-width formula's icon-slot term (24px) was a guess from when Task 4 was first
+# implemented, never checked against the row's real height (1em icon + a's own unchanged 0.6em
+# top/bottom padding = 2.2em = 28.6px at --font-label-size). Fixed by deriving the collapsed
+# width from that same formula instead of a second independent guess --
+# calc(var(--font-label-size) * 2.2 + var(--spacing-sidebar-padding) * 2) -- square by
+# construction, stays square if font size/padding change later. Re-verified live: box now
+# 27.6x28.6px (square within sub-pixel rounding), expanded layout unaffected. Full verification
+# green after all four fixes: 277/277 Vue tests (268 baseline + 9 net new: 3 in
+# settings.spec.ts, 6 in AppSidebar.spec.ts), eslint --max-warnings 0 clean, vue-tsc --noEmit &&
+# vite build clean, git status confirms zero src-tauri/ files touched.)
+# note: story 7-4 moved to in-progress 2026-08-17 (branched
+# feat/story-7-4-sidebar-gets-an-active-nav-state-and-token-styling from
+# docs/story-7-4-create-story at 0b8c229, not from main directly -- the story file itself
+# only existed on that docs branch (one commit ahead of main/origin main at a89b172, which
+# match the story's own recorded baseline_commit exactly) and had not yet been merged.
+# Branching from the docs branch's tip carries the story file forward without losing it,
+# while still being byte-for-byte main@a89b172 plus that one story-file commit -- content-
+# equivalent to Task 0's literal "branch from origin/main at a89b172" instruction for every
+# file except the story file this session needs to edit.
 # note: story 7-4 created 2026-08-17 (developer explicitly chose to continue Epic 7's
 # top-to-bottom order rather than strict sprint-status.yaml auto-discovery, which would have
 # picked 6-3 next -- same explicit-continuation pattern as 7-1/7-2/7-3; epic-7 stays
@@ -727,7 +814,7 @@ development_status:
   7-1-design-tokens-and-icon-system-land-in-the-shell: done
   7-2-dark-mode-switching: done
   7-3-grid-home-replaces-the-placeholder-empty-state: done
-  7-4-sidebar-gets-an-active-nav-state-and-token-styling: ready-for-dev
+  7-4-sidebar-gets-an-active-nav-state-and-token-styling: done
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: backlog
   7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: backlog
   7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: backlog

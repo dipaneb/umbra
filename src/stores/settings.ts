@@ -35,6 +35,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const lastTool = ref<string | undefined>(undefined);
   const windowGeometry = ref<WindowGeometry | undefined>(undefined);
   const themeOverride = ref<ThemeOverride>("system");
+  const sidebarCollapsed = ref<boolean>(false);
 
   async function init(): Promise<void> {
     try {
@@ -50,6 +51,8 @@ export const useSettingsStore = defineStore("settings", () => {
       themeOverride.value = isThemeOverride(storedThemeOverride)
         ? storedThemeOverride
         : "system";
+      sidebarCollapsed.value =
+        (await store.get<boolean>("shell.sidebarCollapsed")) ?? false;
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -70,6 +73,14 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!backingStore) return;
     const store = backingStore;
     await store.set("shell.themeOverride", value);
+    await store.save();
+  }
+
+  async function setSidebarCollapsed(value: boolean): Promise<void> {
+    sidebarCollapsed.value = value;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.sidebarCollapsed", value);
     await store.save();
   }
 
@@ -109,6 +120,7 @@ export const useSettingsStore = defineStore("settings", () => {
     lastTool.value = undefined;
     windowGeometry.value = undefined;
     themeOverride.value = "system";
+    sidebarCollapsed.value = false;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -120,9 +132,11 @@ export const useSettingsStore = defineStore("settings", () => {
     lastTool,
     windowGeometry,
     themeOverride,
+    sidebarCollapsed,
     init,
     setRestoreEnabled,
     setThemeOverride,
+    setSidebarCollapsed,
     recordLastTool,
     recordWindowGeometry,
     entries,
