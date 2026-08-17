@@ -186,6 +186,38 @@ describe("useSettingsStore", () => {
     expect(settings.themeOverride).toBe("system");
   });
 
+  it("defaults sidebarCollapsed to false when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.sidebarCollapsed).toBe(false);
+  });
+
+  it("persists sidebarCollapsed via setSidebarCollapsed", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setSidebarCollapsed(true);
+
+    expect(settings.sidebarCollapsed).toBe(true);
+    expect(fakeStore.set).toHaveBeenCalledWith(
+      "shell.sidebarCollapsed",
+      true,
+    );
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("clearAll resets sidebarCollapsed back to false", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setSidebarCollapsed(true);
+
+    await settings.clearAll();
+
+    expect(settings.sidebarCollapsed).toBe(false);
+  });
+
   it("degrades to defaults and does not throw when settings.json fails to load", async () => {
     load.mockRejectedValueOnce(new Error("corrupt settings.json"));
     const settings = useSettingsStore();
