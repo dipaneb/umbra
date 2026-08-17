@@ -42,6 +42,28 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-17
+# note: story 7-5 created 2026-08-17 (developer explicitly chose to continue Epic 7's
+# top-to-bottom order over strict sprint-status.yaml auto-discovery, which would have picked
+# 6-3 next -- same explicit-continuation pattern as every Epic 7 story since 7-2; epic-7 stays
+# in-progress, not first story in epic so no epic-status transition). baseline_commit set to
+# origin/main's tip (6acc563, Story 7.4's squash-merge, #82) -- local main and origin/main both
+# resolve to it directly, clean tree except the pre-existing untracked .claude/workflows/ dir.
+# Four parallel research subagents (architecture, UX design, previous-story/git, current source)
+# independently analyzed this story's context, followed by a fresh-context validation subagent
+# that re-derived every technical claim against live source/docs. The validation pass caught and
+# fixed a real scope error in the first draft: the draft had deferred all Settings UI for the new
+# "Show pinned tools"/"Show recent tools" toggles to Story 7.6, but Story 7.2 (dark-mode) set a
+# directly analogous precedent -- a real, working, unstyled control shipped into the current flat
+# SettingsView.vue, with 7.6 only later giving it a sectioned, token-styled home -- confirmed
+# still present in the shipped SettingsView.vue code, and reinforced by Story 7.6's own AC1 text
+# ("the pinned/recent visibility toggles from Story 7.5 also live here"). Corrected before
+# finalizing: 7.5 now builds the two checkboxes themselves (Task 4), not just their store keys.
+# Three further real gaps caught and fixed: a CSS claim that `display: flex` alone would push the
+# new pin button to a nav row's trailing edge (needs `justify-content: space-between` too); no
+# decision existed for the pin button's fate when the sidebar is collapsed (resolved: hidden
+# entirely, no room in the icon-only rail); and an undercount of how many existing
+# AppSidebar.spec.ts tests break once Pinned/Recent sections add extra <ul> elements (six tests
+# share the same wrapper.findAll("ul a") pattern, not one).
 # note: story 7-4 moved to done 2026-08-17 (code review complete: 1 decision-needed + 4 patch
 # findings resolved, 6 items deferred to deferred-work.md, 4 dismissed as noise after
 # verification against source. The decision (whether the focus ring's reuse of
@@ -815,7 +837,7 @@ development_status:
   7-2-dark-mode-switching: done
   7-3-grid-home-replaces-the-placeholder-empty-state: done
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: done
-  7-5-pin-and-revisit-recent-tools-in-the-sidebar: backlog
+  7-5-pin-and-revisit-recent-tools-in-the-sidebar: ready-for-dev
   7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: backlog
   7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: backlog
   7-8-clipboard-suggestion-surface: backlog
