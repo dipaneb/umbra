@@ -10,6 +10,17 @@ export interface WindowGeometry {
   height: number;
 }
 
+export type ThemeOverride = "system" | "light" | "dark";
+
+const THEME_OVERRIDES: readonly ThemeOverride[] = ["system", "light", "dark"];
+
+function isThemeOverride(value: unknown): value is ThemeOverride {
+  return (
+    typeof value === "string" &&
+    (THEME_OVERRIDES as readonly string[]).includes(value)
+  );
+}
+
 // Story 1.8's tree-parse debounce uses 200ms for latency-sensitive work;
 // geometry writes have no such urgency, so a slightly longer interval cuts
 // disk writes further during a drag.
@@ -23,6 +34,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const restoreEnabled = ref(true);
   const lastTool = ref<string | undefined>(undefined);
   const windowGeometry = ref<WindowGeometry | undefined>(undefined);
+  const themeOverride = ref<ThemeOverride>("system");
 
   async function init(): Promise<void> {
     try {
@@ -32,6 +44,12 @@ export const useSettingsStore = defineStore("settings", () => {
       lastTool.value = await store.get<string>("shell.lastTool");
       windowGeometry.value =
         await store.get<WindowGeometry>("shell.windowGeometry");
+      const storedThemeOverride = await store.get<string>(
+        "shell.themeOverride",
+      );
+      themeOverride.value = isThemeOverride(storedThemeOverride)
+        ? storedThemeOverride
+        : "system";
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -44,6 +62,14 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!backingStore) return;
     const store = backingStore;
     await store.set("shell.restoreSessionEnabled", value);
+    await store.save();
+  }
+
+  async function setThemeOverride(value: ThemeOverride): Promise<void> {
+    themeOverride.value = value;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.themeOverride", value);
     await store.save();
   }
 
@@ -82,6 +108,7 @@ export const useSettingsStore = defineStore("settings", () => {
     restoreEnabled.value = true;
     lastTool.value = undefined;
     windowGeometry.value = undefined;
+    themeOverride.value = "system";
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -92,8 +119,10 @@ export const useSettingsStore = defineStore("settings", () => {
     restoreEnabled,
     lastTool,
     windowGeometry,
+    themeOverride,
     init,
     setRestoreEnabled,
+    setThemeOverride,
     recordLastTool,
     recordWindowGeometry,
     entries,

@@ -148,6 +148,44 @@ describe("useSettingsStore", () => {
     expect(fakeStore.set).not.toHaveBeenCalled();
   });
 
+  it("defaults themeOverride to system when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.themeOverride).toBe("system");
+  });
+
+  it("setThemeOverride persists and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setThemeOverride("dark");
+
+    expect(settings.themeOverride).toBe("dark");
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.themeOverride", "dark");
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("falls back to system when the persisted themeOverride value is invalid", async () => {
+    fakeStore.set("shell.themeOverride", "sepia");
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.themeOverride).toBe("system");
+  });
+
+  it("clearAll resets themeOverride back to system", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setThemeOverride("dark");
+
+    await settings.clearAll();
+
+    expect(settings.themeOverride).toBe("system");
+  });
+
   it("degrades to defaults and does not throw when settings.json fails to load", async () => {
     load.mockRejectedValueOnce(new Error("corrupt settings.json"));
     const settings = useSettingsStore();

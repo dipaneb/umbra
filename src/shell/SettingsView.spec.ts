@@ -11,6 +11,7 @@ function stubbedSettingsStore() {
   settings.entries = vi.fn().mockResolvedValue([]);
   settings.setRestoreEnabled = vi.fn().mockResolvedValue(undefined);
   settings.clearAll = vi.fn().mockResolvedValue(undefined);
+  settings.setThemeOverride = vi.fn().mockResolvedValue(undefined);
   return settings;
 }
 
@@ -33,6 +34,20 @@ describe("SettingsView", () => {
     await wrapper.find('input[type="checkbox"]').setValue(false);
 
     expect(settings.setRestoreEnabled).toHaveBeenCalledWith(false);
+  });
+
+  it("changing the theme control calls setThemeOverride and reflects the current override", async () => {
+    const settings = stubbedSettingsStore();
+    settings.themeOverride = "dark";
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    const select = wrapper.find('select[aria-label="Theme"]');
+    expect((select.element as HTMLSelectElement).value).toBe("dark");
+
+    await select.setValue("light");
+
+    expect(settings.setThemeOverride).toHaveBeenCalledWith("light");
   });
 
   it("renders entries dynamically from the store, not a fixed set", async () => {

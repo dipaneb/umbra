@@ -54,19 +54,59 @@ describe("tokens.css", () => {
     expect(tokensCss).toContain("--font-code-family: var(--font-mono)");
   });
 
-  it("redefines color tokens under a prefers-color-scheme: dark media query", () => {
-    const darkBlockStart = tokensCss.indexOf("@media (prefers-color-scheme: dark)");
-    expect(darkBlockStart).toBeGreaterThan(-1);
+  function extractBlock(selector: string): string {
+    const start = tokensCss.indexOf(selector);
+    expect(start, `expected to find block "${selector}"`).toBeGreaterThan(-1);
+    const openBrace = tokensCss.indexOf("{", start);
+    const closeBrace = tokensCss.indexOf("}", openBrace);
+    return tokensCss.slice(openBrace, closeBrace);
+  }
 
-    const lightBlock = tokensCss.slice(0, darkBlockStart);
-    const darkBlock = tokensCss.slice(darkBlockStart);
+  function extractProperties(block: string): Map<string, string> {
+    const props = new Map<string, string>();
+    for (const match of block.matchAll(/(--[a-z-]+):\s*([^;]+);/g)) {
+      props.set(match[1], match[2].trim());
+    }
+    return props;
+  }
 
-    const lightBgBase = /--color-bg-base:\s*([^;]+);/.exec(lightBlock)?.[1];
-    const darkBgBase = /--color-bg-base:\s*([^;]+);/.exec(darkBlock)?.[1];
+  it("declares color/shadow tokens only under [data-theme] attribute blocks, never a bare :root or a prefers-color-scheme media query", () => {
+    // Guards against reintroducing the exact duplication Story 7.2's review
+    // caught: a second, hand-synced copy of these values living outside the
+    // attribute blocks (a bare `:root` fallback or an `@media
+    // (prefers-color-scheme: dark)` block) that could silently drift from
+    // the attribute blocks below.
+    expect(tokensCss).not.toMatch(/@media\s*\(prefers-color-scheme/);
 
-    expect(lightBgBase).toBeTruthy();
-    expect(darkBgBase).toBeTruthy();
-    expect(darkBgBase).not.toBe(lightBgBase);
+    const baseRootBlock = extractBlock(":root {");
+    const baseRootProps = [...extractProperties(baseRootBlock).keys()];
+    for (const prop of baseRootProps) {
+      expect(prop).not.toMatch(/^--(color|shadow)-/);
+    }
+  });
+
+  it("keeps the light and dark [data-theme] blocks declaring the same properties, aside from the documented light-only accent-signature-on-text exception", () => {
+    const darkProps = extractProperties(extractBlock(':root[data-theme="dark"]'));
+    const lightProps = extractProperties(extractBlock(':root[data-theme="light"]'));
+
+    const lightOnlyException = "--color-accent-signature-on-text";
+    const lightPropNames = new Set(lightProps.keys());
+    lightPropNames.delete(lightOnlyException);
+
+    expect(darkProps.has(lightOnlyException)).toBe(false);
+    expect([...darkProps.keys()].sort()).toEqual([...lightPropNames].sort());
+  });
+
+  it("gives every shared color/shadow property a different value between the light and dark [data-theme] blocks", () => {
+    const darkProps = extractProperties(extractBlock(':root[data-theme="dark"]'));
+    const lightProps = extractProperties(extractBlock(':root[data-theme="light"]'));
+
+    for (const [prop, darkValue] of darkProps) {
+      expect(lightProps.has(prop), `light block is missing ${prop}`).toBe(true);
+      expect(darkValue, `${prop} has the same value in both blocks`).not.toBe(
+        lightProps.get(prop),
+      );
+    }
   });
 
   it("bundles Geist Sans/Mono locally via @import, never a remote font host", () => {

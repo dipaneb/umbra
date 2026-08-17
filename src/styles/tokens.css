@@ -16,25 +16,6 @@
 @import "@fontsource/geist-mono/400.css";
 
 :root {
-  /* Colors — light (DESIGN.md `colors`) */
-  --color-bg-base: #f4f5f6;
-  --color-bg-surface: #ffffff;
-  --color-bg-surface-raised: #ffffff;
-  --color-border-hairline: rgba(16, 17, 19, 0.07);
-  --color-text-primary: #18181b;
-  --color-text-secondary: #5b5f66;
-  --color-text-tertiary: #606266;
-  --color-accent-signature: #ff5e1a;
-  --color-accent-signature-on-text: #b64a07;
-  --color-accent-signature-tint: rgba(255, 94, 26, 0.12);
-  --color-accent-default: #18181b;
-  --color-accent-default-on: #ffffff;
-  --color-accent-destructive: #cf3130;
-  --color-accent-neutral-chip: #e4e5e7;
-
-  /* Elevation — light (DESIGN.md `components.floating-surface`) */
-  --shadow-floating: 0 1px 2px rgba(16, 17, 19, 0.05), 0 3px 8px rgba(16, 17, 19, 0.04);
-
   /* Typography (DESIGN.md `typography`) */
   --font-sans: "Geist Sans", Inter, Avenir, Helvetica, Arial, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
@@ -90,27 +71,65 @@
   --spacing-sidebar-padding: 16px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg-base: #141415;
-    --color-bg-surface: #1d1d1f;
-    --color-bg-surface-raised: #28282b;
-    --color-border-hairline: rgba(255, 255, 255, 0.07);
-    --color-text-primary: #ededed;
-    --color-text-secondary: #9a9da3;
-    --color-text-tertiary: #a6a8ab;
-    --color-accent-signature: #ff6e30;
-    /* No accent-signature-on-text-dark in DESIGN.md — dark mode uses
-       accent-signature-dark directly for orange text (DESIGN.md Colors prose). */
-    --color-accent-signature-tint: rgba(255, 110, 48, 0.16);
-    --color-accent-default: #ededed;
-    --color-accent-default-on: #141415;
-    --color-accent-destructive: #f2665c;
-    --color-accent-neutral-chip: #2c2c2f;
+/* Story 7.2: colors + --shadow-floating live *only* here — under
+   `[data-theme]`, never under a bare `:root` or a `prefers-color-scheme`
+   media query. `theme.ts`'s `resolveTheme` always resolves "system" to a
+   concrete "light"/"dark" and `main.ts` applies it before first paint (the
+   window starts invisible via `tauri.conf.json`'s `"visible": false`,
+   specifically so this can happen pre-paint) — so there is never a frame
+   where these attribute blocks aren't already in effect, and no separate
+   CSS-only fallback path is needed. (Unlike a server-rendered web page, this
+   is a Tauri webview: JS always runs, so the "give the browser something to
+   paint before JS attaches a class" reason for keeping a redundant
+   `prefers-color-scheme` copy doesn't apply here — keeping one would just be
+   a second, hand-synced copy of every value below that could silently drift
+   from this one.) */
+:root[data-theme="dark"] {
+  /* Tells the browser/OS to render native form controls (this app's own
+     <select>, scrollbars, etc.) in dark chrome too — without this, an
+     explicit override that disagrees with the OS setting still gets a
+     light-chrome native <select> dropdown against a dark-token page. */
+  color-scheme: dark;
 
-    --shadow-floating:
-      0 0 0 1px rgba(255, 255, 255, 0.05),
-      0 1px 0 rgba(255, 255, 255, 0.04) inset,
-      0 8px 20px rgba(0, 0, 0, 0.45);
-  }
+  --color-bg-base: #141415;
+  --color-bg-surface: #1d1d1f;
+  --color-bg-surface-raised: #28282b;
+  --color-border-hairline: rgba(255, 255, 255, 0.07);
+  --color-text-primary: #ededed;
+  --color-text-secondary: #9a9da3;
+  --color-text-tertiary: #a6a8ab;
+  --color-accent-signature: #ff6e30;
+  /* No accent-signature-on-text-dark in DESIGN.md — dark mode uses
+     accent-signature-dark directly for orange text (DESIGN.md Colors prose). */
+  --color-accent-signature-tint: rgba(255, 110, 48, 0.16);
+  --color-accent-default: #ededed;
+  --color-accent-default-on: #141415;
+  --color-accent-destructive: #f2665c;
+  --color-accent-neutral-chip: #2c2c2f;
+
+  --shadow-floating:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg-base: #f4f5f6;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-raised: #ffffff;
+  --color-border-hairline: rgba(16, 17, 19, 0.07);
+  --color-text-primary: #18181b;
+  --color-text-secondary: #5b5f66;
+  --color-text-tertiary: #606266;
+  --color-accent-signature: #ff5e1a;
+  --color-accent-signature-on-text: #b64a07;
+  --color-accent-signature-tint: rgba(255, 94, 26, 0.12);
+  --color-accent-default: #18181b;
+  --color-accent-default-on: #ffffff;
+  --color-accent-destructive: #cf3130;
+  --color-accent-neutral-chip: #e4e5e7;
+
+  --shadow-floating: 0 1px 2px rgba(16, 17, 19, 0.05), 0 3px 8px rgba(16, 17, 19, 0.04);
 }
