@@ -7,6 +7,7 @@ function entry(id: string): ToolRegistryEntry {
   return {
     id,
     name: id,
+    description: "test",
     aliases: [],
     route: `/tools/${id}`,
     icon: "json",
@@ -50,6 +51,17 @@ describe("TOOLS icon field (AC5)", () => {
 
     registry.tools.forEach((tool) => {
       expect(resolveIcon(tool.icon)).toBeDefined();
+    });
+  });
+});
+
+describe("TOOLS description field (AC4)", () => {
+  it("gives every registry entry a non-empty description", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+
+    registry.tools.forEach((tool) => {
+      expect(tool.description).toBeTruthy();
     });
   });
 });

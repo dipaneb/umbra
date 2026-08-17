@@ -42,6 +42,55 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-17
+# note: story 7-3 moved to review 2026-08-17 (implementation complete: Tasks 0-7 done, Task 8's
+# manual pnpm tauri dev GUI smoke check (grid-home render, light/dark card appearance,
+# keyboard-only Tab/Enter/Space navigation, restore-last-tool skip) deferred to the developer --
+# this sandboxed session has no display server, same limitation as every prior story. Two real
+# gaps found and fixed during implementation, neither anticipated by the story's own drafting:
+# (1) a click/keydown-triggered router.push() via vue-router's RouterLink custom v-slot never
+# resolved within a single flushPromises() -- the target route's component is a genuine dynamic
+# import(), adding extra async hops beyond one macrotask flush; fixed with vi.waitFor polling,
+# the same pattern CommandPalette.spec.ts already documents for its own click-to-navigate test.
+# (2) jsdom does not implement the browser's native "Enter activates a focused <a>" default
+# action (confirmed directly: a real keydown with key "Enter" produced no navigation), so the
+# story's own planned Enter-activation unit test couldn't exercise real behavior the way Space's
+# explicit handler could -- rewritten to assert the structural precondition a real browser needs
+# (a real, focusable <a> with a resolved href), with full behavioral confirmation deferred to
+# Task 8. Separately, vue-tsc caught a real gap Task 1 didn't anticipate: dropZone.spec.ts and
+# paletteSearch.spec.ts also construct raw ToolRegistryEntry literals independent of
+# registry.spec.ts's own entry() helper -- all 7 literals across both files backfilled with a
+# description field before finalizing. Full verification green: 268/268 Vue tests (262 baseline
+# + 6 net new), eslint --max-warnings 0 clean, vue-tsc --noEmit && vite build clean, git status
+# confirms zero src-tauri/ files touched.)
+# note: story 7-3 moved to in-progress 2026-08-17 (branched
+# feat/story-7-3-grid-home-replaces-the-placeholder-empty-state from main at 9d22ee4,
+# confirming the story's baseline_commit against both local and origin/main)
+# note: story 7-3 created 2026-08-17 (developer explicitly chose to continue Epic 7's
+# top-to-bottom order rather than strict sprint-status.yaml auto-discovery, which would have
+# picked 6-3 next -- same explicit-continuation pattern as 7-1/7-2; epic-7 stays in-progress,
+# not first story in epic so no epic-status transition). baseline_commit set to origin/main's
+# tip (9d22ee4, Story 7.2's squash-merge, #79) -- local main and origin/main both resolve to
+# it directly, clean tree except an untracked .claude/workflows/ dir unrelated to this story.
+# Read the actual current source directly rather than trusting epics.md's description alone:
+# src/shell/EmptyState.vue (the one-line placeholder this story replaces), src/router/index.ts
+# (found and flagged an existing src/router/index.spec.ts test that asserts the "/" route
+# resolves to EmptyState -- easy to leave stale once the route's component swaps), src/stores/
+# registry.ts (confirmed no `description` field exists yet, per AC4), src/shell/AppSidebar.vue
+# (the direct structural template -- this codebase doesn't extract a subcomponent for its one
+# other repeated-tile pattern, so GridHome.vue follows that precedent rather than adding a
+# separate Card.vue), and src/main.ts (confirmed AC6's restore-last-tool-skips-grid-home
+# behavior already exists end-to-end via the pre-mount router.replace() call, needing zero new
+# code -- just a task to explicitly not touch it). Verified vue-router's `RouterLink custom
+# v-slot="{ navigate, href }"` pattern via Context7 for making the whole card block-level
+# clickable. A fresh-context validation subagent independently re-derived the story against
+# every source doc and file and found one real bug before finalizing: the story's own
+# originally-drafted `@keydown.space.prevent="navigate"` binding would have silently failed to
+# navigate on Space (Vue's `.prevent` calls `preventDefault()` before the handler runs, and
+# vue-router's `navigate()` internally bails on an already-`defaultPrevented` event) -- fixed
+# to `navigate()` called explicitly with no arguments. Also caught and fixed a minor
+# misattributed citation (the "licensed for real text content" DESIGN.md quote belongs to
+# `--color-text-tertiary`, not `--color-text-secondary`, which the story uses for the card
+# description).
 # note: story 7-2 moved to done 2026-08-17 (code review complete: 1 decision-needed + 4 patch
 # findings resolved, 3 pre-existing items deferred to deferred-work.md, 6 dismissed as noise
 # after verification against source. The decision (resolveTheme always writing a concrete
@@ -629,7 +678,7 @@ development_status:
   epic-7: in-progress
   7-1-design-tokens-and-icon-system-land-in-the-shell: done
   7-2-dark-mode-switching: done
-  7-3-grid-home-replaces-the-placeholder-empty-state: backlog
+  7-3-grid-home-replaces-the-placeholder-empty-state: review
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: backlog
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: backlog
   7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: backlog

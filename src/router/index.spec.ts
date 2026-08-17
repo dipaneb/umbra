@@ -3,11 +3,11 @@ import { createPinia } from "pinia";
 import { createAppRouter } from "./index";
 import { useRegistryStore } from "../stores/registry";
 import JsonView from "../tools/json/JsonView.vue";
-import EmptyState from "../shell/EmptyState.vue";
+import GridHome from "../shell/GridHome.vue";
 import SettingsView from "../shell/SettingsView.vue";
 
 describe("router", () => {
-  it("resolves / to the empty-state component", async () => {
+  it("resolves / to the grid-home component", async () => {
     const pinia = createPinia();
     const router = createAppRouter(pinia);
 
@@ -16,7 +16,7 @@ describe("router", () => {
 
     const matched = router.currentRoute.value.matched;
     expect(matched).toHaveLength(1);
-    expect(matched[0].components?.default).toBe(EmptyState);
+    expect(matched[0].components?.default).toBe(GridHome);
   });
 
   it("resolves /tools/json to the JSON tool's registered component", async () => {
