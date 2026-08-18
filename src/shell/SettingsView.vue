@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useSettingsStore, type ThemeOverride } from "../stores/settings";
-import { getUpdateSeverity, getUpdateSeverityLabel, stripSeverityMarker } from "./updateCheck";
+import { getUpdateSeverity, getUpdateSeverityLabel } from "./updateCheck";
 import { openDialog, pendingUpdate } from "./updateSignal";
 import AppButton from "../components/AppButton.vue";
 
@@ -101,12 +101,6 @@ async function onClearAll(): Promise<void> {
       </h2>
       <p class="update-banner-version">
         Version {{ pendingUpdate.version }}
-      </p>
-      <p
-        v-if="pendingUpdate.body"
-        class="update-banner-notes"
-      >
-        {{ stripSeverityMarker(pendingUpdate.body) }}
       </p>
       <AppButton
         type="button"
@@ -327,8 +321,7 @@ async function onClearAll(): Promise<void> {
   font-weight: var(--font-label-weight);
 }
 
-.update-banner-version,
-.update-banner-notes {
+.update-banner-version {
   margin: 0.3em 0 0;
   color: var(--color-text-secondary);
 }

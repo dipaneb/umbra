@@ -176,6 +176,11 @@ onUnmounted(() => {
 
 .release-notes {
   white-space: pre-wrap;
+  /* Scoped to just the notes paragraph, not the whole dialog: .update-dialog's own
+     max-height/overflow (above) would otherwise scroll the Not Now/Install & Restart
+     buttons out of view along with long notes. This keeps the actions always visible. */
+  max-height: 12em;
+  overflow-y: auto;
 }
 
 .install-error {
