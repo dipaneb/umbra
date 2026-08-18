@@ -70,6 +70,8 @@ describe("attachWindowGeometryListeners", () => {
   it("emits the current position merged with the last known size on move", async () => {
     const settings = useSettingsStore();
     await settings.init();
+    await settings.setRestoreEnabled(true);
+    fakeStore.set.mockClear();
     await attachWindowGeometryListeners(settings.recordWindowGeometry);
 
     movedHandler?.({ payload: { x: 111, y: 222 } });
@@ -86,6 +88,8 @@ describe("attachWindowGeometryListeners", () => {
   it("emits the current size merged with the last known position on resize", async () => {
     const settings = useSettingsStore();
     await settings.init();
+    await settings.setRestoreEnabled(true);
+    fakeStore.set.mockClear();
     await attachWindowGeometryListeners(settings.recordWindowGeometry);
 
     resizedHandler?.({ payload: { width: 950, height: 700 } });
@@ -102,6 +106,8 @@ describe("attachWindowGeometryListeners", () => {
   it("debounces rapid move events into a single persisted write", async () => {
     const settings = useSettingsStore();
     await settings.init();
+    await settings.setRestoreEnabled(true);
+    fakeStore.set.mockClear();
     await attachWindowGeometryListeners(settings.recordWindowGeometry);
 
     movedHandler?.({ payload: { x: 1, y: 1 } });

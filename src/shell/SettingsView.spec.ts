@@ -4,6 +4,10 @@ import { createPinia, setActivePinia } from "pinia";
 import SettingsView from "./SettingsView.vue";
 import { useSettingsStore } from "../stores/settings";
 
+async function openAdvanced(wrapper: ReturnType<typeof mount>): Promise<void> {
+  await wrapper.find('input[aria-label="Show stored data"]').setValue(true);
+}
+
 function stubbedSettingsStore() {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -14,6 +18,7 @@ function stubbedSettingsStore() {
   settings.setThemeOverride = vi.fn().mockResolvedValue(undefined);
   settings.setPinnedToolsVisible = vi.fn().mockResolvedValue(undefined);
   settings.setRecentToolsVisible = vi.fn().mockResolvedValue(undefined);
+  settings.resetKey = vi.fn().mockResolvedValue(undefined);
   return settings;
 }
 
@@ -30,10 +35,15 @@ describe("SettingsView", () => {
 
   it("toggling the restore checkbox calls setRestoreEnabled", async () => {
     const settings = stubbedSettingsStore();
+    settings.restoreEnabled = true;
     const wrapper = mount(SettingsView);
     await flushPromises();
 
-    await wrapper.find('input[type="checkbox"]').setValue(false);
+    await wrapper
+      .find(
+        'input[aria-label="Restore last tool and window position on launch"]',
+      )
+      .setValue(false);
 
     expect(settings.setRestoreEnabled).toHaveBeenCalledWith(false);
   });
@@ -84,7 +94,22 @@ describe("SettingsView", () => {
     expect(settings.setRecentToolsVisible).toHaveBeenCalledWith(true);
   });
 
-  it("renders entries dynamically from the store, not a fixed set", async () => {
+  it("hides stored-data entries by default, even when data is persisted", async () => {
+    const settings = stubbedSettingsStore();
+    settings.entries = vi
+      .fn()
+      .mockResolvedValue([["shell.lastTool", "json"]]);
+
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    expect(wrapper.findAll(".entries li")).toHaveLength(0);
+    expect(wrapper.find('input[aria-label="Show stored data"]').exists()).toBe(
+      true,
+    );
+  });
+
+  it("reveals entries dynamically from the store, not a fixed set, once 'Show stored data' is checked", async () => {
     const settings = stubbedSettingsStore();
     settings.entries = vi.fn().mockResolvedValue([
       ["shell.lastTool", "json"],
@@ -94,6 +119,7 @@ describe("SettingsView", () => {
 
     const wrapper = mount(SettingsView);
     await flushPromises();
+    await openAdvanced(wrapper);
 
     const items = wrapper.findAll(".entries li");
     expect(items).toHaveLength(3);
@@ -101,7 +127,7 @@ describe("SettingsView", () => {
     expect(wrapper.text()).toContain("json.someFutureKey");
   });
 
-  it("clicking Clear all calls clearAll and re-renders an empty list", async () => {
+  it("clicking Clear all stored data calls clearAll regardless of the advanced view's state", async () => {
     const settings = stubbedSettingsStore();
     settings.entries = vi
       .fn()
@@ -110,12 +136,50 @@ describe("SettingsView", () => {
 
     const wrapper = mount(SettingsView);
     await flushPromises();
+    await openAdvanced(wrapper);
     expect(wrapper.findAll(".entries li")).toHaveLength(1);
 
-    await wrapper.find("button").trigger("click");
+    await wrapper.find('button[aria-label="Clear all stored data"]').trigger("click");
     await flushPromises();
 
     expect(settings.clearAll).toHaveBeenCalled();
     expect(wrapper.findAll(".entries li")).toHaveLength(0);
+  });
+
+  it("clicking Clear all stored data works while the disclosure is still closed, the default state", async () => {
+    const settings = stubbedSettingsStore();
+    settings.entries = vi.fn().mockResolvedValue([["shell.lastTool", "json"]]);
+
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+    expect(wrapper.find('input[aria-label="Show stored data"]').element)
+      .not.toHaveProperty("checked", true);
+
+    await wrapper.find('button[aria-label="Clear all stored data"]').trigger("click");
+    await flushPromises();
+
+    expect(settings.clearAll).toHaveBeenCalled();
+  });
+
+  it("clicking a per-item reset button calls resetKey for that key and refreshes the list", async () => {
+    const settings = stubbedSettingsStore();
+    settings.entries = vi
+      .fn()
+      .mockResolvedValueOnce([
+        ["shell.lastTool", "json"],
+        ["shell.themeOverride", "dark"],
+      ])
+      .mockResolvedValueOnce([["shell.themeOverride", "dark"]]);
+
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+    await openAdvanced(wrapper);
+    expect(wrapper.findAll(".entries li")).toHaveLength(2);
+
+    await wrapper.find('button[aria-label="Reset shell.lastTool"]').trigger("click");
+    await flushPromises();
+
+    expect(settings.resetKey).toHaveBeenCalledWith("shell.lastTool");
+    expect(wrapper.findAll(".entries li")).toHaveLength(1);
   });
 });

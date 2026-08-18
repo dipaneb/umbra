@@ -27,6 +27,22 @@ function toStringArray(value: unknown): string[] {
     : [];
 }
 
+// Single source of truth for every shell.* key's default value — read by
+// init()'s absent-key fallback, clearAll(), and resetKey() alike, so the
+// three can't drift apart the way clearAll()'s hardcoded restoreEnabled
+// reset once did (Story 7.6).
+const DEFAULTS = {
+  restoreSessionEnabled: false,
+  lastTool: undefined as string | undefined,
+  windowGeometry: undefined as WindowGeometry | undefined,
+  themeOverride: "system" as ThemeOverride,
+  sidebarCollapsed: false,
+  pinnedTools: [] as string[],
+  recentTools: [] as string[],
+  pinnedToolsVisible: true,
+  recentToolsVisible: true,
+};
+
 // Story 1.8's tree-parse debounce uses 200ms for latency-sensitive work;
 // geometry writes have no such urgency, so a slightly longer interval cuts
 // disk writes further during a drag.
@@ -37,21 +53,22 @@ const GEOMETRY_WRITE_DEBOUNCE_MS = 300;
 export const useSettingsStore = defineStore("settings", () => {
   let backingStore: Store | undefined;
 
-  const restoreEnabled = ref(true);
-  const lastTool = ref<string | undefined>(undefined);
-  const windowGeometry = ref<WindowGeometry | undefined>(undefined);
-  const themeOverride = ref<ThemeOverride>("system");
-  const sidebarCollapsed = ref<boolean>(false);
-  const pinnedTools = ref<string[]>([]);
-  const recentTools = ref<string[]>([]);
-  const pinnedToolsVisible = ref<boolean>(true);
-  const recentToolsVisible = ref<boolean>(true);
+  const restoreEnabled = ref(DEFAULTS.restoreSessionEnabled);
+  const lastTool = ref<string | undefined>(DEFAULTS.lastTool);
+  const windowGeometry = ref<WindowGeometry | undefined>(DEFAULTS.windowGeometry);
+  const themeOverride = ref<ThemeOverride>(DEFAULTS.themeOverride);
+  const sidebarCollapsed = ref<boolean>(DEFAULTS.sidebarCollapsed);
+  const pinnedTools = ref<string[]>([...DEFAULTS.pinnedTools]);
+  const recentTools = ref<string[]>([...DEFAULTS.recentTools]);
+  const pinnedToolsVisible = ref<boolean>(DEFAULTS.pinnedToolsVisible);
+  const recentToolsVisible = ref<boolean>(DEFAULTS.recentToolsVisible);
 
   async function init(): Promise<void> {
     try {
       const store = await load("settings.json", { autoSave: false });
       restoreEnabled.value =
-        (await store.get<boolean>("shell.restoreSessionEnabled")) ?? true;
+        (await store.get<boolean>("shell.restoreSessionEnabled")) ??
+        DEFAULTS.restoreSessionEnabled;
       lastTool.value = await store.get<string>("shell.lastTool");
       windowGeometry.value =
         await store.get<WindowGeometry>("shell.windowGeometry");
@@ -60,9 +77,10 @@ export const useSettingsStore = defineStore("settings", () => {
       );
       themeOverride.value = isThemeOverride(storedThemeOverride)
         ? storedThemeOverride
-        : "system";
+        : DEFAULTS.themeOverride;
       sidebarCollapsed.value =
-        (await store.get<boolean>("shell.sidebarCollapsed")) ?? false;
+        (await store.get<boolean>("shell.sidebarCollapsed")) ??
+        DEFAULTS.sidebarCollapsed;
       pinnedTools.value = toStringArray(
         await store.get<unknown>("shell.pinnedTools"),
       );
@@ -70,9 +88,11 @@ export const useSettingsStore = defineStore("settings", () => {
         await store.get<unknown>("shell.recentTools"),
       );
       pinnedToolsVisible.value =
-        (await store.get<boolean>("shell.pinnedToolsVisible")) ?? true;
+        (await store.get<boolean>("shell.pinnedToolsVisible")) ??
+        DEFAULTS.pinnedToolsVisible;
       recentToolsVisible.value =
-        (await store.get<boolean>("shell.recentToolsVisible")) ?? true;
+        (await store.get<boolean>("shell.recentToolsVisible")) ??
+        DEFAULTS.recentToolsVisible;
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -171,17 +191,60 @@ export const useSettingsStore = defineStore("settings", () => {
     return backingStore.entries();
   }
 
+  // Additive to clearAll()'s one-action clear (AC2), not a replacement for
+  // it. Deletes the key outright rather than rewriting it to its default
+  // value, so it actually disappears from entries() afterward — mirroring
+  // true never-persisted state instead of a second "reset" meaning.
+  // Keys with no matching in-memory ref (e.g. a future <tool-id>.* key) are
+  // simply deleted from disk with no ref to reset.
+  async function resetKey(key: string): Promise<void> {
+    switch (key) {
+      case "shell.restoreSessionEnabled":
+        restoreEnabled.value = DEFAULTS.restoreSessionEnabled;
+        break;
+      case "shell.lastTool":
+        lastTool.value = DEFAULTS.lastTool;
+        break;
+      case "shell.windowGeometry":
+        writeGeometry.cancel();
+        windowGeometry.value = DEFAULTS.windowGeometry;
+        break;
+      case "shell.themeOverride":
+        themeOverride.value = DEFAULTS.themeOverride;
+        break;
+      case "shell.sidebarCollapsed":
+        sidebarCollapsed.value = DEFAULTS.sidebarCollapsed;
+        break;
+      case "shell.pinnedTools":
+        pinnedTools.value = [...DEFAULTS.pinnedTools];
+        break;
+      case "shell.recentTools":
+        recentTools.value = [...DEFAULTS.recentTools];
+        break;
+      case "shell.pinnedToolsVisible":
+        pinnedToolsVisible.value = DEFAULTS.pinnedToolsVisible;
+        break;
+      case "shell.recentToolsVisible":
+        recentToolsVisible.value = DEFAULTS.recentToolsVisible;
+        break;
+    }
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.delete(key);
+    await store.save();
+  }
+
   async function clearAll(): Promise<void> {
     writeGeometry.cancel();
-    restoreEnabled.value = true;
-    lastTool.value = undefined;
-    windowGeometry.value = undefined;
-    themeOverride.value = "system";
-    sidebarCollapsed.value = false;
-    pinnedTools.value = [];
-    recentTools.value = [];
-    pinnedToolsVisible.value = true;
-    recentToolsVisible.value = true;
+    restoreEnabled.value = DEFAULTS.restoreSessionEnabled;
+    lastTool.value = DEFAULTS.lastTool;
+    windowGeometry.value = DEFAULTS.windowGeometry;
+    themeOverride.value = DEFAULTS.themeOverride;
+    sidebarCollapsed.value = DEFAULTS.sidebarCollapsed;
+    pinnedTools.value = [...DEFAULTS.pinnedTools];
+    recentTools.value = [...DEFAULTS.recentTools];
+    pinnedToolsVisible.value = DEFAULTS.pinnedToolsVisible;
+    recentToolsVisible.value = DEFAULTS.recentToolsVisible;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -209,6 +272,7 @@ export const useSettingsStore = defineStore("settings", () => {
     recordLastTool,
     recordWindowGeometry,
     entries,
+    resetKey,
     clearAll,
   };
 });
