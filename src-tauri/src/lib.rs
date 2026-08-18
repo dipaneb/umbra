@@ -2,6 +2,7 @@
 // `commands::bucket::ocr_engine` reachable from outside this crate — an integration-test binary
 // links against this crate's ordinarily-compiled rlib, so a private `mod` here would be
 // unreachable to it regardless of visibility inside `commands/bucket.rs` itself.
+mod clipboard_watch;
 pub mod commands;
 mod fs_helper;
 
@@ -30,6 +31,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // AC1/AC13: starts once, off the main thread — mirrors `attachThemeListener`'s
+        // pre-paint-but-decoupled pattern in `main.ts` (Story 7.2), except this watcher lives
+        // in Rust, not JS, so it doesn't touch `main.ts` at all.
+        .setup(|app| {
+            clipboard_watch::start(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             json_format,

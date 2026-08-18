@@ -40,6 +40,7 @@ function stubbedSettingsStore() {
   settings.setThemeOverride = vi.fn().mockResolvedValue(undefined);
   settings.setPinnedToolsVisible = vi.fn().mockResolvedValue(undefined);
   settings.setRecentToolsVisible = vi.fn().mockResolvedValue(undefined);
+  settings.setClipboardSuggestionMaxCount = vi.fn().mockResolvedValue(undefined);
   settings.resetKey = vi.fn().mockResolvedValue(undefined);
   return settings;
 }
@@ -82,6 +83,65 @@ describe("SettingsView", () => {
     await select.setValue("light");
 
     expect(settings.setThemeOverride).toHaveBeenCalledWith("light");
+  });
+
+  it("discloses the clipboard-suggestion read locally and reflects the persisted count (AC5)", async () => {
+    const settings = stubbedSettingsStore();
+    settings.clipboardSuggestionMaxCount = 1;
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("clipboard locally");
+
+    const input = wrapper.find('input[aria-label="Clipboard suggestions to show"]');
+    expect((input.element as HTMLInputElement).value).toBe("1");
+  });
+
+  it("changing the clipboard-suggestions control calls setClipboardSuggestionMaxCount with the typed number", async () => {
+    const settings = stubbedSettingsStore();
+    settings.clipboardSuggestionMaxCount = 3;
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    await wrapper
+      .find('input[aria-label="Clipboard suggestions to show"]')
+      .setValue("5");
+
+    expect(settings.setClipboardSuggestionMaxCount).toHaveBeenCalledWith(5);
+  });
+
+  it("passes an out-of-range typed value straight through to the setter, relying on the store's own clamp rather than silently correcting it here", async () => {
+    const settings = stubbedSettingsStore();
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    await wrapper
+      .find('input[aria-label="Clipboard suggestions to show"]')
+      .setValue("99");
+
+    // The component itself does no clamping — Task 6's clampClipboardSuggestionMaxCount() in
+    // settings.ts is the single source of truth for the 0-5 bound (already covered by
+    // settings.spec.ts). This only confirms the component doesn't add a second, potentially
+    // divergent clamp of its own.
+    expect(settings.setClipboardSuggestionMaxCount).toHaveBeenCalledWith(99);
+  });
+
+  it("resets the input's own displayed value to the clamped result after an out-of-range entry (regression: typing 9 visibly stuck on screen after tabbing away)", async () => {
+    const settings = stubbedSettingsStore();
+    // Mimics the real store's clamp behavior (settings.spec.ts covers the real clamp logic
+    // itself) — this test is about the component reflecting that result back into the DOM, not
+    // about re-verifying the clamp math.
+    settings.setClipboardSuggestionMaxCount = vi.fn().mockImplementation((value: number) => {
+      settings.clipboardSuggestionMaxCount = Math.min(5, Math.max(0, value));
+      return Promise.resolve();
+    });
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    const input = wrapper.find('input[aria-label="Clipboard suggestions to show"]');
+    await input.setValue("9");
+
+    expect((input.element as HTMLInputElement).value).toBe("5");
   });
 
   it("toggling the 'Show pinned tools' checkbox calls setPinnedToolsVisible and reflects the current state", async () => {

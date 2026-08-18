@@ -42,7 +42,22 @@ const DEFAULTS = {
   pinnedToolsVisible: true,
   recentToolsVisible: true,
   updateSignalDismissedVersion: undefined as string | undefined,
+  clipboardSuggestionMaxCount: 3 as number,
 };
+
+// This store's first numeric `shell.*` key (Story 7.8) — every prior key is a plain
+// boolean/string/array with no range to enforce. Clamped at the setter boundary rather than
+// trusted to the UI control alone, since a hand-edited settings.json could otherwise smuggle in
+// an out-of-range value (AC5).
+const CLIPBOARD_SUGGESTION_MAX_COUNT_RANGE = { min: 0, max: 5 } as const;
+
+function clampClipboardSuggestionMaxCount(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULTS.clipboardSuggestionMaxCount;
+  return Math.min(
+    CLIPBOARD_SUGGESTION_MAX_COUNT_RANGE.max,
+    Math.max(CLIPBOARD_SUGGESTION_MAX_COUNT_RANGE.min, Math.round(value)),
+  );
+}
 
 // Story 1.8's tree-parse debounce uses 200ms for latency-sensitive work;
 // geometry writes have no such urgency, so a slightly longer interval cuts
@@ -66,6 +81,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const updateSignalDismissedVersion = ref<string | undefined>(
     DEFAULTS.updateSignalDismissedVersion,
   );
+  const clipboardSuggestionMaxCount = ref<number>(DEFAULTS.clipboardSuggestionMaxCount);
 
   async function init(): Promise<void> {
     try {
@@ -99,6 +115,10 @@ export const useSettingsStore = defineStore("settings", () => {
         DEFAULTS.recentToolsVisible;
       updateSignalDismissedVersion.value = await store.get<string>(
         "shell.updateSignal.dismissedVersion",
+      );
+      clipboardSuggestionMaxCount.value = clampClipboardSuggestionMaxCount(
+        (await store.get<number>("shell.clipboardSuggestionMaxCount")) ??
+          DEFAULTS.clipboardSuggestionMaxCount,
       );
       backingStore = store;
     } catch (error) {
@@ -152,6 +172,15 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!backingStore) return;
     const store = backingStore;
     await store.set("shell.updateSignal.dismissedVersion", version);
+    await store.save();
+  }
+
+  async function setClipboardSuggestionMaxCount(value: number): Promise<void> {
+    const clamped = clampClipboardSuggestionMaxCount(value);
+    clipboardSuggestionMaxCount.value = clamped;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.clipboardSuggestionMaxCount", clamped);
     await store.save();
   }
 
@@ -245,6 +274,9 @@ export const useSettingsStore = defineStore("settings", () => {
       case "shell.updateSignal.dismissedVersion":
         updateSignalDismissedVersion.value = DEFAULTS.updateSignalDismissedVersion;
         break;
+      case "shell.clipboardSuggestionMaxCount":
+        clipboardSuggestionMaxCount.value = DEFAULTS.clipboardSuggestionMaxCount;
+        break;
     }
     if (!backingStore) return;
     const store = backingStore;
@@ -264,6 +296,7 @@ export const useSettingsStore = defineStore("settings", () => {
     pinnedToolsVisible.value = DEFAULTS.pinnedToolsVisible;
     recentToolsVisible.value = DEFAULTS.recentToolsVisible;
     updateSignalDismissedVersion.value = DEFAULTS.updateSignalDismissedVersion;
+    clipboardSuggestionMaxCount.value = DEFAULTS.clipboardSuggestionMaxCount;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -281,6 +314,7 @@ export const useSettingsStore = defineStore("settings", () => {
     pinnedToolsVisible,
     recentToolsVisible,
     updateSignalDismissedVersion,
+    clipboardSuggestionMaxCount,
     init,
     setRestoreEnabled,
     setThemeOverride,
@@ -288,6 +322,7 @@ export const useSettingsStore = defineStore("settings", () => {
     setPinnedToolsVisible,
     setRecentToolsVisible,
     setUpdateSignalDismissed,
+    setClipboardSuggestionMaxCount,
     togglePinned,
     recordRecentTool,
     recordLastTool,

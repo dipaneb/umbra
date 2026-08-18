@@ -2,6 +2,7 @@ import { computed, ref, type Component } from "vue";
 import { defineStore } from "pinia";
 import type { RouteRecordRaw } from "vue-router";
 import { createLatestWinsRunner } from "../shell/invoke";
+import { matchesBase64, matchesImage, matchesJson, matchesJwt, type ClipboardContent } from "../shell/clipboardMatch";
 import type { IconName } from "../shell/icons";
 import type { ToolError } from "../shell/toolError";
 
@@ -18,6 +19,12 @@ export interface ToolRegistryEntry {
   // shell's paste dispatcher generic (reads the handler name from the registry) rather than
   // hardcoding a tool's command name (Story 4.2).
   paste?: { handler: string };
+  // AC3 (Story 7.8): declares a tool's eligibility for the clipboard-suggestion surface — the
+  // shell (AppSidebar.vue) iterates every registered entry's `clipboardMatch` generically (AD-5)
+  // rather than hardcoding which tools are eligible, so this scales past today's 7 tools with
+  // zero shell-level changes. `specificity` is author-declared: when clipboard content matches
+  // more than one tool, the higher `specificity` wins (AC4); ties break by stable registry order.
+  clipboardMatch?: { test: (content: ClipboardContent) => boolean; specificity: number };
   shortcut?: string;
 }
 
@@ -61,6 +68,11 @@ const TOOLS: ToolRegistryEntry[] = [
     route: "/tools/json",
     icon: "json",
     component: () => import("../tools/json/JsonView.vue"),
+    // specificity 2: JSON.parse succeeds on many plain strings (a bare quoted string, a bare
+    // number) — looser than JWT's structurally distinctive three-segment shape, but tighter
+    // than Base64's alphabet-only check (nearly any JSON string is also alphabet-valid Base64,
+    // but not vice versa).
+    clipboardMatch: { test: matchesJson, specificity: 2 },
   },
   {
     id: "base64",
@@ -74,6 +86,10 @@ const TOOLS: ToolRegistryEntry[] = [
     // browser-supplied MIME type — this field is presence-of-`.drop`-means-
     // accepts, not yet used for actual filtering (no story needs it yet).
     drop: { acceptedMimeTypes: [], handler: "base64_encode_file" },
+    // specificity 1 (lowest): the base64 alphabet is a superset of JWT's per-segment alphabet
+    // and overlaps heavily with JSON's, so this is the most permissive of the three text
+    // matchers and most likely to collide with either — it must never outrank them.
+    clipboardMatch: { test: matchesBase64, specificity: 1 },
   },
   {
     id: "uuid",
@@ -102,6 +118,12 @@ const TOOLS: ToolRegistryEntry[] = [
     route: "/tools/jwt",
     icon: "jwt",
     component: () => import("../tools/jwt/JwtView.vue"),
+    // specificity 3 (highest of the three text matchers): a JWT-shaped string is also
+    // technically three non-JSON, base64-alphabet-valid substrings, so it must outrank a looser
+    // Base64 match if both somehow fire on the same content. JSON and JWT don't overlap in
+    // practice (a JWT never parses as JSON), so their relative order matters less, but this
+    // value is still deliberate, not arbitrary.
+    clipboardMatch: { test: matchesJwt, specificity: 3 },
   },
   {
     id: "cron",
@@ -134,6 +156,10 @@ const TOOLS: ToolRegistryEntry[] = [
     component: () => import("../tools/bucket/BucketView.vue"),
     drop: { acceptedMimeTypes: [], handler: "bucket_extract_text" },
     paste: { handler: "bucket_extract_text_from_clipboard" },
+    // specificity 4: highest of the four, though moot in practice — `matchesImage` only ever
+    // returns true for `{ kind: "image" }` content, and every text matcher requires
+    // `kind === "text"`, so an image clipboard entry can never also match a text-shape tool.
+    clipboardMatch: { test: matchesImage, specificity: 4 },
   },
 ];
 

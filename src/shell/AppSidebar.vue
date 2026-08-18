@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useRegistryStore } from "../stores/registry";
 import type { ToolRegistryEntry } from "../stores/registry";
@@ -7,6 +7,9 @@ import { useSettingsStore } from "../stores/settings";
 import { resolveIcon } from "./icons";
 import { getUpdateSeverity, getUpdateSeverityLabel } from "./updateCheck";
 import { pendingUpdate } from "./updateSignal";
+import { onClipboardChange, readClipboardText, type ClipboardChangeKind } from "./clipboard";
+import type { ClipboardContent } from "./clipboardMatch";
+import { createLatestWinsRunner } from "./invoke";
 import {
   PhGear,
   PhCaretLeft,
@@ -98,6 +101,132 @@ const sections = computed<NavSection[]>(() => {
 
 const updateSeverity = computed(() => getUpdateSeverity(pendingUpdate.value));
 const updateSeverityLabel = computed(() => getUpdateSeverityLabel(updateSeverity.value));
+
+// Story 7.8 (AC1/AC4/AC6/AC7/AC8/AC10/AC12): the clipboard-suggestion surface. Kept local to
+// this component rather than a shared module like `updateSignal.ts` — unlike the update dot
+// (needed by three unrelated components), only this sidebar renders this surface, so there's
+// no genuine multi-consumer case for promoting it (see the story's own "Shared-module-vs-
+// local-state judgment call precedent" Dev Note).
+interface ClipboardMatchCandidate {
+  tool: ToolRegistryEntry;
+  preview: string | null;
+}
+
+const clipboardMatches = ref<ClipboardMatchCandidate[]>([]);
+const clipboardAnnouncement = ref("");
+
+// No source doc specifies an exact truncation length — chosen as a reasonable single-line
+// preview length for the sidebar's ~200px width.
+const PREVIEW_MAX_LENGTH = 50;
+
+// Review finding: a large clipboard entry (a multi-MB log/data URI/JSON blob) would otherwise
+// run every shape predicate synchronously on the main thread with no cap — this guards the
+// AD-4 "trivial synchronous work" assumption the story's own Dev Notes rely on, which only
+// holds for "typically-small" content, not unboundedly large content.
+const CLIPBOARD_MATCH_MAX_CONTENT_LENGTH = 1_000_000;
+
+function truncatePreview(value: string): string {
+  const trimmed = value.trim();
+  // Slices by Unicode code point (`Array.from`), not raw UTF-16 index — a plain `.slice()`
+  // can split a surrogate pair (e.g. an emoji) in two, rendering a mangled trailing glyph.
+  const characters = Array.from(trimmed);
+  return characters.length > PREVIEW_MAX_LENGTH
+    ? `${characters.slice(0, PREVIEW_MAX_LENGTH).join("")}…`
+    : trimmed;
+}
+
+// AC7: most screen readers do not re-announce `aria-live` text set to an identical string —
+// clearing the region on a `nextTick()` before re-setting it forces a real mutation each time,
+// so the same tool suggested twice in a row from two different copies still announces. AC7's own
+// text distinguishes the single-match case from the multi-match one ("e.g. '3 tools suggested
+// from clipboard' vs. naming one tool") — a lone match names the tool directly rather than using
+// the generic count wording.
+async function announceClipboardMatchCount(matches: ClipboardMatchCandidate[]): Promise<void> {
+  clipboardAnnouncement.value = "";
+  await nextTick();
+  if (matches.length === 0) return;
+  clipboardAnnouncement.value =
+    matches.length === 1
+      ? `${matches[0].tool.name} suggested from clipboard`
+      : `${matches.length} tools suggested from clipboard`;
+}
+
+// AD-16: the read-and-match sequence below is async (`readClipboardText`), and two clipboard
+// copies in quick succession (more likely on macOS's/Wayland's 500ms poll, per AC13) can have
+// their reads/matches resolve out of order — this local runner (scoped to this component, with
+// no other write-trigger reaching this state) guards against a stale match momentarily
+// replacing a fresher one, the same race-prevention rule that fixed real bugs in Stories 2.3/2.5.
+const runLatestWinsClipboardMatch = createLatestWinsRunner();
+
+// Review finding: the match-list assignment and the live-region announcement now both run
+// inside the same `runLatestWinsClipboardMatch` task (not just the clipboard read), so a call
+// that's superseded never reaches either side effect — closing a gap where an older "winning"
+// read could still race a newer one's independent announce sequence.
+async function handleClipboardChange(kind: ClipboardChangeKind): Promise<void> {
+  // AC6: not just hidden output — no matching work happens at all when suggestions are off.
+  if (settings.clipboardSuggestionMaxCount === 0) return;
+
+  let result;
+  try {
+    result = await runLatestWinsClipboardMatch<ClipboardMatchCandidate[]>(async () => {
+      // AC12: the image case is constructed directly from the event payload — this text branch
+      // is the only one that ever calls back into clipboard.ts, and even then only for text,
+      // never `readClipboardImage()`.
+      const content: ClipboardContent =
+        kind === "image" ? { kind: "image" } : { kind: "text", value: await readClipboardText() };
+
+      if (content.kind === "text" && content.value.length > CLIPBOARD_MATCH_MAX_CONTENT_LENGTH) {
+        return [];
+      }
+
+      // AC3/AC4: iterates every registered entry's matcher generically (AD-5) rather than
+      // hardcoding which tools are eligible; sorts by specificity descending, capped to the
+      // configured count. `Array.prototype.sort` is stable in current JS engines, so equal-
+      // specificity ties keep registry order (AC4's own tie-break requirement) with no
+      // hand-rolled comparator needed.
+      return registry.tools
+        .filter((tool): tool is ToolRegistryEntry & { clipboardMatch: NonNullable<ToolRegistryEntry["clipboardMatch"]> } =>
+          tool.clipboardMatch !== undefined && tool.clipboardMatch.test(content),
+        )
+        .sort((a, b) => b.clipboardMatch.specificity - a.clipboardMatch.specificity)
+        .slice(0, settings.clipboardSuggestionMaxCount)
+        .map((tool) => ({
+          tool,
+          preview: content.kind === "text" ? truncatePreview(content.value) : null,
+        }));
+    });
+  } catch (error) {
+    console.error("clipboard-match: failed to read/match clipboard content", error);
+    return;
+  }
+  if (result.superseded) return;
+
+  // AC10: always replaces the current list outright, including with an empty list.
+  clipboardMatches.value = result.value;
+  await announceClipboardMatchCount(clipboardMatches.value);
+}
+
+let unlistenClipboardChange: (() => void) | undefined;
+
+onMounted(() => {
+  unlistenClipboardChange = onClipboardChange((kind) => {
+    void handleClipboardChange(kind);
+  });
+});
+
+onUnmounted(() => {
+  unlistenClipboardChange?.();
+});
+
+// Review finding: disabling suggestions (count -> 0) only stopped new matching work — an
+// already-visible callout stayed on screen until the next clipboard change, which may never
+// come in that session. "Off" now also clears whatever's currently showing.
+watch(
+  () => settings.clipboardSuggestionMaxCount,
+  (count) => {
+    if (count === 0) clipboardMatches.value = [];
+  },
+);
 </script>
 
 <template>
@@ -119,7 +248,39 @@ const updateSeverityLabel = computed(() => getUpdateSeverityLabel(updateSeverity
         aria-hidden="true"
       />
     </button>
+    <span
+      role="status"
+      class="visually-hidden"
+    >{{ clipboardAnnouncement }}</span>
     <div class="nav-scroll">
+      <div
+        v-if="clipboardMatches.length > 0"
+        class="clipboard-matches"
+      >
+        <RouterLink
+          v-for="match in clipboardMatches"
+          :key="match.tool.id"
+          :to="match.tool.route"
+          class="clipboard-match"
+        >
+          <span
+            class="clipboard-match-label"
+            :class="{ 'visually-hidden': settings.sidebarCollapsed }"
+          >Clipboard match</span>
+          <span class="clipboard-match-tool">
+            <component
+              :is="resolveIcon(match.tool.icon)"
+              aria-hidden="true"
+              size="1em"
+            />
+            <span :class="{ 'visually-hidden': settings.sidebarCollapsed }">{{ match.tool.name }}</span>
+          </span>
+          <span
+            class="clipboard-match-preview"
+            :class="{ 'visually-hidden': settings.sidebarCollapsed }"
+          >{{ match.preview ?? "Image copied" }}</span>
+        </RouterLink>
+      </div>
       <div
         v-for="section in sections"
         :key="section.key"
@@ -474,6 +635,84 @@ a.router-link-exact-active {
 
 a:not(.router-link-exact-active):hover {
   background: var(--color-bg-surface-raised);
+}
+
+/* Story 7.8: the "Clipboard match" callout(s), stacked above the Pinned section. No dedicated
+   DESIGN.md token exists for this exact treatment (confirmed absent by review-rubric.md §3) —
+   this follows the Card-family "persistent surfaces get a border, not a shadow" rule instead,
+   the closest documented precedent. */
+.clipboard-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  margin-bottom: 0.6em;
+}
+
+/* `a.clipboard-match` (not bare `.clipboard-match`) matches the specificity of the generic
+   `a.router-link-exact-active`/`a:not(.router-link-exact-active):hover` rules above, so this
+   block's later source position — not accidental specificity — decides which wins if a
+   suggested tool also happens to be the current route. */
+a.clipboard-match {
+  display: flex;
+  flex-direction: column;
+  /* Overrides the bare `a { align-items: center; }` rule above (meant for the horizontal
+     icon+label nav-item row) — without this, every child here shrinks to its own intrinsic
+     width and centers, instead of stretching to the card's full width. Caught live: a
+     `white-space: nowrap` preview line centered at its own unwrapped width overflows equally
+     off both edges, showing a random middle slice instead of a clean head-truncated ellipsis. */
+  align-items: stretch;
+  gap: 0.2em;
+  padding: 0.6em 1em;
+  color: inherit;
+  text-decoration: none;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-default);
+}
+
+a.clipboard-match:hover,
+a.clipboard-match.router-link-exact-active {
+  background: var(--color-bg-surface-raised);
+}
+
+/* Same collapsed-row fix Story 7.4 had to apply to `a` itself (AppSidebar.vue's own prior
+   collapsed-icon-disappearing bug): the callout's full-width padding alone would consume the
+   entire collapsed nav's content box before its icon gets any space. */
+nav.collapsed a.clipboard-match {
+  padding-left: 0;
+  padding-right: 0;
+  align-items: center;
+}
+
+.clipboard-match-label {
+  font-size: 0.75em;
+  font-weight: var(--font-label-weight);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.clipboard-match-tool {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  font-weight: 700;
+}
+
+.clipboard-match-preview {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Flex items default to `min-width: auto`, not 0 — without this, a `white-space: nowrap`
+     child refuses to shrink below its own unwrapped text width and overflows past the row
+     instead of being clipped, so `text-overflow: ellipsis` above silently never engages (the
+     box grows to fit the content rather than the content being cut off within a fixed box).
+     Classic flexbox-truncation gotcha, caught via manual testing: the un-clipped overflow
+     visually reads as "centered, cut off on both edges" rather than a clean trailing ellipsis. */
+  min-width: 0;
 }
 
 .visually-hidden {

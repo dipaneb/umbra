@@ -565,6 +565,81 @@ describe("useSettingsStore", () => {
     expect(settings.updateSignalDismissedVersion).toBeUndefined();
   });
 
+  it("defaults clipboardSuggestionMaxCount to 3 when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.clipboardSuggestionMaxCount).toBe(3);
+  });
+
+  it("preserves an existing install's clipboardSuggestionMaxCount value when the key is already persisted", async () => {
+    fakeStore.set("shell.clipboardSuggestionMaxCount", 1);
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.clipboardSuggestionMaxCount).toBe(1);
+  });
+
+  it("setClipboardSuggestionMaxCount persists and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setClipboardSuggestionMaxCount(5);
+
+    expect(settings.clipboardSuggestionMaxCount).toBe(5);
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.clipboardSuggestionMaxCount", 5);
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("setClipboardSuggestionMaxCount clamps an out-of-range value to the 0-5 bound before persisting", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setClipboardSuggestionMaxCount(99);
+    expect(settings.clipboardSuggestionMaxCount).toBe(5);
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.clipboardSuggestionMaxCount", 5);
+
+    await settings.setClipboardSuggestionMaxCount(-3);
+    expect(settings.clipboardSuggestionMaxCount).toBe(0);
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.clipboardSuggestionMaxCount", 0);
+  });
+
+  it("clamps a hand-edited out-of-range persisted value on load, not just on the setter path", async () => {
+    fakeStore.set("shell.clipboardSuggestionMaxCount", 42);
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.clipboardSuggestionMaxCount).toBe(5);
+  });
+
+  it("resetKey resets clipboardSuggestionMaxCount to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setClipboardSuggestionMaxCount(1);
+
+    await settings.resetKey("shell.clipboardSuggestionMaxCount");
+
+    expect(settings.clipboardSuggestionMaxCount).toBe(3);
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.clipboardSuggestionMaxCount");
+    await expect(settings.entries()).resolves.not.toContainEqual([
+      "shell.clipboardSuggestionMaxCount",
+      expect.anything(),
+    ]);
+  });
+
+  it("clearAll resets clipboardSuggestionMaxCount back to its default", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setClipboardSuggestionMaxCount(1);
+
+    await settings.clearAll();
+
+    expect(settings.clipboardSuggestionMaxCount).toBe(3);
+  });
+
   it("resetKey on shell.windowGeometry cancels a pending debounced write so it doesn't re-persist after reset", async () => {
     const settings = useSettingsStore();
     await settings.init();

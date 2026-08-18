@@ -196,3 +196,7 @@
 ## Deferred from: code review of 7-7-the-update-signal-becomes-a-passive-escalation-aware-dot (2026-08-18)
 
 - New orange `AppButton` `:focus-visible` ring vs. `SettingsView.vue`'s pre-existing hardcoded blue `#396cd8` focus-visible rule on plain `<button>`/`input`/`select` elements in the same file. Pre-existing: the hardcoded-blue rule predates this story and wasn't touched by its diff, but this story's new `AppButton` component (correctly using the `--color-accent-signature` token, matching `AppSidebar.vue`'s established focus-ring precedent) now sits on the same Settings page as untouched plain buttons still using the legacy value, making the inconsistency visible for the first time. [`src/shell/SettingsView.vue:352-357`]
+
+## Deferred from: code review of 7-8-clipboard-suggestion-surface (2026-08-18)
+
+- Settings setters don't roll back an optimistic ref update on persist failure — `setClipboardSuggestionMaxCount` (`src/stores/settings.ts:178-185`) updates the ref synchronously before the async `store.set()`/`store.save()` calls, with no revert if those reject; `SettingsView.vue`'s change handler only logs the error. Pre-existing: every setter in this store (`setThemeOverride`, `setSidebarCollapsed`, `togglePinned`, etc.) follows the identical pattern — a store-wide design choice, not a regression introduced by this story. [`src/stores/settings.ts:178-185`]

@@ -53,6 +53,20 @@ function onToggleAdvanced(event: Event): void {
   showAdvanced.value = (event.target as HTMLInputElement).checked;
 }
 
+function onChangeClipboardSuggestionMaxCount(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const value = Number(input.value);
+  void settings.setClipboardSuggestionMaxCount(value).catch((error: unknown) => {
+    console.error("settings: failed to persist clipboard-suggestion max count", error);
+  });
+  // The store's setter clamps `clipboardSuggestionMaxCount` synchronously (before any I/O),
+  // so it already reflects the clamped value here. Force the input's own DOM value back in
+  // sync explicitly rather than trusting the `:value` binding's reactive patch alone — an out-
+  // of-range typed value (e.g. 9) otherwise visibly stayed on screen after tabbing away, even
+  // though the persisted value was already correctly clamped (a UI-only bug, caught live).
+  input.value = String(settings.clipboardSuggestionMaxCount);
+}
+
 async function onResetKey(key: string): Promise<void> {
   try {
     await settings.resetKey(key);
@@ -157,6 +171,18 @@ async function onClearAll(): Promise<void> {
         >
         Show recent tools
       </label>
+
+      <label class="settings-toggle">
+        Clipboard suggestions to show
+        <input
+          type="number"
+          min="0"
+          max="5"
+          aria-label="Clipboard suggestions to show"
+          :value="settings.clipboardSuggestionMaxCount"
+          @change="onChangeClipboardSuggestionMaxCount"
+        >
+      </label>
     </div>
 
     <div class="settings-section">
@@ -223,6 +249,9 @@ async function onClearAll(): Promise<void> {
       <p>
         The only network call Umbra makes is an automatic check for updates.
         Nothing installs without your confirmation, and there's no telemetry.
+      </p>
+      <p>
+        Umbra reads your clipboard locally to suggest a matching tool. Nothing leaves your device.
       </p>
     </div>
   </section>

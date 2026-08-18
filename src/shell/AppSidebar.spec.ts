@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { createAppRouter } from "../router";
@@ -21,8 +21,43 @@ function fakeUpdate(overrides: Record<string, unknown> = {}) {
   } as unknown as Update;
 }
 
+// Story 7.8: AppSidebar now listens for clipboard changes on mount (via clipboard.ts's
+// onClipboardChange, which wraps @tauri-apps/api/event's listen) — unmocked, this throws in
+// jsdom (no real Tauri IPC bridge), the same class of gap every prior Epic 7 story hit for its
+// own Tauri-only surface. `readText` needs the same treatment: it's the only clipboard.ts
+// function this component ever calls (never `readImage`, per AC12).
+type ClipboardChangedHandler = (event: { payload: { kind: string } }) => void;
+const clipboardListenHandlers: ClipboardChangedHandler[] = [];
+const clipboardUnlisten = vi.fn();
+const listen = vi.fn((_event: string, handler: ClipboardChangedHandler) => {
+  clipboardListenHandlers.push(handler);
+  return Promise.resolve(clipboardUnlisten);
+});
+const readText = vi.fn();
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (event: string, handler: ClipboardChangedHandler) => listen(event, handler),
+}));
+
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+  readText: () => readText(),
+  readImage: () => Promise.reject(new Error("AC12: image bytes must never be read here")),
+  writeText: () => Promise.resolve(),
+}));
+
+// Triggers the most recently mounted AppSidebar's clipboard-change handler — each test mounts
+// its own instance, so "most recent" is always the instance under test.
+function triggerClipboardChange(kind: "text" | "image"): void {
+  const handler = clipboardListenHandlers[clipboardListenHandlers.length - 1];
+  handler?.({ payload: { kind } });
+}
+
 afterEach(() => {
   __setPendingUpdateForTest(null);
+  clipboardListenHandlers.length = 0;
+  clipboardUnlisten.mockClear();
+  listen.mockClear();
+  readText.mockReset();
 });
 
 describe("AppSidebar", () => {
@@ -659,5 +694,320 @@ describe("AppSidebar", () => {
 
     expect(router.currentRoute.value.path).toBe("/settings");
     expect(wrapper.find("[role='dialog']").exists()).toBe(false);
+  });
+});
+
+describe("Clipboard-suggestion surface (Story 7.8)", () => {
+  async function mountSidebar() {
+    const pinia = createPinia();
+    const router = createAppRouter(pinia);
+    router.push("/");
+    await router.isReady();
+    const wrapper = mount(AppSidebar, { global: { plugins: [pinia, router] } });
+    return { pinia, router, wrapper };
+  }
+
+  it("shows no callout when clipboard content matches nothing", async () => {
+    readText.mockResolvedValueOnce("just some plain prose, not shaped like anything");
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find(".clipboard-matches").exists()).toBe(false);
+  });
+
+  it("shows a callout for a JWT-shaped match (icon, name, preview, correct route)", async () => {
+    readText.mockResolvedValueOnce("abc.def.ghi");
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const callouts = wrapper.findAll(".clipboard-match");
+    expect(callouts).toHaveLength(1);
+    expect(callouts[0].text()).toContain("JWT");
+    expect(callouts[0].text()).toContain("abc.def.ghi");
+    expect(callouts[0].attributes("href")).toBe("/tools/jwt");
+  });
+
+  it("shows a callout for a JSON-shaped match", async () => {
+    readText.mockResolvedValueOnce('{"a":1}');
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const callout = wrapper.find(".clipboard-match");
+    expect(callout.text()).toContain("JSON");
+    expect(callout.attributes("href")).toBe("/tools/json");
+  });
+
+  it("shows a callout for a base64-shaped match", async () => {
+    readText.mockResolvedValueOnce("SGVsbG8gd29ybGQ=");
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const callout = wrapper.find(".clipboard-match");
+    expect(callout.text()).toContain("Base64");
+    expect(callout.attributes("href")).toBe("/tools/base64");
+  });
+
+  it("shows a callout for image content, suggesting Bucket, without ever reading clipboard text (AC12)", async () => {
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("image");
+    await flushPromises();
+    await flushPromises();
+
+    const callout = wrapper.find(".clipboard-match");
+    expect(callout.text()).toContain("Bucket");
+    expect(callout.text()).toContain("Image copied");
+    expect(callout.attributes("href")).toBe("/tools/bucket");
+    expect(readText).not.toHaveBeenCalled();
+  });
+
+  it("orders multiple matches by specificity, descending (AC4)", async () => {
+    // "123456789e1" is simultaneously JSON-shaped (a valid JSON number in scientific notation)
+    // and Base64-shaped (11 chars, digit+lowercase diversity clears the review-fix gate — see
+    // clipboardMatch.spec.ts) — JSON's specificity (2) must outrank Base64's (1).
+    readText.mockResolvedValueOnce("123456789e1");
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const hrefs = wrapper.findAll(".clipboard-match").map((c) => c.attributes("href"));
+    expect(hrefs).toEqual(["/tools/json", "/tools/base64"]);
+  });
+
+  it("caps the shown callouts at the configured clipboardSuggestionMaxCount (AC4)", async () => {
+    const { wrapper, pinia } = await mountSidebar();
+    const settings = useSettingsStore(pinia);
+    settings.clipboardSuggestionMaxCount = 1;
+    readText.mockResolvedValueOnce("123456789e1");
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const callouts = wrapper.findAll(".clipboard-match");
+    expect(callouts).toHaveLength(1);
+    expect(callouts[0].attributes("href")).toBe("/tools/json");
+  });
+
+  it("truncates a long preview with an ellipsis", async () => {
+    readText.mockResolvedValueOnce(`{"value":"${"x".repeat(80)}"}`);
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const preview = wrapper.find(".clipboard-match-preview").text();
+    expect(preview.endsWith("…")).toBe(true);
+    expect(preview.length).toBeLessThanOrEqual(51);
+  });
+
+  it("truncates on a Unicode character boundary rather than splitting a surrogate pair", async () => {
+    // A quoted string is itself valid JSON, so the raw clipboard text below is the previewed
+    // content directly (no JSON-wrapper offset to account for). It's built so an astral emoji
+    // (a surrogate pair — 2 UTF-16 code units, 1 Unicode code point) lands as exactly the 50th
+    // code point: a raw `.slice(0, 50)` (UTF-16-indexed) would cut the pair in half and render a
+    // lone, broken surrogate; a code-point-aware slice keeps the emoji whole.
+    const raw = `"${"x".repeat(48)}\u{1F600}tail"`;
+    readText.mockResolvedValueOnce(raw);
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const preview = wrapper.find(".clipboard-match-preview").text();
+    expect(preview.endsWith("…")).toBe(true);
+    expect(preview).not.toContain("�");
+    expect(Array.from(preview.slice(0, -1))).toHaveLength(50);
+  });
+
+  it("skips matching entirely for pathologically large clipboard content", async () => {
+    // Valid JSON (a very long digit string still parses as a number) but far past the
+    // review-fix size guard — without it, this would match the JSON tool.
+    readText.mockResolvedValueOnce("1".repeat(1_000_001));
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find(".clipboard-matches").exists()).toBe(false);
+  });
+
+  it("does no matching work at all when clipboardSuggestionMaxCount is 0 — not just hidden output (AC6)", async () => {
+    const { wrapper, pinia } = await mountSidebar();
+    const settings = useSettingsStore(pinia);
+    settings.clipboardSuggestionMaxCount = 0;
+
+    triggerClipboardChange("text");
+    triggerClipboardChange("image");
+    await flushPromises();
+    await flushPromises();
+
+    // The text branch — the only path that ever reaches a shape predicate — never runs at
+    // all. (The predicates themselves aren't spyable here: registry.ts captures their function
+    // references into a plain object literal at module-load time, before any test-body
+    // vi.spyOn call could run — an ESM binding snapshot, not a live one.)
+    expect(readText).not.toHaveBeenCalled();
+    expect(wrapper.find(".clipboard-matches").exists()).toBe(false);
+  });
+
+  it("clears an already-visible callout when clipboardSuggestionMaxCount is set to 0 mid-session", async () => {
+    readText.mockResolvedValueOnce("abc.def.ghi");
+    const { wrapper, pinia } = await mountSidebar();
+    const settings = useSettingsStore(pinia);
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+    expect(wrapper.find(".clipboard-matches").exists()).toBe(true);
+
+    await settings.setClipboardSuggestionMaxCount(0);
+    await flushPromises();
+
+    expect(wrapper.find(".clipboard-matches").exists()).toBe(false);
+  });
+
+  it("recovers cleanly when readClipboardText() rejects, without leaving a stale callout", async () => {
+    readText.mockRejectedValueOnce(new Error("clipboard read failed"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find(".clipboard-matches").exists()).toBe(false);
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("replaces the candidate list outright on a fresh copy, never stacking (AC10)", async () => {
+    readText.mockResolvedValueOnce("abc.def.ghi");
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+    expect(wrapper.find(".clipboard-match").attributes("href")).toBe("/tools/jwt");
+
+    readText.mockResolvedValueOnce('{"a":1}');
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const callouts = wrapper.findAll(".clipboard-match");
+    expect(callouts).toHaveLength(1);
+    expect(callouts[0].attributes("href")).toBe("/tools/json");
+  });
+
+  it("clears the candidate list outright when a fresh copy matches nothing (AC10)", async () => {
+    readText.mockResolvedValueOnce("abc.def.ghi");
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+    expect(wrapper.find(".clipboard-matches").exists()).toBe(true);
+
+    readText.mockResolvedValueOnce("nothing shaped here, just plain prose with spaces!!");
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find(".clipboard-matches").exists()).toBe(false);
+  });
+
+  it("announces the match count via the live region — naming the tool for a single match, count for multiple (AC7)", async () => {
+    readText.mockResolvedValueOnce("abc.def.ghi");
+    const { wrapper } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+    expect(wrapper.find("[role='status']").text()).toBe("JWT suggested from clipboard");
+
+    readText.mockResolvedValueOnce("123456789e1");
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+    expect(wrapper.find("[role='status']").text()).toBe("2 tools suggested from clipboard");
+  });
+
+  it("keeps the live region correctly set to the current count across two same-outcome clipboard changes in a row", async () => {
+    // A known aria-live gotcha: most screen readers don't re-announce identical text —
+    // announceClipboardMatchCount() guards against it with a clear-then-reset cycle. Real
+    // screen-reader re-announcement isn't assertable at this test level (per this story's own
+    // Dev Notes) — deferred to Task 10's live verification. This only confirms the final
+    // rendered state is correct both times, not the intermediate clear.
+    readText.mockResolvedValueOnce("abc.def.ghi");
+    const { wrapper } = await mountSidebar();
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+    expect(wrapper.find("[role='status']").text()).toBe("JWT suggested from clipboard");
+
+    readText.mockResolvedValueOnce("xyz.uvw.rst");
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+    expect(wrapper.find("[role='status']").text()).toBe("JWT suggested from clipboard");
+  });
+
+  it("places the callout(s) before Pinned/Recent/All in DOM order, so it's first in tab order too (AC8)", async () => {
+    readText.mockResolvedValueOnce("abc.def.ghi");
+    const { wrapper, pinia } = await mountSidebar();
+    const settings = useSettingsStore(pinia);
+    await settings.togglePinned("uuid");
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const firstChild = wrapper.find(".nav-scroll").element.firstElementChild;
+    expect(firstChild?.classList.contains("clipboard-matches")).toBe(true);
+  });
+
+  it("each callout is a real, focusable <a> that navigates on click (AC8, AC9)", async () => {
+    readText.mockResolvedValueOnce("abc.def.ghi");
+    const { wrapper, router } = await mountSidebar();
+
+    triggerClipboardChange("text");
+    await flushPromises();
+    await flushPromises();
+
+    const callout = wrapper.find(".clipboard-match");
+    expect(callout.element.tagName).toBe("A");
+
+    await callout.trigger("click");
+
+    // The target route's component is a genuine dynamic import() — resolving it takes more
+    // event-loop turns than a single flushPromises() microtask flush. Poll instead of assuming
+    // one flush is enough, same pattern CommandPalette.spec.ts already documents.
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/tools/jwt"));
+  });
+
+  it("stops listening for clipboard changes on unmount (no listener leak)", async () => {
+    const { wrapper } = await mountSidebar();
+    await flushPromises(); // let listen()'s promise resolve so the real unlisten fn is captured
+
+    wrapper.unmount();
+
+    expect(clipboardUnlisten).toHaveBeenCalledOnce();
   });
 });
