@@ -1225,9 +1225,13 @@ So that staying current never feels like the app is nagging.
 **When** the release's `latest.json` `notes` field is inspected,
 **Then** it renders orange (`accent-signature`, "Update available") by default, or red (`accent-destructive`, "Security update available") if `notes` matches a documented severity marker — this story defines and documents that marker syntax (e.g. a leading `[security]` tag), since Tauri's `latest.json` has no native severity field (confirmed via Context7 per the PRD's FR31 note).
 
-**Given** the dot,
-**When** clicked or keyboard-activated,
-**Then** the existing update-consent dialog (`UpdateDialog.vue`'s markup, reused via `DESIGN.md`'s floating-surface token) opens with version/notes and the Not Now / Install & Restart actions — same install flow as today, just no longer auto-triggered.
+**Given** the update signal,
+**When** the Settings sidebar item is clicked or keyboard-activated — its existing navigation behavior, unchanged,
+**Then** Settings opens and its Privacy section shows the pending update (version and notes) with a control that opens the existing update-consent dialog (`UpdateDialog.vue`'s markup, reused via `DESIGN.md`'s floating-surface token), carrying the Not Now / Install & Restart actions — same install flow as today, just no longer auto-triggered.
+
+*(Amended 2026-08-18, Story 7.7 — the original text made the dot itself an independently clickable/keyboard-focusable control, separate from the Settings icon it sits on. Developer live-review during story creation (before implementation) flagged this as a pattern with no real precedent — no reviewed app requires clicking a small notification-dot badge directly rather than the icon/nav item it's attached to — and one that gets materially worse in the sidebar's collapsed (icon-only) mode, where the badge sits on an already-small target. Resolved: the dot becomes a pure visual + accessible-name indicator (`aria-hidden` on the mark itself); the Settings nav item's existing click/navigation behavior is unchanged; the actionable control moves into the Settings page, in the Privacy section, co-located with the existing update-check disclosure. See `_bmad-output/implementation-artifacts/7-7-the-update-signal-becomes-a-passive-escalation-aware-dot.md` Dev Notes for full rationale. `DESIGN.md`'s Update-signal component entry and `EXPERIENCE.md`'s corresponding IA/State Patterns/Flow 3 rows still describe the original dot-is-clickable interaction — left stale for now rather than amended in the same pass, matching Story 7.6's own precedent of treating a co-equal doc-sync gap as non-blocking; epics.md is this project's authoritative source for story implementation.)*
+
+*(Amended 2026-08-18, second pass, Story 7.7 code review — a live-implementation review round (after the amendment above, before this story's review) moved the pending-update banner out of the Privacy section entirely: it now renders at the top of the Settings page, directly under the `<h1>`, above Appearance/Data/Privacy, so a pending update — especially a security one — is the first thing seen rather than something a user has to scroll past two sections to find. The Privacy section itself is unchanged and does not duplicate the banner. This amendment corrects the AC text above ("its Privacy section shows the pending update") to match; the gap between the two was caught by this story's code review, not by the live-review round itself. See `src/shell/SettingsView.vue`'s `.update-banner` CSS comment and the story file's Dev Notes "Post-implementation UX correction" for the original rationale.)*
 
 **Given** "Not Now" is clicked,
 **When** the dialog closes,
@@ -1244,6 +1248,8 @@ So that staying current never feels like the app is nagging.
 **Given** the dot's accessible name,
 **When** read by assistive tech,
 **Then** it changes between "Update available" and "Security update available" — legible through assistive tech, not just visually.
+
+*(Amended 2026-08-18, alongside AC3's amendment above — since the dot is no longer an independent focusable control, this accessible-name change is exposed via the Settings nav item's own accessible name instead, e.g. an appended visually-hidden text node, so assistive-tech users still learn the state without a second interactive element being introduced.)*
 
 ### Story 7.8: Clipboard-suggestion surface
 

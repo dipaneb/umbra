@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useSettingsStore, type ThemeOverride } from "../stores/settings";
+import { getUpdateSeverity, getUpdateSeverityLabel, stripSeverityMarker } from "./updateCheck";
+import { openDialog, pendingUpdate } from "./updateSignal";
+import AppButton from "../components/AppButton.vue";
 
 const settings = useSettingsStore();
+const updateSeverity = computed(() => getUpdateSeverity(pendingUpdate.value));
+const updateSeverityLabel = computed(() => getUpdateSeverityLabel(updateSeverity.value));
 const persistedEntries = ref<[string, unknown][]>([]);
 
 // Local-only, not persisted: a one-off reveal for the raw stored-data list,
@@ -72,6 +77,32 @@ async function onClearAll(): Promise<void> {
     <h1 id="settings-heading">
       Settings
     </h1>
+
+    <div
+      v-if="updateSeverity !== 'none' && pendingUpdate"
+      class="update-banner"
+    >
+      <h2 class="update-banner-heading">
+        {{ updateSeverityLabel }}
+      </h2>
+      <p class="update-banner-version">
+        Version {{ pendingUpdate.version }}
+      </p>
+      <p
+        v-if="pendingUpdate.body"
+        class="update-banner-notes"
+      >
+        {{ stripSeverityMarker(pendingUpdate.body) }}
+      </p>
+      <AppButton
+        type="button"
+        variant="default"
+        class="update-banner-action"
+        @click="openDialog"
+      >
+        View update…
+      </AppButton>
+    </div>
 
     <div class="settings-section">
       <h2 class="section-heading">
@@ -246,6 +277,34 @@ async function onClearAll(): Promise<void> {
 
 .entries-empty {
   color: var(--color-text-secondary);
+  margin-top: var(--spacing-4);
+}
+
+/* Sits above every settings section, not tucked inside Privacy at the
+   bottom of the page — a pending update (especially a security one) is
+   more important than any of the settings below it, so it needs to be the
+   first thing seen, not something a user has to scroll past two sections
+   to find. Reuses the same divider convention `.settings-section +
+   .settings-section` uses below, just applied manually since this block
+   isn't itself a `.settings-section`. */
+.update-banner {
+  margin-bottom: var(--spacing-6);
+  padding-bottom: var(--spacing-6);
+  border-bottom: 1px solid var(--color-border-hairline);
+}
+
+.update-banner-heading {
+  margin: 0;
+  font-weight: var(--font-label-weight);
+}
+
+.update-banner-version,
+.update-banner-notes {
+  margin: 0.3em 0 0;
+  color: var(--color-text-secondary);
+}
+
+.update-banner-action {
   margin-top: var(--spacing-4);
 }
 
