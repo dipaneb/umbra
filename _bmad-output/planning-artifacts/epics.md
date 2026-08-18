@@ -1188,9 +1188,11 @@ So that persistence stays fully transparent as more of it accumulates.
 
 **Given** the Settings pane,
 **When** restructured,
-**Then** it's sectioned — Privacy first (existing update-check disclosure stays), then Appearance (the dark-mode override from Story 7.2 gets its permanent, token-styled home here; the pinned/recent visibility toggles from Story 7.5 also live here), then a Persisted Data section enumerating every `shell.*`/`<tool-id>.*` key.
+**Then** it's sectioned — Appearance first (the dark-mode override from Story 7.2 gets its permanent, token-styled home here; the pinned/recent visibility toggles from Story 7.5 also live here), then Data (the all-clear action, always visible; the enumerated `shell.*`/`<tool-id>.*` key list stays hidden behind a "Show stored data" disclosure, off by default), then Privacy last (existing update-check disclosure, unchanged).
 
-**Given** each key in Persisted Data,
+*(Amended 2026-08-17, Story 7.6 — the implementing session's first draft followed this AC's original text literally: Privacy first, and the full key/value list always visible in a "Persisted Data" section. Developer live-review found both real, end-user-facing gaps: Privacy-first buries the sections a user actually interacts with behind text almost no one reads, and showing every persisted key/value as raw `key: JSON` pairs by default exposes internal implementation detail (that settings are stored as JSON at all) to users who never asked for it — genuinely useful only to the developer debugging the app. Resolved by demoting Privacy to last, and gating the enumerated list behind a new, unpersisted "Show stored data" disclosure toggle that defaults closed; "Clear all stored data" stays unconditionally visible, since erasing everything is a normal end-user action, not a developer one. A locally-scoped `settings.json`-file-editing alternative was considered and explicitly rejected — Umbra isn't an IDE/file-editing app, and a UI toggle is simpler and doesn't require the app to gain file-opening affordances it doesn't otherwise have.)*
+
+**Given** each key listed under Data's "Show stored data" disclosure,
 **When** listed,
 **Then** it has its own reset action alongside its value — per-item reset, additive to the existing all-clear action, not replacing it.
 

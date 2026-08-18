@@ -41,7 +41,66 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-17
+last_updated: 2026-08-18
+# note: story 7-6 moved to done 2026-08-18 (code review complete via bmad-code-review, diff
+# e3dfd05..HEAD: 1 decision-needed dismissed (AC1's self-amendment flagged as a process
+# observation, accepted as expected for a solo-dev project with no separate PM/UX role), 7
+# patches applied and re-verified green, 4 items deferred to deferred-work.md, 11 dismissed
+# after verification (mostly deliberate, already-documented design choices the reviewing
+# subagents couldn't see without this story's own Dev Notes -- e.g. the per-item reset button's
+# identical visible label across rows, matched pixel-for-pixel against the locked mockup; the
+# unvalidated resetKey() key argument, explicitly covered by its own "unrecognized key" test).
+# Patches: resetKey()'s shell.windowGeometry case now cancels a pending debounced write before
+# resetting (mirroring clearAll()'s existing pattern) -- a real gap where a queued write could
+# silently re-persist the old geometry after a reset; added one resetKey() test per previously
+# uncovered key (7 of 9 had none); corrected two stale documentation claims (this story file's
+# Task 0 branch-origin claim, and sprint-status.yaml's own predates-the-correction-round test
+# count) with dated notes rather than silent rewrites; reworded epics.md's Story 7.6 AC2 to drop
+# its stale "Persisted Data" section-name reference; broadened the Data section's description so
+# it doesn't read as an exhaustive list when it wasn't one; added test coverage for the Clear-all
+# button's default (disclosure-closed) state. Full verification green after patches: 324/324 Vue
+# tests (316 + 8 net new), eslint --max-warnings 0, vue-tsc --noEmit clean.)
+# note: story 7-6 moved to review 2026-08-17 (implementation complete: Tasks 0-5 fully done;
+# Task 6's manual pnpm tauri dev GUI smoke check partially performed live via an already-running
+# dev server opened directly in Chrome (mirroring Stories 7.4/7.5's own precedent) -- confirmed
+# live in both light and dark theme: the three-section layout with dividers/token-styled
+# headings, AC4's restore-default flip (restoreEnabled unchecked on load), and clearAll()'s
+# in-memory reset all render/behave correctly, zero console errors beyond the pre-existing,
+# already-documented no-Tauri-IPC-bridge limitation (same one Stories 7.4/7.5 hit for
+# recordLastTool/DropZone/the update checker -- backingStore never initializes in a plain
+# browser tab, so plugin-store's load() throws and entries() always returns [] here). Because of
+# that, the Persisted Data list and per-item resetKey() disk-delete behavior couldn't be
+# exercised live -- covered instead by three new resetKey() unit tests and a new per-item-reset
+# UI test, deferred to the developer to confirm in the real packaged Tauri window. Re-viewed
+# Screen 03 of the locked mockup directly (pixel-level) before implementing Task 3, per the
+# story's own explicit instruction -- confirmed it does show two distinct button strings ("Clear
+# all stored data" red/destructive, "Clear stored data" default/outlined per-item), so
+# implemented the recommended two-string split as-is, resolving the story's one disclosed-but-
+# not-fully-settled item. Found and fixed a real, non-obvious ripple effect of the AC4 default
+# flip beyond Task 5's literal file list: restoreEnabled defaulting to false broke three
+# pre-existing tests in src/shell/windowGeometry.spec.ts and two in settings.spec.ts that
+# implicitly relied on the old true default to exercise "restore enabled" behavior -- fixed by
+# explicitly enabling restore first in each, since that's what they were actually testing. Also
+# hit and fixed a vue-test-utils gotcha: setChecked() is a documented no-op when the target value
+# already equals the checkbox's current DOM state, so the pre-existing "toggling restore
+# checkbox" test's setValue(false) became a no-op once unchecked became the default -- fixed by
+# seeding the stub's initial state to true so the test exercises a real transition. Full
+# verification green: 315/315 Vue tests (310 baseline + 5 net new: 1 existing-install
+# preservation test, 3 resetKey() tests, 1 per-item-reset UI test), eslint --max-warnings 0
+# clean, vue-tsc --noEmit && vite build clean, git status confirms zero src-tauri/ files
+# touched.)
+# correction (code review, 2026-08-18): this note's 315/315 count predates the
+# post-implementation UX correction round noted below, which added one further test
+# (entries-hidden-by-default) and landed at 316/316 -- matching the story file's own
+# later Completion Notes count, independently re-confirmed via `pnpm vitest run`.
+# note: story 7-6 moved to in-progress 2026-08-17 (branched
+# feat/story-7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip from
+# docs/story-7-6-create-story at 1acdbd9, not from main directly -- the story file itself only
+# existed on that docs branch (one commit ahead of main/origin main at e3dfd05, which matches
+# the story's own recorded baseline_commit exactly) and had not yet been merged. Branching from
+# the docs branch's tip carries the story file forward without losing it, while still being
+# byte-for-byte main@e3dfd05 plus that one story-file commit -- same pattern as every prior
+# Epic 7 story's analogous branch-from-docs-tip resolution.
 # note: story 7-6 created 2026-08-17 (developer explicitly chose to continue Epic 7's
 # top-to-bottom order over strict sprint-status.yaml auto-discovery, which would have picked
 # 6-3 next -- same explicit-continuation pattern as every Epic 7 story since 7-2; epic-7 stays
@@ -972,7 +1031,7 @@ development_status:
   7-3-grid-home-replaces-the-placeholder-empty-state: done
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: done
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: done
-  7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: ready-for-dev
+  7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: done
   7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: backlog
   7-8-clipboard-suggestion-surface: backlog
   epic-7-retrospective: optional

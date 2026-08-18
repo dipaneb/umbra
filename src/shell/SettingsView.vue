@@ -5,6 +5,11 @@ import { useSettingsStore, type ThemeOverride } from "../stores/settings";
 const settings = useSettingsStore();
 const persistedEntries = ref<[string, unknown][]>([]);
 
+// Local-only, not persisted: a one-off reveal for the raw stored-data list,
+// not a preference worth remembering between visits. Defaults closed so a
+// regular user never sees key/value internals unless they go looking.
+const showAdvanced = ref(false);
+
 async function refreshEntries(): Promise<void> {
   persistedEntries.value = await settings.entries();
 }
@@ -39,6 +44,19 @@ function onToggleRecentVisible(event: Event): void {
   });
 }
 
+function onToggleAdvanced(event: Event): void {
+  showAdvanced.value = (event.target as HTMLInputElement).checked;
+}
+
+async function onResetKey(key: string): Promise<void> {
+  try {
+    await settings.resetKey(key);
+    await refreshEntries();
+  } catch (error) {
+    console.error(`settings: failed to reset ${key}`, error);
+  }
+}
+
 async function onClearAll(): Promise<void> {
   try {
     await settings.clearAll();
@@ -55,113 +73,219 @@ async function onClearAll(): Promise<void> {
       Settings
     </h1>
 
-    <h2>Privacy</h2>
-    <p>
-      Umbra makes zero network calls except one, explicitly disclosed: the automatic
-      check for app updates. Installing an update always requires your explicit
-      confirmation first — nothing installs silently. There is no telemetry anywhere
-      in the app.
-    </p>
+    <div class="settings-section">
+      <h2 class="section-heading">
+        Appearance
+      </h2>
 
-    <label class="restore-toggle">
-      <input
-        type="checkbox"
-        aria-label="Restore last tool and window position on launch"
-        :checked="settings.restoreEnabled"
-        @change="onToggleRestore"
+      <label class="settings-toggle">
+        <input
+          type="checkbox"
+          aria-label="Restore last tool and window position on launch"
+          :checked="settings.restoreEnabled"
+          @change="onToggleRestore"
+        >
+        Restore last tool and window position on launch
+      </label>
+
+      <label class="settings-toggle">
+        Theme
+        <select
+          aria-label="Theme"
+          :value="settings.themeOverride"
+          @change="onChangeTheme"
+        >
+          <option value="system">
+            System
+          </option>
+          <option value="light">
+            Light
+          </option>
+          <option value="dark">
+            Dark
+          </option>
+        </select>
+      </label>
+
+      <label class="settings-toggle">
+        <input
+          type="checkbox"
+          aria-label="Show pinned tools in the sidebar"
+          :checked="settings.pinnedToolsVisible"
+          @change="onTogglePinnedVisible"
+        >
+        Show pinned tools
+      </label>
+
+      <label class="settings-toggle">
+        <input
+          type="checkbox"
+          aria-label="Show recent tools in the sidebar"
+          :checked="settings.recentToolsVisible"
+          @change="onToggleRecentVisible"
+        >
+        Show recent tools
+      </label>
+    </div>
+
+    <div class="settings-section">
+      <h2 class="section-heading">
+        Data
+      </h2>
+      <p>
+        Umbra saves your preferences and recent activity on this device,
+        including layout, theme, and recently used tools.
+      </p>
+
+      <button
+        type="button"
+        class="clear-all-button"
+        aria-label="Clear all stored data"
+        @click="onClearAll"
       >
-      Restore last tool and window position on launch
-    </label>
+        Clear all stored data
+      </button>
 
-    <!-- Minimal mechanism only — this control's sectioned, token-styled home
-         is Story 7.6's job, not this one's. -->
-    <label class="theme-toggle">
-      Theme
-      <select
-        aria-label="Theme"
-        :value="settings.themeOverride"
-        @change="onChangeTheme"
+      <label class="settings-toggle advanced-toggle">
+        <input
+          type="checkbox"
+          aria-label="Show stored data"
+          :checked="showAdvanced"
+          @change="onToggleAdvanced"
+        >
+        Show stored data
+      </label>
+
+      <ul
+        v-if="showAdvanced && persistedEntries.length"
+        class="entries"
       >
-        <option value="system">
-          System
-        </option>
-        <option value="light">
-          Light
-        </option>
-        <option value="dark">
-          Dark
-        </option>
-      </select>
-    </label>
-
-    <!-- Minimal mechanism only — these controls' sectioned, token-styled home
-         is Story 7.6's job, not this one's. -->
-    <label class="pinned-visible-toggle">
-      <input
-        type="checkbox"
-        aria-label="Show pinned tools in the sidebar"
-        :checked="settings.pinnedToolsVisible"
-        @change="onTogglePinnedVisible"
+        <li
+          v-for="[key, value] in persistedEntries"
+          :key="key"
+        >
+          <span class="entry-value">
+            <code>{{ key }}</code>: {{ JSON.stringify(value) }}
+          </span>
+          <button
+            type="button"
+            class="reset-button"
+            :aria-label="`Reset ${key}`"
+            @click="onResetKey(key)"
+          >
+            Clear stored data
+          </button>
+        </li>
+      </ul>
+      <p
+        v-else-if="showAdvanced"
+        class="entries-empty"
       >
-      Show pinned tools
-    </label>
+        Nothing is currently stored.
+      </p>
+    </div>
 
-    <label class="recent-visible-toggle">
-      <input
-        type="checkbox"
-        aria-label="Show recent tools in the sidebar"
-        :checked="settings.recentToolsVisible"
-        @change="onToggleRecentVisible"
-      >
-      Show recent tools
-    </label>
-
-    <h2>Persisted data</h2>
-    <ul
-      v-if="persistedEntries.length"
-      class="entries"
-    >
-      <li
-        v-for="[key, value] in persistedEntries"
-        :key="key"
-      >
-        <code>{{ key }}</code>: {{ JSON.stringify(value) }}
-      </li>
-    </ul>
-    <p v-else>
-      Nothing is currently persisted.
-    </p>
-
-    <button
-      type="button"
-      aria-label="Clear all persisted settings"
-      @click="onClearAll"
-    >
-      Clear all
-    </button>
+    <div class="settings-section">
+      <h2 class="section-heading">
+        Privacy
+      </h2>
+      <p>
+        The only network call Umbra makes is an automatic check for updates.
+        Nothing installs without your confirmation, and there's no telemetry.
+      </p>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.restore-toggle,
-.theme-toggle,
-.pinned-visible-toggle,
-.recent-visible-toggle {
+.settings-section + .settings-section {
+  margin-top: var(--spacing-6);
+  padding-top: var(--spacing-6);
+  border-top: 1px solid var(--color-border-hairline);
+}
+
+.section-heading {
+  margin: 0 0 var(--spacing-4);
+  font-size: 0.75em;
+  font-weight: var(--font-label-weight);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-toggle {
   display: flex;
   align-items: center;
   gap: 0.5em;
   margin: 1em 0;
 }
 
+.advanced-toggle {
+  margin-top: var(--spacing-4);
+  color: var(--color-text-secondary);
+  font-size: 0.9em;
+}
+
 .entries {
   list-style: none;
-  margin: 0;
+  margin: var(--spacing-4) 0 0;
   padding: 0;
 }
 
 .entries li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
   padding: 0.3em 0;
+}
+
+.entry-value {
   font-family: monospace;
+}
+
+.entries-empty {
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-4);
+}
+
+.reset-button,
+.clear-all-button {
+  border-radius: var(--radius-default);
+  padding: 0.4em 0.9em;
+  font-family: inherit;
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  cursor: pointer;
+}
+
+/* Default/outlined — the workhorse treatment for the low-stakes, single-key
+   reset action, kept visually distinct from the all-clear button so two
+   differently-scoped destructive-ish actions don't read identically. No
+   outline-button spec exists in DESIGN.md; this borrows its border from the
+   licensed-neutral text-tertiary role rather than inventing a new color. */
+.reset-button {
+  background: transparent;
+  border: 1px solid var(--color-text-tertiary);
+  color: var(--color-text-primary);
+}
+
+.reset-button:hover {
+  background: var(--color-bg-surface-raised);
+}
+
+/* Destructive — reserved for the high-consequence, hard-to-reverse all-clear
+   action (DESIGN.md's own worked example for this exact button, INV-3).
+   White-on-fill is a known, deliberately accepted AA trade-off in dark mode
+   (DESIGN.md Colors) — not fixed here. */
+.clear-all-button {
+  background: var(--color-accent-destructive);
+  border: none;
+  color: white;
+}
+
+.clear-all-button:hover {
+  opacity: 0.9;
 }
 
 input:focus-visible,

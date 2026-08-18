@@ -22,6 +22,7 @@ function createFakeStore() {
       data.clear();
       return Promise.resolve();
     }),
+    delete: vi.fn((key: string) => Promise.resolve(data.delete(key))),
   };
 }
 
@@ -46,7 +47,16 @@ afterEach(() => {
 });
 
 describe("useSettingsStore", () => {
-  it("defaults restoreEnabled to true when the key is absent", async () => {
+  it("defaults restoreEnabled to false when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.restoreEnabled).toBe(false);
+  });
+
+  it("preserves an existing install's restoreEnabled value when the key is already persisted", async () => {
+    fakeStore.set("shell.restoreSessionEnabled", true);
     const settings = useSettingsStore();
 
     await settings.init();
@@ -57,6 +67,9 @@ describe("useSettingsStore", () => {
   it("records the last tool and persists it when restore is enabled", async () => {
     const settings = useSettingsStore();
     await settings.init();
+    await settings.setRestoreEnabled(true);
+    fakeStore.set.mockClear();
+    fakeStore.save.mockClear();
 
     await settings.recordLastTool("json");
 
@@ -80,6 +93,9 @@ describe("useSettingsStore", () => {
   it("debounces and persists window geometry when restore is enabled", async () => {
     const settings = useSettingsStore();
     await settings.init();
+    await settings.setRestoreEnabled(true);
+    fakeStore.set.mockClear();
+    fakeStore.save.mockClear();
 
     settings.recordWindowGeometry({ x: 1, y: 2, width: 800, height: 600 });
     settings.recordWindowGeometry({ x: 3, y: 4, width: 810, height: 610 });
@@ -108,16 +124,16 @@ describe("useSettingsStore", () => {
     expect(fakeStore.set).not.toHaveBeenCalled();
   });
 
-  it("clears all persisted state and resets restoreEnabled to true", async () => {
+  it("clears all persisted state and resets restoreEnabled to false", async () => {
     const settings = useSettingsStore();
     await settings.init();
-    await settings.setRestoreEnabled(false);
+    await settings.setRestoreEnabled(true);
 
     await settings.clearAll();
 
     expect(fakeStore.clear).toHaveBeenCalled();
     expect(fakeStore.save).toHaveBeenCalled();
-    expect(settings.restoreEnabled).toBe(true);
+    expect(settings.restoreEnabled).toBe(false);
   });
 
   it("cancels a pending window geometry write when restore is toggled off mid-debounce", async () => {
@@ -380,13 +396,142 @@ describe("useSettingsStore", () => {
     expect(settings.recentToolsVisible).toBe(true);
   });
 
+  it("resetKey resets a boolean key to its default, deletes it from disk, and it is absent from entries()", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setSidebarCollapsed(true);
+
+    await settings.resetKey("shell.sidebarCollapsed");
+
+    expect(settings.sidebarCollapsed).toBe(false);
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.sidebarCollapsed");
+    expect(fakeStore.save).toHaveBeenCalled();
+    await expect(settings.entries()).resolves.not.toContainEqual([
+      "shell.sidebarCollapsed",
+      expect.anything(),
+    ]);
+  });
+
+  it("resetKey resets an array key to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.togglePinned("json");
+
+    await settings.resetKey("shell.pinnedTools");
+
+    expect(settings.pinnedTools).toEqual([]);
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.pinnedTools");
+    await expect(settings.entries()).resolves.not.toContainEqual([
+      "shell.pinnedTools",
+      expect.anything(),
+    ]);
+  });
+
+  it("resetKey on an unrecognized key deletes it from disk without throwing", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    fakeStore.set("json.someFutureKey", true);
+
+    await expect(
+      settings.resetKey("json.someFutureKey"),
+    ).resolves.toBeUndefined();
+    expect(fakeStore.delete).toHaveBeenCalledWith("json.someFutureKey");
+  });
+
+  it("resetKey resets restoreEnabled to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setRestoreEnabled(true);
+
+    await settings.resetKey("shell.restoreSessionEnabled");
+
+    expect(settings.restoreEnabled).toBe(false);
+    expect(fakeStore.delete).toHaveBeenCalledWith(
+      "shell.restoreSessionEnabled",
+    );
+  });
+
+  it("resetKey resets lastTool to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setRestoreEnabled(true);
+    await settings.recordLastTool("json");
+
+    await settings.resetKey("shell.lastTool");
+
+    expect(settings.lastTool).toBeUndefined();
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.lastTool");
+  });
+
+  it("resetKey resets themeOverride to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setThemeOverride("dark");
+
+    await settings.resetKey("shell.themeOverride");
+
+    expect(settings.themeOverride).toBe("system");
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.themeOverride");
+  });
+
+  it("resetKey resets recentTools to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.recordRecentTool("json");
+
+    await settings.resetKey("shell.recentTools");
+
+    expect(settings.recentTools).toEqual([]);
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.recentTools");
+  });
+
+  it("resetKey resets pinnedToolsVisible to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setPinnedToolsVisible(false);
+
+    await settings.resetKey("shell.pinnedToolsVisible");
+
+    expect(settings.pinnedToolsVisible).toBe(true);
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.pinnedToolsVisible");
+  });
+
+  it("resetKey resets recentToolsVisible to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setRecentToolsVisible(false);
+
+    await settings.resetKey("shell.recentToolsVisible");
+
+    expect(settings.recentToolsVisible).toBe(true);
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.recentToolsVisible");
+  });
+
+  it("resetKey on shell.windowGeometry cancels a pending debounced write so it doesn't re-persist after reset", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setRestoreEnabled(true);
+    fakeStore.set.mockClear();
+    settings.recordWindowGeometry({ x: 1, y: 2, width: 800, height: 600 });
+
+    await settings.resetKey("shell.windowGeometry");
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(settings.windowGeometry).toBeUndefined();
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.windowGeometry");
+    expect(fakeStore.set).not.toHaveBeenCalledWith(
+      "shell.windowGeometry",
+      expect.anything(),
+    );
+  });
+
   it("degrades to defaults and does not throw when settings.json fails to load", async () => {
     load.mockRejectedValueOnce(new Error("corrupt settings.json"));
     const settings = useSettingsStore();
 
     await settings.init();
 
-    expect(settings.restoreEnabled).toBe(true);
+    expect(settings.restoreEnabled).toBe(false);
     await expect(settings.recordLastTool("json")).resolves.toBeUndefined();
     await expect(settings.entries()).resolves.toEqual([]);
     expect(fakeStore.set).not.toHaveBeenCalled();
