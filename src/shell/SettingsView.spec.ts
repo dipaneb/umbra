@@ -1,8 +1,30 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import SettingsView from "./SettingsView.vue";
 import { useSettingsStore } from "../stores/settings";
+import {
+  __setDialogOpenForTest,
+  __setPendingUpdateForTest,
+  dialogOpen,
+} from "./updateSignal";
+import type { Update } from "./updateCheck";
+
+function fakeUpdate(overrides: Record<string, unknown> = {}) {
+  return {
+    version: "1.1.0",
+    currentVersion: "1.0.0",
+    date: "2026-08-09",
+    body: "Bug fixes and improvements.",
+    close: () => Promise.resolve(),
+    ...overrides,
+  } as unknown as Update;
+}
+
+afterEach(() => {
+  __setPendingUpdateForTest(null);
+  __setDialogOpenForTest(false);
+});
 
 async function openAdvanced(wrapper: ReturnType<typeof mount>): Promise<void> {
   await wrapper.find('input[aria-label="Show stored data"]').setValue(true);
@@ -181,5 +203,51 @@ describe("SettingsView", () => {
 
     expect(settings.resetKey).toHaveBeenCalledWith("shell.lastTool");
     expect(wrapper.findAll(".entries li")).toHaveLength(1);
+  });
+
+  it("omits the update banner when no update is pending", async () => {
+    stubbedSettingsStore();
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    expect(wrapper.find(".update-banner").exists()).toBe(false);
+  });
+
+  it("shows the update banner with the routine copy, version, and notes for an ordinary release (AC3)", async () => {
+    stubbedSettingsStore();
+    __setPendingUpdateForTest(fakeUpdate());
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    const banner = wrapper.find(".update-banner");
+    expect(banner.exists()).toBe(true);
+    expect(banner.text()).toContain("Update available");
+    expect(banner.text()).not.toContain("Security update available");
+    expect(banner.text()).toContain("1.1.0");
+    expect(banner.text()).toContain("Bug fixes and improvements.");
+  });
+
+  it("shows the update banner with the security copy for a [security]-marked release, marker stripped from the notes (AC3)", async () => {
+    stubbedSettingsStore();
+    __setPendingUpdateForTest(fakeUpdate({ body: "[security] Fixes CVE-2026-0001." }));
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    const banner = wrapper.find(".update-banner");
+    expect(banner.text()).toContain("Security update available");
+    expect(banner.text()).toContain("Fixes CVE-2026-0001.");
+    expect(banner.text()).not.toContain("[security]");
+  });
+
+  it("clicking the update banner's button opens the shared update dialog (AC3)", async () => {
+    stubbedSettingsStore();
+    __setPendingUpdateForTest(fakeUpdate());
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    expect(dialogOpen.value).toBe(false);
+    await wrapper.find(".update-banner button").trigger("click");
+
+    expect(dialogOpen.value).toBe(true);
   });
 });

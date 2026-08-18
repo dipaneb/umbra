@@ -120,14 +120,39 @@ This is the part most likely to be misread, so it's stated precisely:
 in the list must clear.
 
 **Separately**, the app's automatic update check fires **on launch, without any user
-action** (`UpdateDialog.vue`'s `onMounted` hook calls `checkForUpdate()` unconditionally
-— see `src/shell/updateCheck.ts`). This is the one permitted exception the acceptance
+action** (`App.vue`'s `onMounted` hook calls `runCheck()` unconditionally — see
+`src/shell/updateSignal.ts`, which wraps `checkForUpdate()` in `src/shell/updateCheck.ts`).
+This is the one permitted exception the acceptance
 criteria refer to as "the user-confirmed update check" — but "user-confirmed" describes
 the *install* step specifically (installation proceeds only after the user explicitly
 clicks Install in the update dialog), **not** the check call itself, which is disclosed
 (in `README.md` and Settings) rather than consent-gated. Don't fail the tour by
 expecting the check itself to wait for a click, and don't count its automatic outbound
 connection as a violation — it's the one documented, disclosed exception, not a leak.
+
+## Tagging a security release
+
+The update signal (Story 7.7) shows a red dot and "Security update available" instead
+of the routine orange one when a release is security-urgent — but Tauri's `latest.json`
+has no native severity field, so there's nothing that flags this automatically. It's a
+**manual, human judgment call made when cutting the release**. There is no automated
+CVE/vulnerability scan wired into this pipeline, and building one is out of scope here.
+
+Whoever cuts the release prefixes the GitHub Release's notes — which flow through to
+`latest.json`'s `notes` field, and from there to the app's `Update.body`
+(`src/shell/updateCheck.ts`) — with a leading, case-insensitive `[security]` tag, e.g.:
+
+```
+[security] Fixes an issue where...
+```
+
+The tag must be the very first thing in the notes (`getUpdateSeverity()` only matches
+at the start, deliberately, so an incidental mid-sentence mention of "security" can't
+falsely escalate a routine release).
+
+**If it's omitted by mistake, the release is treated as routine** — there's no automatic
+fallback detection to catch a missed tag. Getting this right is on the person cutting
+the release, the same trust model as the rest of this manual checklist.
 
 ## Recording the result
 
@@ -171,3 +196,8 @@ otherwise.
 durable, repeatable release-gate procedure NFR1 and AD-12 call for — see
 `_bmad-output/implementation-artifacts/5-3-the-privacy-promise-proven-at-every-release.md`
 for the story that introduced it.*
+
+*The "Tagging a security release" section was added during Story 7.7's implementation
+(2026-08-18), which resolved PRD FR31's then-open marker-syntax and documentation-step
+questions — see
+`_bmad-output/implementation-artifacts/7-7-the-update-signal-becomes-a-passive-escalation-aware-dot.md`.*

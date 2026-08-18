@@ -507,6 +507,64 @@ describe("useSettingsStore", () => {
     expect(fakeStore.delete).toHaveBeenCalledWith("shell.recentToolsVisible");
   });
 
+  it("defaults updateSignalDismissedVersion to undefined when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.updateSignalDismissedVersion).toBeUndefined();
+  });
+
+  it("preserves an existing install's updateSignalDismissedVersion value when the key is already persisted", async () => {
+    fakeStore.set("shell.updateSignal.dismissedVersion", "1.1.0");
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.updateSignalDismissedVersion).toBe("1.1.0");
+  });
+
+  it("setUpdateSignalDismissed persists and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setUpdateSignalDismissed("1.1.0");
+
+    expect(settings.updateSignalDismissedVersion).toBe("1.1.0");
+    expect(fakeStore.set).toHaveBeenCalledWith(
+      "shell.updateSignal.dismissedVersion",
+      "1.1.0",
+    );
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("resetKey resets updateSignalDismissedVersion to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setUpdateSignalDismissed("1.1.0");
+
+    await settings.resetKey("shell.updateSignal.dismissedVersion");
+
+    expect(settings.updateSignalDismissedVersion).toBeUndefined();
+    expect(fakeStore.delete).toHaveBeenCalledWith(
+      "shell.updateSignal.dismissedVersion",
+    );
+    await expect(settings.entries()).resolves.not.toContainEqual([
+      "shell.updateSignal.dismissedVersion",
+      expect.anything(),
+    ]);
+  });
+
+  it("clearAll resets updateSignalDismissedVersion back to undefined", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setUpdateSignalDismissed("1.1.0");
+
+    await settings.clearAll();
+
+    expect(settings.updateSignalDismissedVersion).toBeUndefined();
+  });
+
   it("resetKey on shell.windowGeometry cancels a pending debounced write so it doesn't re-persist after reset", async () => {
     const settings = useSettingsStore();
     await settings.init();

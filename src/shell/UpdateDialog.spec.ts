@@ -1,22 +1,22 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import UpdateDialog from "./UpdateDialog.vue";
+import { useSettingsStore } from "../stores/settings";
+import { __setDialogOpenForTest, __setPendingUpdateForTest, pendingUpdate } from "./updateSignal";
+import type { Update } from "./updateCheck";
 
-const checkForUpdate = vi.fn();
 const installUpdate = vi.fn();
 
-vi.mock("./updateCheck", () => ({
-  checkForUpdate: () => checkForUpdate(),
-  installUpdate: (update: unknown) => installUpdate(update),
-}));
+vi.mock("./updateCheck", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./updateCheck")>();
+  return {
+    ...actual,
+    installUpdate: (update: unknown) => installUpdate(update),
+  };
+});
 
 let wrapper: VueWrapper | undefined;
-
-afterEach(() => {
-  wrapper?.unmount();
-  wrapper = undefined;
-  vi.clearAllMocks();
-});
 
 function fakeUpdate(overrides: Record<string, unknown> = {}) {
   return {
@@ -26,7 +26,7 @@ function fakeUpdate(overrides: Record<string, unknown> = {}) {
     body: "Bug fixes and improvements.",
     close: vi.fn().mockResolvedValue(undefined),
     ...overrides,
-  };
+  } as unknown as Update;
 }
 
 function dispatch(init: KeyboardEventInit) {
@@ -43,9 +43,23 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+beforeEach(() => {
+  setActivePinia(createPinia());
+  const settings = useSettingsStore();
+  settings.setUpdateSignalDismissed = vi.fn().mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  wrapper?.unmount();
+  wrapper = undefined;
+  vi.clearAllMocks();
+  __setPendingUpdateForTest(null);
+  __setDialogOpenForTest(false);
+});
+
 describe("UpdateDialog", () => {
-  it("renders nothing when no update is available (AC4)", async () => {
-    checkForUpdate.mockResolvedValueOnce(null);
+  it("renders nothing when the dialog hasn't been opened, even with a pending update", async () => {
+    __setPendingUpdateForTest(fakeUpdate());
 
     wrapper = mount(UpdateDialog, { attachTo: document.body });
     await flushPromises();
@@ -53,20 +67,18 @@ describe("UpdateDialog", () => {
     expect(wrapper.find("[role='dialog']").exists()).toBe(false);
   });
 
-  it("renders nothing when the check rejects (offline/unreachable)", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    checkForUpdate.mockRejectedValueOnce(new Error("network error"));
+  it("renders nothing when opened with no pending update (defensive)", async () => {
+    __setDialogOpenForTest(true);
 
     wrapper = mount(UpdateDialog, { attachTo: document.body });
     await flushPromises();
 
     expect(wrapper.find("[role='dialog']").exists()).toBe(false);
-    expect(consoleError).toHaveBeenCalled();
-    consoleError.mockRestore();
   });
 
-  it("renders version, release date, and notes once an update is found (AC1)", async () => {
-    checkForUpdate.mockResolvedValueOnce(fakeUpdate());
+  it("renders version, release date, and notes once externally opened (AC1, AC3)", async () => {
+    __setPendingUpdateForTest(fakeUpdate());
+    __setDialogOpenForTest(true);
 
     wrapper = mount(UpdateDialog, { attachTo: document.body });
     await flushPromises();
@@ -79,9 +91,22 @@ describe("UpdateDialog", () => {
     expect(dialog.text()).toContain("Bug fixes and improvements.");
   });
 
+  it("strips a leading [security] marker from the displayed release notes", async () => {
+    __setPendingUpdateForTest(fakeUpdate({ body: "[security] Fixes CVE-2026-0001." }));
+    __setDialogOpenForTest(true);
+
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    const dialog = wrapper.find("[role='dialog']");
+    expect(dialog.text()).toContain("Fixes CVE-2026-0001.");
+    expect(dialog.text()).not.toContain("[security]");
+  });
+
   it("calls installUpdate with the update when 'Install & Restart' is clicked (AC1)", async () => {
     const update = fakeUpdate();
-    checkForUpdate.mockResolvedValueOnce(update);
+    __setPendingUpdateForTest(update);
+    __setDialogOpenForTest(true);
     installUpdate.mockResolvedValueOnce(undefined);
 
     wrapper = mount(UpdateDialog, { attachTo: document.body });
@@ -95,8 +120,8 @@ describe("UpdateDialog", () => {
   });
 
   it("disables both buttons while install is in flight, and re-clicking 'Install' does not call it twice", async () => {
-    const update = fakeUpdate();
-    checkForUpdate.mockResolvedValueOnce(update);
+    __setPendingUpdateForTest(fakeUpdate());
+    __setDialogOpenForTest(true);
     const install = deferred<void>();
     installUpdate.mockReturnValueOnce(install.promise);
 
@@ -119,8 +144,8 @@ describe("UpdateDialog", () => {
   });
 
   it("ignores 'Not Now' and Escape while an install is in flight, so the app cannot relaunch after the user believes they've declined (AC4)", async () => {
-    const update = fakeUpdate();
-    checkForUpdate.mockResolvedValueOnce(update);
+    __setPendingUpdateForTest(fakeUpdate());
+    __setDialogOpenForTest(true);
     const install = deferred<void>();
     installUpdate.mockReturnValueOnce(install.promise);
 
@@ -135,6 +160,7 @@ describe("UpdateDialog", () => {
     dispatch({ key: "Escape" });
     await flushPromises();
 
+    const update = pendingUpdate.value!;
     expect(update.close).not.toHaveBeenCalled();
     expect(wrapper.find("[role='dialog']").exists()).toBe(true);
 
@@ -144,8 +170,8 @@ describe("UpdateDialog", () => {
 
   it("shows an inline error and re-enables the buttons when install fails, allowing retry (AC1)", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const update = fakeUpdate();
-    checkForUpdate.mockResolvedValueOnce(update);
+    __setPendingUpdateForTest(fakeUpdate());
+    __setDialogOpenForTest(true);
     installUpdate.mockRejectedValueOnce(new Error("disk full"));
 
     wrapper = mount(UpdateDialog, { attachTo: document.body });
@@ -162,9 +188,37 @@ describe("UpdateDialog", () => {
     consoleError.mockRestore();
   });
 
-  it("calls update.close(), never installUpdate, and hides the dialog on 'Not Now' (AC4)", async () => {
+  it("clears a stale install error on reopen, so a prior failed attempt doesn't resurface", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    __setPendingUpdateForTest(fakeUpdate());
+    __setDialogOpenForTest(true);
+    installUpdate.mockRejectedValueOnce(new Error("disk full"));
+
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    const installButton = wrapper.findAll("button").find((b) => b.text().includes("Install"))!;
+    await installButton.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[role='alert']").exists()).toBe(true);
+
+    const dismissButton = wrapper.findAll("button").find((b) => b.text().includes("Not Now"));
+    await dismissButton?.trigger("click");
+    await flushPromises();
+    wrapper.unmount();
+
+    __setDialogOpenForTest(true);
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").exists()).toBe(false);
+    consoleError.mockRestore();
+  });
+
+  it("never calls update.close() or installUpdate, and hides the dialog, on 'Not Now' (AC4)", async () => {
     const update = fakeUpdate();
-    checkForUpdate.mockResolvedValueOnce(update);
+    __setPendingUpdateForTest(update);
+    __setDialogOpenForTest(true);
 
     wrapper = mount(UpdateDialog, { attachTo: document.body });
     await flushPromises();
@@ -174,14 +228,17 @@ describe("UpdateDialog", () => {
     await dismissButton?.trigger("click");
     await flushPromises();
 
-    expect(update.close).toHaveBeenCalled();
+    // Deliberately not closed: the Settings banner can reopen the dialog on this same
+    // Update object later this session, and closing it here would break that reopen path.
+    expect(update.close).not.toHaveBeenCalled();
     expect(installUpdate).not.toHaveBeenCalled();
     expect(wrapper.find("[role='dialog']").exists()).toBe(false);
   });
 
   it("dismisses on Escape with the same effect as 'Not Now' (AC4, NFR5)", async () => {
     const update = fakeUpdate();
-    checkForUpdate.mockResolvedValueOnce(update);
+    __setPendingUpdateForTest(update);
+    __setDialogOpenForTest(true);
 
     wrapper = mount(UpdateDialog, { attachTo: document.body });
     await flushPromises();
@@ -191,8 +248,52 @@ describe("UpdateDialog", () => {
     dispatch({ key: "Escape" });
     await flushPromises();
 
-    expect(update.close).toHaveBeenCalled();
+    expect(update.close).not.toHaveBeenCalled();
     expect(installUpdate).not.toHaveBeenCalled();
     expect(wrapper.find("[role='dialog']").exists()).toBe(false);
+  });
+
+  it("reopening after 'Not Now' still allows a successful install against the same Update (regression guard for the stale-resource bug)", async () => {
+    const update = fakeUpdate();
+    __setPendingUpdateForTest(update);
+    __setDialogOpenForTest(true);
+    installUpdate.mockResolvedValueOnce(undefined);
+
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    const dismissButton = wrapper.findAll("button").find((b) => b.text().includes("Not Now"));
+    await dismissButton?.trigger("click");
+    await flushPromises();
+    wrapper.unmount();
+
+    // Simulates reopening via the Settings banner's "View update…" button.
+    __setDialogOpenForTest(true);
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    const installButton = wrapper.findAll("button").find((b) => b.text().includes("Install"));
+    await installButton?.trigger("click");
+    await flushPromises();
+
+    expect(installUpdate).toHaveBeenCalledWith(update);
+    expect(wrapper.find(".install-error").exists()).toBe(false);
+  });
+
+  it("persists the dismissed version via the settings store on 'Not Now', without clearing pendingUpdate so the dot/banner stay visible (AC4)", async () => {
+    const update = fakeUpdate();
+    __setPendingUpdateForTest(update);
+    __setDialogOpenForTest(true);
+    const settings = useSettingsStore();
+
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    const dismissButton = wrapper.findAll("button").find((b) => b.text().includes("Not Now"));
+    await dismissButton?.trigger("click");
+    await flushPromises();
+
+    expect(settings.setUpdateSignalDismissed).toHaveBeenCalledWith("1.1.0");
+    expect(pendingUpdate.value).toBe(update);
   });
 });

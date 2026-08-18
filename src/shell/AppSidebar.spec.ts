@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { mount } from "@vue/test-utils";
+import { afterEach, describe, expect, it } from "vitest";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { createAppRouter } from "../router";
 import { useRegistryStore } from "../stores/registry";
@@ -7,6 +7,23 @@ import { useSettingsStore } from "../stores/settings";
 import { PhGear } from "@phosphor-icons/vue";
 import AppSidebar from "./AppSidebar.vue";
 import { resolveIcon } from "./icons";
+import { __setPendingUpdateForTest } from "./updateSignal";
+import type { Update } from "./updateCheck";
+
+function fakeUpdate(overrides: Record<string, unknown> = {}) {
+  return {
+    version: "1.1.0",
+    currentVersion: "1.0.0",
+    date: "2026-08-09",
+    body: "Bug fixes and improvements.",
+    close: () => Promise.resolve(),
+    ...overrides,
+  } as unknown as Update;
+}
+
+afterEach(() => {
+  __setPendingUpdateForTest(null);
+});
 
 describe("AppSidebar", () => {
   it("renders one real <a> link per registry entry, labeled with the tool name", async () => {
@@ -552,5 +569,95 @@ describe("AppSidebar", () => {
     const allLink = wrapper.findAll("ul.nav-all a")[jsonIndex];
     expect(allLink.classes()).toContain("router-link-exact-active");
     expect(allLink.attributes("aria-current")).toBe("page");
+  });
+
+  it("shows no update dot and no update suffix when no update is pending (AC1, AC7)", async () => {
+    const pinia = createPinia();
+    const router = createAppRouter(pinia);
+    router.push("/");
+    await router.isReady();
+
+    const wrapper = mount(AppSidebar, {
+      global: { plugins: [pinia, router] },
+    });
+
+    expect(wrapper.find(".update-dot").exists()).toBe(false);
+    const settingsLink = wrapper.find('a[href="/settings"]');
+    expect(settingsLink.text()).toBe("Settings");
+  });
+
+  it("shows an orange dot and 'Update available' in the accessible name for a routine update (AC2, AC7)", async () => {
+    const pinia = createPinia();
+    const router = createAppRouter(pinia);
+    router.push("/");
+    await router.isReady();
+    __setPendingUpdateForTest(fakeUpdate());
+
+    const wrapper = mount(AppSidebar, {
+      global: { plugins: [pinia, router] },
+    });
+
+    const dot = wrapper.find(".update-dot");
+    expect(dot.exists()).toBe(true);
+    expect(dot.classes()).toContain("routine");
+    expect(dot.attributes("aria-hidden")).toBe("true");
+
+    const settingsLink = wrapper.find('a[href="/settings"]');
+    expect(settingsLink.text()).toBe("Settings, Update available");
+  });
+
+  it("shows a red dot and 'Security update available' in the accessible name for a [security]-marked update (AC2, AC7)", async () => {
+    const pinia = createPinia();
+    const router = createAppRouter(pinia);
+    router.push("/");
+    await router.isReady();
+    __setPendingUpdateForTest(fakeUpdate({ body: "[security] Fixes CVE-2026-0001." }));
+
+    const wrapper = mount(AppSidebar, {
+      global: { plugins: [pinia, router] },
+    });
+
+    const dot = wrapper.find(".update-dot");
+    expect(dot.exists()).toBe(true);
+    expect(dot.classes()).toContain("security");
+
+    const settingsLink = wrapper.find('a[href="/settings"]');
+    expect(settingsLink.text()).toBe("Settings, Security update available");
+  });
+
+  it("keeps the dot and the accessible-name suffix present when the sidebar is collapsed", async () => {
+    const pinia = createPinia();
+    const router = createAppRouter(pinia);
+    router.push("/");
+    await router.isReady();
+    const settings = useSettingsStore(pinia);
+    settings.sidebarCollapsed = true;
+    __setPendingUpdateForTest(fakeUpdate());
+
+    const wrapper = mount(AppSidebar, {
+      global: { plugins: [pinia, router] },
+    });
+
+    expect(wrapper.find(".update-dot").exists()).toBe(true);
+    const settingsLink = wrapper.find('a[href="/settings"]');
+    expect(settingsLink.text()).toBe("Settings, Update available");
+  });
+
+  it("clicking the Settings link still navigates to /settings and does not open the update dialog (regression guard)", async () => {
+    const pinia = createPinia();
+    const router = createAppRouter(pinia);
+    router.push("/");
+    await router.isReady();
+    __setPendingUpdateForTest(fakeUpdate());
+
+    const wrapper = mount(AppSidebar, {
+      global: { plugins: [pinia, router] },
+    });
+
+    await wrapper.find('a[href="/settings"]').trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe("/settings");
+    expect(wrapper.find("[role='dialog']").exists()).toBe(false);
   });
 });

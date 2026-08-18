@@ -1,24 +1,16 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
-import { checkForUpdate, installUpdate, type Update } from "./updateCheck";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { installUpdate, stripSeverityMarker } from "./updateCheck";
+import { closeDialog, dialogOpen, pendingUpdate } from "./updateSignal";
+import { useSettingsStore } from "../stores/settings";
+import AppButton from "../components/AppButton.vue";
 
-// shallowRef, not ref: `Update` is a class with private fields (extends Tauri's `Resource`) —
-// deep-reactivity-wrapping it in a Proxy risks breaking its own internal private-field access,
-// and TS's `UnwrapRef` strips private members from a deeply-wrapped class type entirely.
-const pendingUpdate = shallowRef<Update | null>(null);
+const settings = useSettingsStore();
 const installing = ref(false);
 const installError = ref<string | null>(null);
 const dialogRef = ref<HTMLElement | null>(null);
 
 let previouslyFocused: HTMLElement | null = null;
-
-async function runCheck(): Promise<void> {
-  try {
-    pendingUpdate.value = await checkForUpdate();
-  } catch (error) {
-    console.error("updateCheck: background update check failed", error);
-  }
-}
 
 async function onInstall(): Promise<void> {
   const update = pendingUpdate.value;
@@ -41,16 +33,23 @@ async function onDismiss(): Promise<void> {
   // app after the user believed they'd declined.
   if (installing.value) return;
   const update = pendingUpdate.value;
-  pendingUpdate.value = null;
-  try {
-    await update?.close();
-  } catch (error) {
-    console.error("updateCheck: failed to release update resource", error);
+  closeDialog();
+  // Deliberately does NOT call update?.close() here: pendingUpdate stays set after dismiss
+  // (AC4 — the dot/banner keep showing this same update for the rest of the session), and
+  // the Settings banner can reopen this dialog on that same Update object later. Closing its
+  // underlying resource on mere dismissal would make a subsequent Install attempt fail
+  // against an already-closed resource.
+  if (update) {
+    try {
+      await settings.setUpdateSignalDismissed(update.version);
+    } catch (error) {
+      console.error("settings: failed to persist update dismissal", error);
+    }
   }
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (!pendingUpdate.value || installing.value) return;
+  if (!dialogOpen.value || installing.value) return;
   if (event.key === "Escape") {
     event.preventDefault();
     onDismiss();
@@ -59,8 +58,12 @@ function onKeydown(event: KeyboardEvent): void {
 
 // Matches CommandPalette.vue's modal focus convention: capture what was focused before the
 // dialog appeared, move focus into the dialog once it renders, restore focus on close.
-watch(pendingUpdate, async (update) => {
-  if (update) {
+watch(dialogOpen, async (open) => {
+  if (open) {
+    // Clears any error left over from a previous, since-dismissed install attempt on this
+    // same pendingUpdate — otherwise reopening the dialog shows a stale failure message
+    // before the user has done anything in this new attempt.
+    installError.value = null;
     previouslyFocused = document.activeElement as HTMLElement | null;
     await nextTick();
     dialogRef.value?.focus();
@@ -70,8 +73,6 @@ watch(pendingUpdate, async (update) => {
 });
 
 onMounted(() => {
-  // Must stay decoupled from main.ts's mount()+show() critical path — see Dev Notes.
-  void runCheck();
   window.addEventListener("keydown", onKeydown, true);
 });
 
@@ -82,7 +83,7 @@ onUnmounted(() => {
 
 <template>
   <div
-    v-if="pendingUpdate"
+    v-if="dialogOpen && pendingUpdate"
     class="update-overlay"
   >
     <div
@@ -109,7 +110,7 @@ onUnmounted(() => {
         v-if="pendingUpdate.body"
         class="release-notes"
       >
-        {{ pendingUpdate.body }}
+        {{ stripSeverityMarker(pendingUpdate.body) }}
       </p>
       <p
         v-if="installError"
@@ -119,20 +120,22 @@ onUnmounted(() => {
         {{ installError }}
       </p>
       <div class="actions">
-        <button
+        <AppButton
           type="button"
+          variant="default"
           :disabled="installing"
           @click="onDismiss"
         >
           Not Now
-        </button>
-        <button
+        </AppButton>
+        <AppButton
           type="button"
+          variant="primary"
           :disabled="installing"
           @click="onInstall"
         >
           {{ installing ? "Installing…" : "Install & Restart" }}
-        </button>
+        </AppButton>
       </div>
     </div>
   </div>
@@ -154,9 +157,11 @@ onUnmounted(() => {
   max-width: 90vw;
   max-height: 70vh;
   overflow: auto;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-lg);
+  /* Floating/temporary surfaces get a shadow, not a border — the inverse of persistent
+     surfaces like cards. DESIGN.md:165,192. First real consumer of --shadow-floating. */
+  box-shadow: var(--shadow-floating);
   padding: 1.5em;
 }
 
@@ -166,7 +171,7 @@ onUnmounted(() => {
 
 .version-line,
 .date-line {
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .release-notes {
@@ -174,7 +179,7 @@ onUnmounted(() => {
 }
 
 .install-error {
-  color: #b00020;
+  color: var(--color-accent-destructive);
 }
 
 .actions {
@@ -182,15 +187,5 @@ onUnmounted(() => {
   justify-content: flex-end;
   gap: 0.8em;
   margin-top: 1.5em;
-}
-
-button:focus-visible {
-  outline: 2px solid #396cd8;
-  outline-offset: 2px;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 </style>

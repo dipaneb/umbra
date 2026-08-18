@@ -5,6 +5,8 @@ import { useRegistryStore } from "../stores/registry";
 import type { ToolRegistryEntry } from "../stores/registry";
 import { useSettingsStore } from "../stores/settings";
 import { resolveIcon } from "./icons";
+import { getUpdateSeverity, getUpdateSeverityLabel } from "./updateCheck";
+import { pendingUpdate } from "./updateSignal";
 import {
   PhGear,
   PhCaretLeft,
@@ -93,6 +95,9 @@ const sections = computed<NavSection[]>(() => {
   });
   return result;
 });
+
+const updateSeverity = computed(() => getUpdateSeverity(pendingUpdate.value));
+const updateSeverityLabel = computed(() => getUpdateSeverityLabel(updateSeverity.value));
 </script>
 
 <template>
@@ -167,12 +172,24 @@ const sections = computed<NavSection[]>(() => {
       to="/settings"
       class="settings-link"
     >
-      <PhGear
-        aria-hidden="true"
-        size="1em"
-        :weight="route.name === 'settings' ? 'bold' : 'regular'"
-      />
+      <span class="settings-icon-wrap">
+        <PhGear
+          aria-hidden="true"
+          size="1em"
+          :weight="route.name === 'settings' ? 'bold' : 'regular'"
+        />
+        <span
+          v-if="updateSeverity !== 'none'"
+          aria-hidden="true"
+          class="update-dot"
+          :class="updateSeverity"
+        />
+      </span>
       <span :class="{ 'visually-hidden': settings.sidebarCollapsed }">Settings</span>
+      <span
+        v-if="updateSeverity !== 'none'"
+        class="visually-hidden"
+      >, {{ updateSeverityLabel }}</span>
     </RouterLink>
   </nav>
 </template>
@@ -355,6 +372,40 @@ a svg {
 .settings-link {
   flex: none;
   margin-top: auto;
+}
+
+/* Anchored to the icon itself (not the row) so the badge sits exactly at
+   the gear's own corner in both expanded and collapsed sidebar states,
+   rather than a fixed offset guessed against the row's variable padding. */
+.settings-icon-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Small corner badge touching the gear icon's top-right corner — no exact
+   size is specified in DESIGN.md beyond color/role ("Notification dot",
+   :184), so this follows the sidebar's existing corner-badge conventions
+   rather than a locked pixel value. `pointer-events: none` keeps it a pure
+   visual mark, never intercepting the link's own click. */
+.update-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* DESIGN.md's explicit, deliberate exception permitting red for this one
+   non-destructive "pay attention" case (:194) — the only other role orange
+   is licensed for outside active-nav tint. */
+.update-dot.routine {
+  background: var(--color-accent-signature);
+}
+
+.update-dot.security {
+  background: var(--color-accent-destructive);
 }
 
 .pin-toggle {

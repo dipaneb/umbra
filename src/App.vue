@@ -1,8 +1,16 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import AppSidebar from "./shell/AppSidebar.vue";
 import CommandPalette from "./shell/CommandPalette.vue";
 import DropZone from "./shell/DropZone.vue";
 import UpdateDialog from "./shell/UpdateDialog.vue";
+import { runCheck } from "./shell/updateSignal";
+
+onMounted(() => {
+  // Must stay decoupled from main.ts's mount()+show() critical path — see
+  // UpdateDialog.vue's Dev Notes for why this is fired post-render, not at module load.
+  void runCheck();
+});
 </script>
 
 <template>

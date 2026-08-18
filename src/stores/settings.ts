@@ -41,6 +41,7 @@ const DEFAULTS = {
   recentTools: [] as string[],
   pinnedToolsVisible: true,
   recentToolsVisible: true,
+  updateSignalDismissedVersion: undefined as string | undefined,
 };
 
 // Story 1.8's tree-parse debounce uses 200ms for latency-sensitive work;
@@ -62,6 +63,9 @@ export const useSettingsStore = defineStore("settings", () => {
   const recentTools = ref<string[]>([...DEFAULTS.recentTools]);
   const pinnedToolsVisible = ref<boolean>(DEFAULTS.pinnedToolsVisible);
   const recentToolsVisible = ref<boolean>(DEFAULTS.recentToolsVisible);
+  const updateSignalDismissedVersion = ref<string | undefined>(
+    DEFAULTS.updateSignalDismissedVersion,
+  );
 
   async function init(): Promise<void> {
     try {
@@ -93,6 +97,9 @@ export const useSettingsStore = defineStore("settings", () => {
       recentToolsVisible.value =
         (await store.get<boolean>("shell.recentToolsVisible")) ??
         DEFAULTS.recentToolsVisible;
+      updateSignalDismissedVersion.value = await store.get<string>(
+        "shell.updateSignal.dismissedVersion",
+      );
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -137,6 +144,14 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!backingStore) return;
     const store = backingStore;
     await store.set("shell.recentToolsVisible", value);
+    await store.save();
+  }
+
+  async function setUpdateSignalDismissed(version: string): Promise<void> {
+    updateSignalDismissedVersion.value = version;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.updateSignal.dismissedVersion", version);
     await store.save();
   }
 
@@ -227,6 +242,9 @@ export const useSettingsStore = defineStore("settings", () => {
       case "shell.recentToolsVisible":
         recentToolsVisible.value = DEFAULTS.recentToolsVisible;
         break;
+      case "shell.updateSignal.dismissedVersion":
+        updateSignalDismissedVersion.value = DEFAULTS.updateSignalDismissedVersion;
+        break;
     }
     if (!backingStore) return;
     const store = backingStore;
@@ -245,6 +263,7 @@ export const useSettingsStore = defineStore("settings", () => {
     recentTools.value = [...DEFAULTS.recentTools];
     pinnedToolsVisible.value = DEFAULTS.pinnedToolsVisible;
     recentToolsVisible.value = DEFAULTS.recentToolsVisible;
+    updateSignalDismissedVersion.value = DEFAULTS.updateSignalDismissedVersion;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -261,12 +280,14 @@ export const useSettingsStore = defineStore("settings", () => {
     recentTools,
     pinnedToolsVisible,
     recentToolsVisible,
+    updateSignalDismissedVersion,
     init,
     setRestoreEnabled,
     setThemeOverride,
     setSidebarCollapsed,
     setPinnedToolsVisible,
     setRecentToolsVisible,
+    setUpdateSignalDismissed,
     togglePinned,
     recordRecentTool,
     recordLastTool,

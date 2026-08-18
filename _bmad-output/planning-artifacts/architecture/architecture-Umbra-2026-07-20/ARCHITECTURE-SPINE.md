@@ -100,7 +100,7 @@ graph LR
 
 - **Binds:** all persisted state
 - **Prevents:** two writers racing on `settings.json`, or persistence sprawling into an undiscoverable set of files
-- **Rule:** the only persistence mechanism is `tauri-plugin-store` writing one `settings.json`. The frontend `settings` Pinia store is its single writer — Rust-side code never writes it. Keys are namespaced `shell.*` / `<tool-id>.*`. The Settings pane enumerates every persisted key with a one-action clear (PRD INV-3). Window geometry is captured frontend-side on debounced move/resize. `[ADOPTED]`
+- **Rule:** the only persistence mechanism is `tauri-plugin-store` writing one `settings.json`. The frontend `settings` Pinia store is its single writer — Rust-side code never writes it. Keys are namespaced `shell.*` / `<tool-id>.*` — a `shell.*` key may itself be a nested namespace (e.g. `shell.updateSignal.dismissedVersion`, Story 7.7's dismissed-update-version key) when a feature owns more than one related persisted value; `resetKey()` matches on the full key string, so nesting needs no special-case logic. The Settings pane enumerates every persisted key with a one-action clear (PRD INV-3). Window geometry is captured frontend-side on debounced move/resize. `[ADOPTED]` *(Amended 2026-08-18, Story 7.7 — added the `shell.updateSignal.*` nested namespace, this AD-10's first non-flat `shell.*` key. See that story's Dev Notes.)*
 
 ### AD-11 — CI proves cross-platform cleanliness on every PR
 

@@ -1032,7 +1032,7 @@ development_status:
   7-4-sidebar-gets-an-active-nav-state-and-token-styling: done
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: done
   7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: done
-  7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: ready-for-dev
+  7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: done
   7-8-clipboard-suggestion-surface: backlog
   epic-7-retrospective: optional
 
