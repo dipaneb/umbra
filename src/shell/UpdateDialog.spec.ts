@@ -253,6 +253,70 @@ describe("UpdateDialog", () => {
     expect(wrapper.find("[role='dialog']").exists()).toBe(false);
   });
 
+  it("traps Tab at the last focusable element, wrapping back to the first, so focus can't escape into the app behind the overlay", async () => {
+    __setPendingUpdateForTest(fakeUpdate());
+    __setDialogOpenForTest(true);
+
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    const notNowEl = wrapper.findAll("button").find((b) => b.text().includes("Not Now"))!
+      .element as HTMLElement;
+    const installEl = wrapper.findAll("button").find((b) => b.text().includes("Install"))!
+      .element as HTMLElement;
+
+    installEl.focus();
+    expect(document.activeElement).toBe(installEl);
+
+    dispatch({ key: "Tab" });
+
+    expect(document.activeElement).toBe(notNowEl);
+  });
+
+  it("traps Shift+Tab at the first focusable element, wrapping back to the last", async () => {
+    __setPendingUpdateForTest(fakeUpdate());
+    __setDialogOpenForTest(true);
+
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    const notNowEl = wrapper.findAll("button").find((b) => b.text().includes("Not Now"))!
+      .element as HTMLElement;
+    const installEl = wrapper.findAll("button").find((b) => b.text().includes("Install"))!
+      .element as HTMLElement;
+
+    notNowEl.focus();
+    expect(document.activeElement).toBe(notNowEl);
+
+    dispatch({ key: "Tab", shiftKey: true });
+
+    expect(document.activeElement).toBe(installEl);
+  });
+
+  it("keeps the trap active while an install is in flight, unlike Escape which is suppressed then (AC4)", async () => {
+    __setPendingUpdateForTest(fakeUpdate());
+    __setDialogOpenForTest(true);
+    const install = deferred<void>();
+    installUpdate.mockReturnValueOnce(install.promise);
+
+    wrapper = mount(UpdateDialog, { attachTo: document.body });
+    await flushPromises();
+
+    const installButton = wrapper.findAll("button").find((b) => b.text().includes("Install"))!;
+    await installButton.trigger("click");
+    // Both buttons are now :disabled="installing" -- no focusable element remains inside the
+    // dialog. The container itself (tabindex="-1") is the only thing that can hold focus.
+    const dialogEl = wrapper.find("[role='dialog']").element as HTMLElement;
+    dialogEl.focus();
+
+    dispatch({ key: "Tab" });
+
+    expect(document.activeElement).toBe(dialogEl);
+
+    install.resolve();
+    await flushPromises();
+  });
+
   it("reopening after 'Not Now' still allows a successful install against the same Update (regression guard for the stale-resource bug)", async () => {
     const update = fakeUpdate();
     __setPendingUpdateForTest(update);

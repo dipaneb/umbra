@@ -48,11 +48,56 @@ async function onDismiss(): Promise<void> {
   }
 }
 
+// Queries live, not cached: which elements are focusable changes at runtime (both actions
+// get :disabled while installing.value is true), so a stale list would trap Tab against
+// elements that can no longer hold focus.
+function getFocusableElements(): HTMLElement[] {
+  if (!dialogRef.value) return [];
+  return Array.from(
+    dialogRef.value.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+}
+
 function onKeydown(event: KeyboardEvent): void {
-  if (!dialogOpen.value || installing.value) return;
+  if (!dialogOpen.value) return;
   if (event.key === "Escape") {
+    // Unchanged: still suppressed mid-install (see onDismiss's own guard) so a stray
+    // Escape can't hide the dialog while installUpdate() is still running underneath it.
+    if (installing.value) return;
     event.preventDefault();
     onDismiss();
+    return;
+  }
+  if (event.key === "Tab") {
+    // Deliberately NOT gated on installing.value like Escape above — the opposite is
+    // needed here: focus must stay trapped in the dialog for the entire time it's open,
+    // installing or not. CommandPalette.vue's own modal swallows Tab outright, which works
+    // there because it has exactly one focusable element; this dialog has two (Not Now,
+    // Install & Restart) that must stay Tab-reachable between each other, so this cycles
+    // first↔last instead of blocking Tab entirely.
+    const focusable = getFocusableElements();
+    if (focusable.length === 0) {
+      // Both actions are disabled (an install is in flight) -- nothing inside the dialog
+      // can hold focus. Pin it back on the dialog container itself rather than let Tab
+      // escape into the app behind the overlay.
+      event.preventDefault();
+      dialogRef.value?.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey) {
+      if (active === first || !dialogRef.value?.contains(active)) {
+        event.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || !dialogRef.value?.contains(active)) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 }
 
