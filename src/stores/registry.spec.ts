@@ -66,6 +66,76 @@ describe("TOOLS description field (AC4)", () => {
   });
 });
 
+describe("TOOLS clipboardMatch field (AC3/AC4/AC12, Story 7.8)", () => {
+  const text = (value: string) => ({ kind: "text" as const, value });
+  const image = { kind: "image" as const };
+
+  it("declares clipboardMatch on exactly the four eligible tools, undefined on the rest", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+    const eligible = registry.tools
+      .filter((tool) => tool.clipboardMatch !== undefined)
+      .map((tool) => tool.id)
+      .sort();
+
+    expect(eligible).toEqual(["base64", "bucket", "json", "jwt"]);
+  });
+
+  it("does not crash iterating a mixed registry (some entries have no clipboardMatch)", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+
+    expect(() =>
+      registry.tools.map((tool) => tool.clipboardMatch?.test(text("anything")) ?? false),
+    ).not.toThrow();
+  });
+
+  it("jwt matches a JWT-shaped string", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+    const jwt = registry.tools.find((tool) => tool.id === "jwt")!;
+
+    expect(jwt.clipboardMatch!.test(text("a.b.c"))).toBe(true);
+    expect(jwt.clipboardMatch!.test(text("not-jwt-shaped"))).toBe(false);
+  });
+
+  it("json matches a JSON-parseable string", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+    const json = registry.tools.find((tool) => tool.id === "json")!;
+
+    expect(json.clipboardMatch!.test(text('{"a":1}'))).toBe(true);
+    expect(json.clipboardMatch!.test(text("{not json"))).toBe(false);
+  });
+
+  it("base64 matches base64-alphabet content", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+    const base64 = registry.tools.find((tool) => tool.id === "base64")!;
+
+    expect(base64.clipboardMatch!.test(text("SGVsbG8="))).toBe(true);
+    expect(base64.clipboardMatch!.test(text("not valid!"))).toBe(false);
+  });
+
+  it("bucket matches image content only, never text", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+    const bucket = registry.tools.find((tool) => tool.id === "bucket")!;
+
+    expect(bucket.clipboardMatch!.test(image)).toBe(true);
+    expect(bucket.clipboardMatch!.test(text("anything"))).toBe(false);
+  });
+
+  it("orders specificity so jwt > json > base64, and bucket's image match can never collide with a text matcher", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+    const byId = Object.fromEntries(registry.tools.map((tool) => [tool.id, tool.clipboardMatch]));
+
+    expect(byId.jwt!.specificity).toBeGreaterThan(byId.json!.specificity);
+    expect(byId.json!.specificity).toBeGreaterThan(byId.base64!.specificity);
+  });
+});
+
 describe("getLatestWinsRunner", () => {
   it("returns the same runner instance for repeated calls with the same toolId", () => {
     setActivePinia(createPinia());

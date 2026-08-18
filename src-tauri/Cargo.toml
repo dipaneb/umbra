@@ -37,6 +37,23 @@ tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# MIT, actively maintained (0.3.5 confirmed current via crates.io as of story creation and
+# re-confirmed live before pinning here, per ARCHITECTURE-SPINE.md's Dependency version/API
+# drift convention). Depended on directly (not the stale community tauri-plugin-clipboard
+# wrapper) so the shell owns its own OS-I/O bridge code (AD-14) with a smaller, more current,
+# more auditable dependency footprint. See src-tauri/src/clipboard_watch.rs for why: this is
+# the only crate providing a genuine cross-platform clipboard-change watcher (native
+# WM_CLIPBOARDUPDATE on Windows, XFixes on Linux/X11, a bounded local poll only where the OS
+# gives no alternative — macOS/Wayland).
+# `wayland` is opt-in upstream (not a default feature) — without it, clipboard-rs's Linux
+# backend falls back to X11 unconditionally even under a real Wayland session (confirmed by
+# reading src/platform/mod.rs directly), which would silently misrepresent AC13's explicit
+# "macOS/Wayland poll, Windows/X11 push-event" scope decision as "Wayland unsupported" rather
+# than "Wayland supported via poll". Enabled here so that scope decision is actually true, not
+# just documented. Pure-Rust Wayland protocol implementation (wl-clipboard-rs, MIT/Apache-2.0
+# dual-licensed) — no libwayland system headers needed to compile, only to actually run under
+# a live Wayland compositor, so this doesn't need a new apt package in ci.yml's Linux job.
+clipboard-rs = { version = "0.3.5", features = ["wayland"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 umbra-core = { path = "../crates/umbra-core" }

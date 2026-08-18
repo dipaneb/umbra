@@ -42,6 +42,109 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-18
+# note: story 7-8 code review 2026-08-18 (bmad-code-review, status moves "review" -> "done") --
+# three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) against
+# the uncommitted diff. 3 decision-needed findings resolved live with the developer (Base64
+# shape-matcher over-permissiveness -- fixed with a minimum-length + character-diversity gate;
+# AC5 section placement -- confirmed staying in Appearance; AC5 integer-vs-boolean-toggle --
+# integer control confirmed final), both AC5 items captured in a dated epics.md amendment. 7
+# patch findings applied (AC7 announcement now names a lone matched tool; AD-16 latest-wins
+# guard extended to cover the announcement, not just the read; error handling added on
+# clipboard-read/listen failures; a size guard added before running shape matchers; a stale
+# callout now clears when suggestions are turned off mid-session; preview truncation now
+# Unicode-safe; clipboard-rs's Windows dependency-version duplication disclosed in
+# ARCHITECTURE-SPINE.md). 1 pre-existing item deferred (settings-store optimistic-update
+# pattern, not introduced by this story) to deferred-work.md. 8 findings dismissed as noise,
+# already-disclosed-and-accepted scope decisions, or mitigated by existing design. Full
+# re-verification green: 427/427 Vue tests (8 net new), eslint clean, vue-tsc/vite build clean;
+# no Rust files touched this round. See
+# _bmad-output/implementation-artifacts/7-8-clipboard-suggestion-surface.md Review Findings.
+# note: story 7-8 post-completion UX correction round 2026-08-18 (status stays "review", no
+# transition -- developer live-tested against the running dev build and found three real gaps:
+# (1) the Settings numeric input was in Privacy, moved to Appearance (kept the disclosure
+# sentence in Privacy, where it belongs); (2) a real UI-only bug -- typing an out-of-range value
+# (e.g. 9) into the count input left it visibly stuck on screen after tabbing away even though
+# the persisted value was already correctly clamped to 5, fixed by explicitly forcing the DOM
+# input value back in sync after the setter's synchronous clamp; (3) the clipboard-match preview
+# text rendered as a random middle slice instead of a clean head-truncated ellipsis, root-caused
+# via a real browser reproduction (not guessed): a pre-existing bare `a { align-items: center }`
+# rule (written for the ordinary nav-item row) leaked into the new callout's column-flex layout,
+# centering the unwrapped preview text at its own intrinsic width instead of stretching it --
+# fixed with an explicit align-items: stretch override plus min-width: 0 (flex items default to
+# min-width: auto, which alone would still block text-overflow: ellipsis from ever engaging).
+# This exact bug class needs a real layout engine to observe -- jsdom-based AppSidebar.spec.ts
+# tests can't catch it, the same limitation Story 7.4's own collapsed-icon bug hit. Full
+# re-verification green: 419/419 Vue tests (1 net new), eslint --max-warnings 0, vue-tsc
+# --noEmit && vite build clean.
+# note: story 7-8 moved to review 2026-08-18 (implementation complete: Tasks 0-10 all done,
+# including full regression on both stacks -- the first Epic 7 story that isn't frontend-only.
+# New src-tauri dependency clipboard-rs 0.3.5 (MIT), live-verified against the vendored source
+# (not docs): genuine WM_CLIPBOARDUPDATE/XFixes push events on Windows/Linux-X11, a bounded
+# 500ms poll only where the OS gives no alternative (macOS/Wayland), zero drift from this
+# story's own pre-creation research. AD-7 audit clean (cargo tree -i reqwest unchanged, single
+# path through tauri-plugin-updater); Stack table row added to ARCHITECTURE-SPINE.md. Task 1's
+# own literal instruction to add a new capabilities/default.json entry turned out to be wrong on
+# inspection -- confirmed directly against this project's own generated acl-manifests.json that
+# core:default already covers core:event:default (listen/emit), so the clipboard-changed app
+# event needs no new capability; disclosed rather than silently added anyway. Explicitly enabled
+# clipboard-rs's non-default wayland Cargo feature so a real Wayland session gets its own poll
+# watcher instead of silently falling back to X11 (confirmed via platform/mod.rs's own cfg
+# gating) -- its only new transitive dependency, wl-clipboard-rs, is pure-Rust and needs no new
+# CI apt package. Full verification green: 418/418 Vue tests (363 baseline + 74 net new across 6
+# spec files), eslint --max-warnings 0, vue-tsc --noEmit && vite build clean, cargo test
+# --workspace clean (74 umbra_lib + 1 integration + 141 umbra-core), cargo clippy -D warnings and
+# cargo fmt --check clean. One real pre-existing gap fixed incidentally: AppSidebar.spec.ts had
+# never needed to mock Tauri's clipboard/event modules before this story, so every one of its
+# existing tests was silently throwing unhandled promise rejections in the background (jsdom has
+# no real Tauri IPC bridge) -- now mocked and silent. Manual pnpm tauri dev verification deferred
+# to the developer, same no-display-server limitation every prior Epic 7 story recorded. One
+# disclosed item explicitly flagged for developer sign-off, not yet confirmed live: AC5's
+# integer-0-5-vs-boolean-toggle doc conflict was resolved by implementing epics.md's literal
+# integer control (this story's own stated default, matching the Story 7.1/7.6/7.7
+# epics.md-authoritative precedent) -- unlike those three prior conflicts, this one's resolution
+# has not yet been live-confirmed by the developer.
+# note: story 7-8 created 2026-08-18 (developer explicitly chose to continue Epic 7's
+# top-to-bottom order over strict sprint-status.yaml auto-discovery, which would have picked
+# 6-3 next -- same explicit-continuation pattern as every Epic 7 story since 7-2; this is
+# Epic 7's last story, epic-7 stays in-progress, not first story in epic so no epic-status
+# transition). baseline_commit set to origin/main's tip (887f67f, Story 7.7's squash-merge,
+# #85) -- local main and origin/main both resolve to it directly, clean tree except the
+# pre-existing untracked .claude/workflows/ dir. Four parallel research subagents
+# (previous-story/PRD/deferred-work, architecture/current-source, UX design, Tauri
+# clipboard-plugin/git) independently researched this story's context, followed by a
+# fresh-context validation subagent that re-derived every citation and the technical plan
+# against the real source files. The single highest-risk finding, resolved during story
+# creation rather than left for implementation to discover cold: no OS provides a true
+# clipboard-change push event everywhere -- Windows (WM_CLIPBOARDUPDATE) and Linux/X11
+# (XFixes) do, macOS and Wayland don't and can only poll (confirmed by reading clipboard-rs's
+# actual per-platform watcher source, not its docs). Recommended resolution: add clipboard-rs
+# directly as a new src-tauri dependency (not the community tauri-plugin-clipboard wrapper,
+# which was stale and pinned an older clipboard-rs internally as of this story's research),
+# accepting native events where available and a bounded 500ms poll only where the OS gives
+# no alternative -- this is also the first Epic 7 story to touch src-tauri/ at all, every
+# prior one (7.1-7.7) was frontend-only. The validation pass caught 5 real critical bugs
+# before finalizing: Task 1 and Task 3's event-payload description directly contradicted
+# each other (fixed by specifying a lightweight {kind: "text"|"image"} payload); the sidebar
+# handler as drafted would have called the image-decoding readClipboardImage() on every
+# image-match check, exactly what AC12 ("no image bytes read until opened") forbids (fixed
+# to construct the image case directly from the event payload, zero clipboard.ts calls); no
+# latest-wins race guard was specified for the async read-then-match flow despite AD-16
+# existing specifically because this exact race bug hit Stories 2.3 and 2.5 (fixed by adding
+# a scoped createLatestWinsRunner()); the Base64 shape predicate's "valid padding"
+# requirement (epics.md's own literal AC2 text) would reject real unpadded Base64url that
+# crates/umbra-core/src/base64.rs's actual decoder (DecodePaddingMode::Indifferent) accepts
+# -- a false negative against the story's own cited mirror source (fixed by loosening the
+# predicate, with the AC's literal wording left intact and the deliberate divergence
+# disclosed); and AC2's "no new dependency" text was quietly narrowed to "no new JS
+# dependency" to pre-license Task 1's new Rust dependency without flagging the edit (fixed
+# by restoring the literal AC text and adding an explicit disclosed-reading Dev Notes section
+# instead, matching this project's own established doc-conflict-disclosure convention). Also
+# found and disclosed, not silently resolved: the locked mockup Screen 03 shows a boolean
+# "Suggest from clipboard" toggle where epics.md's AC5 specifies a single integer 0-5
+# control with no separate toggle -- same shape of conflict as Story 7.6's button-string and
+# Story 7.7's dot-clickability conflicts, flagged for the developer to confirm during
+# implementation rather than picked silently, since (unlike those two prior cases) no live
+# developer sign-off was captured during this story-creation session.
 # note: story 7-6 moved to done 2026-08-18 (code review complete via bmad-code-review, diff
 # e3dfd05..HEAD: 1 decision-needed dismissed (AC1's self-amendment flagged as a process
 # observation, accepted as expected for a solo-dev project with no separate PM/UX role), 7
@@ -1033,7 +1136,7 @@ development_status:
   7-5-pin-and-revisit-recent-tools-in-the-sidebar: done
   7-6-settings-becomes-sectioned-with-per-item-reset-and-the-restore-default-flip: done
   7-7-the-update-signal-becomes-a-passive-escalation-aware-dot: done
-  7-8-clipboard-suggestion-surface: backlog
+  7-8-clipboard-suggestion-surface: done
   epic-7-retrospective: optional
 
   epic-8: backlog
