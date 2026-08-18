@@ -23,6 +23,35 @@ costs you a wasted tag push and a failed CI run. Doing the bump *first* avoids t
 round-trip entirely — this paragraph is the human-facing documentation of a discipline
 the CI check exists to catch, not new enforcement logic.
 
+## Before you tag: write the release notes
+
+The tag you push **is** the release notes' only source — there's no later editing
+window (`release.yml`'s `tauri-action` step runs with `releaseDraft: false`, so the
+release publishes immediately) and no automated fallback. Write the annotated tag's
+message when you create it, before pushing:
+
+```bash
+git tag -a v0.1.4 -m "Short summary of what changed in this release."
+git push origin v0.1.4
+```
+
+`-m` can be repeated for multiple paragraphs (`-m "para one" -m "para two"`), or
+omitted entirely to open `$EDITOR` for a longer message.
+
+**A tag pushed without `-a`/`-m` (a lightweight tag, e.g. plain `git tag v0.1.4`) ships
+with empty release notes — deliberate, not a bug.** `release.yml`'s notes-extraction
+step only reads a tag's message when the tag is a real annotated tag object
+(`%(objecttype)` = `tag`); a lightweight tag has no message of its own to read, and the
+step is guarded to leave notes empty rather than fall back to the underlying commit's
+message (which could leak internal-facing PR-body text into the end-user-visible update
+dialog). `v0.1.1` and `v0.1.2` were both cut as lightweight tags, historically — check
+with `git cat-file -t <tag>` if you're unsure whether an existing tag is annotated.
+
+This text becomes `latest.json`'s `notes` field, and from there the app's
+`Update.body` (`src/shell/updateCheck.ts`) — rendered directly to end users in
+`UpdateDialog.vue` and `SettingsView.vue`. See "Tagging a security release" below for
+the one thing to add to this text when the release is security-urgent.
+
 ## The tool: `nettop`, scoped to Umbra's own process
 
 Use `nettop`, macOS's built-in network-activity monitor. It's zero new dependency — a
@@ -138,13 +167,19 @@ has no native severity field, so there's nothing that flags this automatically. 
 **manual, human judgment call made when cutting the release**. There is no automated
 CVE/vulnerability scan wired into this pipeline, and building one is out of scope here.
 
-Whoever cuts the release prefixes the GitHub Release's notes — which flow through to
-`latest.json`'s `notes` field, and from there to the app's `Update.body`
+Whoever cuts the release prefixes the **annotated tag's own message** — the source of
+the release notes, per "Before you tag: write the release notes" above, which flow
+through to `latest.json`'s `notes` field and from there to the app's `Update.body`
 (`src/shell/updateCheck.ts`) — with a leading, case-insensitive `[security]` tag, e.g.:
 
+```bash
+git tag -a v0.1.4 -m "[security] Fixes an issue where..."
 ```
-[security] Fixes an issue where...
-```
+
+(Earlier drafts of this section said to edit "the GitHub Release's notes" directly —
+that's no longer accurate: `release.yml` sources `releaseBody` from the tag message,
+and with `releaseDraft: false` there's no post-publish window to edit it anyway. Fix
+landed alongside this correction; see the dated note at the bottom of this file.)
 
 The tag must be the very first thing in the notes (`getUpdateSeverity()` only matches
 at the start, deliberately, so an incidental mid-sentence mention of "security" can't
@@ -201,3 +236,12 @@ for the story that introduced it.*
 (2026-08-18), which resolved PRD FR31's then-open marker-syntax and documentation-step
 questions — see
 `_bmad-output/implementation-artifacts/7-7-the-update-signal-becomes-a-passive-escalation-aware-dot.md`.*
+
+*Corrected 2026-08-19: Story 7.7's "Tagging a security release" section assumed
+`release.yml` would carry a human-edited release body through to `latest.json`, but the
+workflow's `tauri-action` step actually hardcoded `releaseBody` to a fixed generic
+sentence on every release — so no release could ever have shipped a `[security]`
+marker, or any real notes at all. "Before you tag: write the release notes" is new;
+"Tagging a security release" is corrected in place to point at the tag message, the
+now-real source. See `_bmad-output/implementation-artifacts/7-7-the-update-signal-becomes-a-passive-escalation-aware-dot.md`'s
+own dated addendum for the full account.*
