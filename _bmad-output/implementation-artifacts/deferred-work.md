@@ -200,3 +200,24 @@
 ## Deferred from: code review of 7-8-clipboard-suggestion-surface (2026-08-18)
 
 - Settings setters don't roll back an optimistic ref update on persist failure — `setClipboardSuggestionMaxCount` (`src/stores/settings.ts:178-185`) updates the ref synchronously before the async `store.set()`/`store.save()` calls, with no revert if those reject; `SettingsView.vue`'s change handler only logs the error. Pre-existing: every setter in this store (`setThemeOverride`, `setSidebarCollapsed`, `togglePinned`, etc.) follows the identical pattern — a store-wide design choice, not a regression introduced by this story. [`src/stores/settings.ts:178-185`]
+
+## Deferred from: dependency hygiene pass before Epic 8 (2026-08-18)
+
+- `glib` (GHSA-wrw7-89jp-8q8g, Dependabot alert #2) is unfixable without an upstream Tauri move and has been dismissed on GitHub as "not used" rather than fixed. `cargo tree -i glib --target all` shows it pinned transitively at `0.18.5`, below the patched `0.20.0`:
+
+  ```
+  glib v0.18.5
+  ├── atk v0.18.2 / cairo-rs v0.18.5 / gdk v0.18.2 (and siblings)
+  │   └── gtk v0.18.2
+  │       ├── muda v0.19.3 / tao v0.35.3 / webkit2gtk v2.0.2 / wry v0.55.1
+  │       │   └── tauri-runtime-wry v2.11.4
+  │       │       └── tauri v2.11.5
+  │       │           └── umbra v0.1.0 (src-tauri)
+  ```
+
+  Reaching `glib >=0.20` requires the entire gtk3-rs stack (`gtk`/`atk`/`cairo-rs`) to move to a newer major, which is Tauri v2's own upstream dependency choice, not something fixable from this repo. Three independent reasons this is safe to leave dismissed rather than chase:
+  1. **Linux-only.** Absent from `cargo tree --target aarch64-apple-darwin`, the sole release target (`release.yml`, `args: --target aarch64-apple-darwin`).
+  2. **Not used directly.** No `glib`/`gtk` reference anywhere in `src-tauri/src` or `crates/umbra-core/src` — it arrives only as Tauri's internal Linux windowing plumbing.
+  3. **The advisory (`VariantStrIter::impl_get` unsoundness, RUSTSEC-2024-0429) is in an API surface Umbra never reaches.**
+
+  Same shape as the pre-existing `reqwest`/`hyper` deferred-work entry above (Story 1.2): present transitively, absent from the real build target. **Re-check trigger:** any Tauri major-version upgrade, or if a Linux release target is ever added to `release.yml`.
