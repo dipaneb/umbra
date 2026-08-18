@@ -54,6 +54,41 @@ jobs:
         with:
           persist-credentials: false
 
+      # actions/checkout's default fetch behavior for a tag-triggered run isn't documented
+      # precisely enough to trust for something this consequential (releaseDraft: false below
+      # means there's no edit window once published) -- explicitly re-fetch the exact tag ref by
+      # name so the annotated tag object itself (not just the commit it points to) is guaranteed
+      # present locally before the next step reads its message.
+      - name: fetch the tag object
+        run: git fetch origin --no-tags --force "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+
+      - name: extract release notes from the tag message
+        id: notes
+        # Release notes come from the pushed tag's own message, not a hardcoded string (see
+        # docs/release-checklist.md's "Before you tag: write the release notes" and "Tagging a
+        # security release" -- the latter's [security] marker, read by
+        # src/shell/updateCheck.ts's getUpdateSeverity(), needs this to be real per-release text).
+        #
+        # Only an *annotated* tag (`git tag -a vX.Y.Z -m "..."`) has a message of its own --
+        # %(objecttype) is "tag" for those. A *lightweight* tag (`git tag vX.Y.Z` with no -m --
+        # how v0.1.1 and v0.1.2 were historically cut, confirmed via `git cat-file -t`) has no tag
+        # object at all; %(contents) on one silently falls through to the underlying commit's
+        # message instead of returning empty, which would leak that commit's (possibly
+        # internal-facing, e.g. a squashed PR body) text into the end-user-visible update dialog.
+        # Guarding on objecttype first makes "no message written" actually mean "no notes", not
+        # "whatever the tagged commit's message happened to be".
+        run: |
+          if [ "$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(objecttype)')" = "tag" ]; then
+            NOTES="$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}")"
+          else
+            NOTES=""
+          fi
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            echo "$NOTES"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: verify tag matches tauri.conf.json's version
         # tauri-action reads the app's version strictly from tauri.conf.json, never from the
         # pushed git tag -- the tag only names the GitHub Release. A forgotten version bump means
@@ -130,7 +165,11 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Umbra ${{ github.ref_name }}'
-          releaseBody: 'See the assets below to download this version.'
+          # Sourced from the pushed tag's own annotated message (see the "extract release notes
+          # from the tag message" step above) -- empty if the tag carries none. No auto-generated
+          # fallback by deliberate choice: this keeps the [security] marker's start-anchor
+          # unambiguous and avoids shipping a raw PR-title changelog to end users.
+          releaseBody: ${{ steps.notes.outputs.notes }}
           releaseDraft: false
           # A tag like v0.1.0-alpha.1 publishes as a GitHub prerelease automatically — this gives
           # the developer a real, safe way to validate the whole pipeline (Task 7) without a bare
