@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { installUpdate, stripSeverityMarker } from "./updateCheck";
+import { formatUpdateDate, installUpdate, stripSeverityMarker } from "./updateCheck";
 import { closeDialog, dialogOpen, pendingUpdate } from "./updateSignal";
 import { useSettingsStore } from "../stores/settings";
 import AppButton from "../components/AppButton.vue";
@@ -101,10 +101,10 @@ onUnmounted(() => {
         Current version {{ pendingUpdate.currentVersion }} → {{ pendingUpdate.version }}
       </p>
       <p
-        v-if="pendingUpdate.date"
+        v-if="formatUpdateDate(pendingUpdate.date)"
         class="date-line"
       >
-        Released {{ pendingUpdate.date }}
+        Released {{ formatUpdateDate(pendingUpdate.date) }}
       </p>
       <p
         v-if="pendingUpdate.body"

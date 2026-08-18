@@ -12,7 +12,7 @@ vi.mock("@tauri-apps/plugin-process", () => ({
   relaunch: () => relaunch(),
 }));
 
-const { checkForUpdate, installUpdate, getUpdateSeverity, stripSeverityMarker } =
+const { checkForUpdate, installUpdate, getUpdateSeverity, stripSeverityMarker, formatUpdateDate } =
   await import("./updateCheck");
 
 describe("checkForUpdate", () => {
@@ -100,5 +100,33 @@ describe("stripSeverityMarker", () => {
 
   it("passes undefined through unchanged", () => {
     expect(stripSeverityMarker(undefined)).toBeUndefined();
+  });
+});
+
+describe("formatUpdateDate", () => {
+  it("formats a full ISO-8601 timestamp as a readable date, locale-safe", () => {
+    const iso = "2026-08-18T23:23:37.094Z";
+    expect(formatUpdateDate(iso)).toBe(
+      new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }),
+    );
+  });
+
+  it("formats a bare date-only string the same way", () => {
+    const dateOnly = "2026-08-09";
+    expect(formatUpdateDate(dateOnly)).toBe(
+      new Date(dateOnly).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }),
+    );
+  });
+
+  it("returns undefined for a missing date", () => {
+    expect(formatUpdateDate(undefined)).toBeUndefined();
+  });
+
+  it("returns undefined rather than 'Invalid Date' for an unparseable string", () => {
+    expect(formatUpdateDate("not a date")).toBeUndefined();
   });
 });

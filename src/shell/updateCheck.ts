@@ -34,6 +34,18 @@ export function stripSeverityMarker(body: string | undefined): string | undefine
   return body?.replace(SECURITY_MARKER, "");
 }
 
+// Update.date is a plain, unparsed string (latest.json's optional pub_date field passed
+// straight through by the plugin — confirmed via its own .d.ts, never a Date object).
+// Formats it for display; returns undefined (not the string "Invalid Date") for a missing
+// or unparseable value, so callers' existing `v-if="formatUpdateDate(...)"` correctly hides
+// the line rather than render nonsense.
+export function formatUpdateDate(date: string | undefined): string | undefined {
+  if (!date) return undefined;
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+
 // Tauri's own documented pattern: downloadAndInstall() replaces the binary but does not relaunch
 // the app on its own — relaunch() (from the separate process plugin) is required afterward, or a
 // confirmed install would leave the user staring at the old, now-stale running instance.

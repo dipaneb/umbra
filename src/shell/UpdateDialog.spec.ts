@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from "pinia";
 import UpdateDialog from "./UpdateDialog.vue";
 import { useSettingsStore } from "../stores/settings";
 import { __setDialogOpenForTest, __setPendingUpdateForTest, pendingUpdate } from "./updateSignal";
-import type { Update } from "./updateCheck";
+import { formatUpdateDate, type Update } from "./updateCheck";
 
 const installUpdate = vi.fn();
 
@@ -87,7 +87,7 @@ describe("UpdateDialog", () => {
     expect(dialog.exists()).toBe(true);
     expect(dialog.text()).toContain("1.0.0");
     expect(dialog.text()).toContain("1.1.0");
-    expect(dialog.text()).toContain("2026-08-09");
+    expect(dialog.text()).toContain(formatUpdateDate("2026-08-09"));
     expect(dialog.text()).toContain("Bug fixes and improvements.");
   });
 
