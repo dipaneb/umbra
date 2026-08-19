@@ -273,7 +273,7 @@ describe("SettingsView", () => {
     expect(wrapper.find(".update-banner").exists()).toBe(false);
   });
 
-  it("shows the update banner with the routine copy, version, and notes for an ordinary release (AC3)", async () => {
+  it("shows the update banner with the routine copy and version for an ordinary release (AC3)", async () => {
     stubbedSettingsStore();
     __setPendingUpdateForTest(fakeUpdate());
     const wrapper = mount(SettingsView);
@@ -284,10 +284,13 @@ describe("SettingsView", () => {
     expect(banner.text()).toContain("Update available");
     expect(banner.text()).not.toContain("Security update available");
     expect(banner.text()).toContain("1.1.0");
-    expect(banner.text()).toContain("Bug fixes and improvements.");
   });
 
-  it("shows the update banner with the security copy for a [security]-marked release, marker stripped from the notes (AC3)", async () => {
+  // Release notes were removed from the banner (2026-08-19, see epics.md's Story 7.7 AC3
+  // amendment) -- the dialog is now their only home, so this banner no longer renders body
+  // text at all. Marker-stripping coverage isn't lost: UpdateDialog.spec.ts's own
+  // "strips a leading [security] marker..." test covers it independently.
+  it("shows the update banner with the security copy for a [security]-marked release (AC3)", async () => {
     stubbedSettingsStore();
     __setPendingUpdateForTest(fakeUpdate({ body: "[security] Fixes CVE-2026-0001." }));
     const wrapper = mount(SettingsView);
@@ -295,8 +298,8 @@ describe("SettingsView", () => {
 
     const banner = wrapper.find(".update-banner");
     expect(banner.text()).toContain("Security update available");
-    expect(banner.text()).toContain("Fixes CVE-2026-0001.");
     expect(banner.text()).not.toContain("[security]");
+    expect(banner.text()).not.toContain("Fixes CVE-2026-0001.");
   });
 
   it("clicking the update banner's button opens the shared update dialog (AC3)", async () => {
