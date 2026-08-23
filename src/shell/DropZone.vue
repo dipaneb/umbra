@@ -68,46 +68,50 @@ function onKeydown(event: KeyboardEvent) {
 
 onMounted(async () => {
   window.addEventListener("keydown", onKeydown, true);
-  unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
-    if (event.payload.type !== "drop") return;
+  try {
+    unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
+      if (event.payload.type !== "drop") return;
 
-    const activeTool = resolveActiveTool(route.path, registry.tools);
-    const routing = routeDrop(event.payload.paths, activeTool);
+      const activeTool = resolveActiveTool(route.path, registry.tools);
+      const routing = routeDrop(event.payload.paths, activeTool);
 
-    if (!routing.accepted) {
-      if (routing.noticeMessage) showNotice(routing.noticeMessage);
-      return;
-    }
-
-    // AD-14: this is the shell's one generic dispatcher — it invokes the
-    // registry-declared handler command directly. It only knows the dropped
-    // path; any further, tool-specific arguments come from the active
-    // tool's own registered provider (AD-6: the signal lives in the
-    // `registry` store, not a bare module ref).
-    const toolId = routing.toolId!;
-    const path = routing.paths![0];
-    const extraArgs = registry.dropArgsProviders[toolId]?.() ?? {};
-    const runLatestWins = registry.getLatestWinsRunner(toolId);
-
-    // AD-16: a result only reaches the store if its tool is still the
-    // active one when the invoke resolves — otherwise the consuming view
-    // has unmounted and the result is discarded, per AD-16, rather than
-    // left to rot in `dropResult` for a watcher that will never fire again.
-    function isStillActive(): boolean {
-      return resolveActiveTool(route.path, registry.tools)?.id === toolId;
-    }
-
-    try {
-      const result = await runLatestWins(() =>
-        invoke<unknown>(activeTool!.drop!.handler, { path, ...extraArgs }),
-      );
-      if (!result.superseded && isStillActive()) {
-        registry.dropResult = { toolId, value: result.value };
+      if (!routing.accepted) {
+        if (routing.noticeMessage) showNotice(routing.noticeMessage);
+        return;
       }
-    } catch (err) {
-      if (isStillActive()) registry.dropResult = { toolId, error: toToolError(err) };
-    }
-  });
+
+      // AD-14: this is the shell's one generic dispatcher — it invokes the
+      // registry-declared handler command directly. It only knows the dropped
+      // path; any further, tool-specific arguments come from the active
+      // tool's own registered provider (AD-6: the signal lives in the
+      // `registry` store, not a bare module ref).
+      const toolId = routing.toolId!;
+      const path = routing.paths![0];
+      const extraArgs = registry.dropArgsProviders[toolId]?.() ?? {};
+      const runLatestWins = registry.getLatestWinsRunner(toolId);
+
+      // AD-16: a result only reaches the store if its tool is still the
+      // active one when the invoke resolves — otherwise the consuming view
+      // has unmounted and the result is discarded, per AD-16, rather than
+      // left to rot in `dropResult` for a watcher that will never fire again.
+      function isStillActive(): boolean {
+        return resolveActiveTool(route.path, registry.tools)?.id === toolId;
+      }
+
+      try {
+        const result = await runLatestWins(() =>
+          invoke<unknown>(activeTool!.drop!.handler, { path, ...extraArgs }),
+        );
+        if (!result.superseded && isStillActive()) {
+          registry.dropResult = { toolId, value: result.value };
+        }
+      } catch (err) {
+        if (isStillActive()) registry.dropResult = { toolId, error: toToolError(err) };
+      }
+    });
+  } catch (error: unknown) {
+    console.error("dropZone: failed to register drag-drop listener", error);
+  }
 });
 
 onUnmounted(() => {
