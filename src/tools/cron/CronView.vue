@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
+import { formatDateTime } from "../../shell/locale";
 import { toToolError, type ToolError } from "../../shell/toolError";
+import { useSettingsStore } from "../../stores/settings";
 import type { CronExplanation, ScheduleParseResult } from "./cronExplanation";
+
+const { t } = useI18n();
+const settings = useSettingsStore();
 
 const expression = ref("");
 const explanation = ref<CronExplanation | null>(null);
@@ -30,9 +36,11 @@ const runParse = createLatestWinsRunner();
 const runPasteSchedule = createLatestWinsRunner();
 
 // Core returns unix-seconds epoch values (never milliseconds), same
-// convention JwtView.vue::formatClaim already established.
+// convention JwtView.vue::formatClaim already established. Routed through
+// formatDateTime (src/shell/locale.ts) so next-run times follow the app's
+// locale/date-format settings rather than always the OS default.
 function formatRun(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toLocaleString();
+  return formatDateTime(new Date(epochSeconds * 1000), settings);
 }
 
 async function onExplain() {
@@ -114,11 +122,11 @@ async function onCopySchedule() {
 
 <template>
   <section>
-    <h1>Cron</h1>
+    <h1>{{ t('tools.cron.heading') }}</h1>
 
     <div class="explain-section">
       <div class="field">
-        <label for="cron-expression-input">Cron expression</label>
+        <label for="cron-expression-input">{{ t('tools.cron.expressionLabel') }}</label>
         <textarea
           id="cron-expression-input"
           v-model="expression"
@@ -131,23 +139,30 @@ async function onCopySchedule() {
           type="button"
           @click="onExplain"
         >
-          Explain
+          {{ t('tools.cron.explain') }}
         </button>
         <button
           type="button"
           @click="onPaste"
         >
-          Paste from clipboard
+          {{ t('common.pasteFromClipboard') }}
         </button>
         <button
           v-if="explanation"
           type="button"
           @click="onCopy"
         >
-          Copy description
+          {{ t('tools.cron.copyDescription') }}
         </button>
       </div>
 
+      <!-- error.message is intentionally left untranslated: umbra-core's cron
+           grammar is English-only in this version (AD-13 amendment — French
+           localization ships for the UI but deliberately not for the cron
+           parser, which is slated for a full revamp). Translating this one
+           message while the parser itself still only understands English
+           input would be more misleading than an honest English error next
+           to the notice below. -->
       <p
         v-if="error"
         role="alert"
@@ -156,6 +171,8 @@ async function onCopySchedule() {
       </p>
 
       <div v-if="explanation">
+        <!-- explanation.description is also intentionally untranslated — same
+             reasoning as error.message above. -->
         <p class="description">
           {{ explanation.description }}
         </p>
@@ -174,14 +191,19 @@ async function onCopySchedule() {
     <hr>
 
     <div class="schedule-section">
-      <h2>Schedule to cron</h2>
+      <h2>{{ t('tools.cron.scheduleToCron') }}</h2>
+
+      <p class="english-only-notice">
+        {{ t('tools.cron.englishOnlyNotice') }}
+      </p>
 
       <div class="field">
-        <label for="cron-schedule-phrase-input">Schedule, in plain English</label>
+        <label for="cron-schedule-phrase-input">{{ t('tools.cron.scheduleLabel') }}</label>
         <textarea
           id="cron-schedule-phrase-input"
           v-model="phrase"
           rows="2"
+          :placeholder="t('tools.cron.schedulePlaceholder')"
         />
       </div>
 
@@ -190,23 +212,25 @@ async function onCopySchedule() {
           type="button"
           @click="onParseSchedule"
         >
-          Convert
+          {{ t('tools.cron.convert') }}
         </button>
         <button
           type="button"
           @click="onPasteSchedule"
         >
-          Paste from clipboard
+          {{ t('common.pasteFromClipboard') }}
         </button>
         <button
           v-if="parseResult"
           type="button"
           @click="onCopySchedule"
         >
-          Copy expression
+          {{ t('tools.cron.copyExpression') }}
         </button>
       </div>
 
+      <!-- parseError.message/.context: same reasoning as error.message above
+           — umbra-core's NL->cron parser only understands English phrases. -->
       <p
         v-if="parseError"
         role="alert"
@@ -221,6 +245,7 @@ async function onCopySchedule() {
         <p class="expression">
           {{ parseResult.expression }}
         </p>
+        <!-- parseResult.description: same reasoning as explanation.description above. -->
         <p class="description">
           {{ parseResult.description }}
         </p>
@@ -252,12 +277,24 @@ textarea {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6em;
   margin-bottom: 1em;
 }
 
 p[role="alert"] {
   color: #b00020;
+}
+
+/* Same dashed-border "notice" treatment JwtView.vue/Base64View.vue/HashView.vue
+   use for their own tool-scoped disclosures. */
+.english-only-notice {
+  color: #666;
+  font-size: 0.9em;
+  border: 1px dashed #ccc;
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  margin-bottom: 1em;
 }
 
 .description {

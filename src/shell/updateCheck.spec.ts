@@ -104,16 +104,22 @@ describe("stripSeverityMarker", () => {
 });
 
 describe("formatUpdateDate", () => {
+  // "system" reproduces the pre-i18n behavior exactly (toLocaleDateString(undefined, ...))
+  // — dateTimeFormat's locale-following behavior is covered by locale.spec.ts's
+  // formatDateWithFormat tests instead, so these stay focused on formatUpdateDate's own
+  // contract (parsing/undefined-handling), not re-testing formatDate underneath it.
+  const systemFormatSettings = { locale: "system" as const, dateTimeFormat: "system" as const };
+
   it("formats a full ISO-8601 timestamp as a readable date, locale-safe", () => {
     const iso = "2026-08-18T23:23:37.094Z";
-    expect(formatUpdateDate(iso)).toBe(
+    expect(formatUpdateDate(iso, systemFormatSettings)).toBe(
       new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }),
     );
   });
 
   it("formats a bare date-only string the same way", () => {
     const dateOnly = "2026-08-09";
-    expect(formatUpdateDate(dateOnly)).toBe(
+    expect(formatUpdateDate(dateOnly, systemFormatSettings)).toBe(
       new Date(dateOnly).toLocaleDateString(undefined, {
         year: "numeric",
         month: "long",
@@ -123,10 +129,24 @@ describe("formatUpdateDate", () => {
   });
 
   it("returns undefined for a missing date", () => {
-    expect(formatUpdateDate(undefined)).toBeUndefined();
+    expect(formatUpdateDate(undefined, systemFormatSettings)).toBeUndefined();
   });
 
   it("returns undefined rather than 'Invalid Date' for an unparseable string", () => {
-    expect(formatUpdateDate("not a date")).toBeUndefined();
+    expect(formatUpdateDate("not a date", systemFormatSettings)).toBeUndefined();
+  });
+
+  it("formats in French when the date-time format is pinned to fr-FR", () => {
+    const iso = "2026-08-18T23:23:37.094Z";
+    expect(formatUpdateDate(iso, { locale: "en", dateTimeFormat: "fr-FR" })).toBe(
+      new Date(iso).toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" }),
+    );
+  });
+
+  it("formats as ISO 8601 when the date-time format is pinned to iso", () => {
+    const date = new Date("2026-08-18T23:23:37.094Z");
+    expect(formatUpdateDate(date.toISOString(), { locale: "en", dateTimeFormat: "iso" })).toBe(
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+    );
   });
 });

@@ -83,7 +83,7 @@ FR IDs are global and stable. Phases: **MVP** (target ~Aug 8), **P2** (rest of A
 
 - **FR23.** A drop zone accepts images (PNG, JPEG, WebP, plus pasted screenshots — TIFF dropped as uncommon for this use case) and extracts their text via a **local ONNX OCR model** (INV-1). **Decided:** ONNX over macOS Vision, so the Bucket stays portable to Windows/Linux (NFR3).
 - **FR24.** Extracted text is shown editable with one-click copy; extraction of a typical screenshot completes in under ~3 s on Apple Silicon.
-- **FR25.** OCR supports English in v1. **Coupling rule:** any future French localization of the app must add French to the OCR and NL→cron tools in the same release — a half-localized privacy tool reads as unfinished.
+- **FR25.** OCR supports English in v1. **Coupling rule:** any future French localization of the app must add French to the OCR and NL→cron tools in the same release — a half-localized privacy tool reads as unfinished. **Amendment (French UI release, 2026-08-23):** the coupling rule's letter is amended, its purpose preserved — French UI ships with the OCR leg (the bundled model's character dictionary already covers French diacritics), while the NL→cron leg is deliberately deferred because `cron.rs`'s English grammar would need rebuilding for a tool separately slated for a full revamp, and the French UI discloses this limitation explicitly rather than silently assuming English input works. Full reasoning recorded against AD-13 in `ARCHITECTURE-SPINE.md`.
 - **FR26.** Failed or empty extractions state so explicitly (vs. showing a blank result).
 
 ### F8 — Bucket growth (P2)

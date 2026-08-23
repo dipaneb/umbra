@@ -97,7 +97,7 @@ The PRD is explicit that "wrong-but-confident output is a bug, not a model limit
 
 AD-9 makes this a build-time guarantee rather than a review-time hope: every NL→cron result is round-tripped through the cron→English direction *before* it's ever shown to the user. If the round-trip doesn't match, the result is suppressed and an honest failure is shown instead. A canonical phrase corpus — must-convert phrases and must-honestly-fail phrases — runs as an automated test in `umbra-core`; a regression in either direction fails CI, not just a manual QA pass.
 
-AD-13 extends the same honesty principle to localization: French support cannot land in the UI alone while OCR and NL→cron still silently assume English underneath — a release adds the language everywhere at once, or it doesn't ship.
+AD-13 extends the same honesty principle to localization: French support cannot land in the UI alone while OCR and NL→cron still silently assume English underneath — a release adds the language everywhere at once, or it doesn't ship. **Amended 2026-08-23:** the French UI release ships with the OCR leg (the bundled model's character dictionary already covers French diacritics — pending a manual end-to-end confirmation) and deliberately defers the NL→cron leg, since `cron.rs`'s English grammar and its AD-9 round-trip check would need to be rebuilt for a tool that's separately slated for a full revamp. The honesty principle itself is preserved, not waived: the French cron view says outright that its parser is English-only, rather than silently assuming French input works. See AD-13's own amendment note in `ARCHITECTURE-SPINE.md` for the full reasoning.
 
 ## Shipping and updating (AD-12)
 

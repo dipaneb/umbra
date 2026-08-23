@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { useRegistryStore } from "../stores/registry";
 import { resolveIcon } from "./icons";
 
+const { t } = useI18n();
 const registry = useRegistryStore();
 </script>
 
@@ -29,7 +31,7 @@ const registry = useRegistryStore();
           />
         </span>
         <span class="title">{{ tool.name }}</span>
-        <span class="description">{{ tool.description }}</span>
+        <span class="description">{{ t(tool.descriptionKey) }}</span>
       </a>
     </RouterLink>
   </div>

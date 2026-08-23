@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
 import { createLatestWinsRunner } from "../../shell/invoke";
-import { isToolError, type ToolError } from "../../shell/toolError";
+import { isToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import JsonTree from "./JsonTree.vue";
 import type { JsonIndent } from "./jsonIndent";
 import type { JsonTreeValue } from "./jsonTreeValue";
+
+const { t } = useI18n();
 
 const input = ref("");
 const output = ref("");
@@ -51,10 +54,10 @@ onUnmounted(() => debouncedParse.cancel());
 const errorLocation = computed(() => {
   const position = error.value?.position;
   if (position?.kind === "LineCol") {
-    return `(line ${position.line}, column ${position.column})`;
+    return t("common.positionLineCol", { line: position.line, column: position.column });
   }
   if (position?.kind === "ByteOffset") {
-    return `(offset ${position.offset})`;
+    return t("common.positionByteOffset", { offset: position.offset });
   }
   return null;
 });
@@ -117,11 +120,11 @@ async function onCopy() {
 
 <template>
   <section>
-    <h1>JSON</h1>
+    <h1>{{ t('tools.json.heading') }}</h1>
 
     <div class="panels">
       <div class="field">
-        <label for="json-input">JSON input</label>
+        <label for="json-input">{{ t('tools.json.inputLabel') }}</label>
         <textarea
           id="json-input"
           v-model="input"
@@ -130,13 +133,13 @@ async function onCopy() {
       </div>
 
       <div class="tree-panel">
-        <span class="tree-panel-label">Tree view</span>
+        <span class="tree-panel-label">{{ t('tools.json.treeViewLabel') }}</span>
         <JsonTree :value="treeValue" />
       </div>
     </div>
 
     <fieldset>
-      <legend>Indentation</legend>
+      <legend>{{ t('tools.json.indentationLegend') }}</legend>
       <label>
         <input
           v-model="indent"
@@ -144,7 +147,7 @@ async function onCopy() {
           name="json-indent"
           value="two_spaces"
         >
-        2 spaces
+        {{ t('tools.json.indentTwoSpaces') }}
       </label>
       <label>
         <input
@@ -153,7 +156,7 @@ async function onCopy() {
           name="json-indent"
           value="four_spaces"
         >
-        4 spaces
+        {{ t('tools.json.indentFourSpaces') }}
       </label>
       <label>
         <input
@@ -162,7 +165,7 @@ async function onCopy() {
           name="json-indent"
           value="tab"
         >
-        Tab
+        {{ t('tools.json.indentTab') }}
       </label>
     </fieldset>
 
@@ -171,19 +174,19 @@ async function onCopy() {
         type="button"
         @click="onFormat"
       >
-        Format
+        {{ t('tools.json.format') }}
       </button>
       <button
         type="button"
         @click="onMinify"
       >
-        Minify
+        {{ t('tools.json.minify') }}
       </button>
       <button
         type="button"
         @click="onPaste"
       >
-        Paste from clipboard
+        {{ t('common.pasteFromClipboard') }}
       </button>
     </div>
 
@@ -191,13 +194,13 @@ async function onCopy() {
       v-if="error"
       role="alert"
     >
-      {{ error.message }}<template v-if="errorLocation">
+      {{ toolErrorMessage(error, t) }}<template v-if="errorLocation">
         {{ errorLocation }}
       </template>
     </p>
 
     <div class="field">
-      <label for="json-output">JSON output</label>
+      <label for="json-output">{{ t('tools.json.outputLabel') }}</label>
       <textarea
         id="json-output"
         readonly
@@ -211,7 +214,7 @@ async function onCopy() {
       :disabled="output === ''"
       @click="onCopy"
     >
-      Copy to clipboard
+      {{ t('common.copyToClipboard') }}
     </button>
   </section>
 </template>
@@ -262,6 +265,7 @@ fieldset {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6em;
   margin-bottom: 1em;
 }

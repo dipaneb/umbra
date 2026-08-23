@@ -3,6 +3,7 @@ import { mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { createAppRouter } from "../router";
 import { useRegistryStore } from "../stores/registry";
+import { i18n } from "../i18n";
 import GridHome from "./GridHome.vue";
 import { resolveIcon } from "./icons";
 
@@ -31,7 +32,7 @@ describe("GridHome", () => {
       const icon = card.findComponent(resolveIcon(tool.icon));
       expect(icon.exists()).toBe(true);
       expect(card.text()).toContain(tool.name);
-      expect(card.text()).toContain(tool.description);
+      expect(card.text()).toContain(i18n.global.t(tool.descriptionKey));
     });
   });
 

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { formatUpdateDate, installUpdate, stripSeverityMarker } from "./updateCheck";
 import { closeDialog, dialogOpen, pendingUpdate } from "./updateSignal";
 import { useSettingsStore } from "../stores/settings";
 import AppButton from "../components/AppButton.vue";
 
+const { t } = useI18n();
 const settings = useSettingsStore();
 const installing = ref(false);
 const installError = ref<string | null>(null);
@@ -21,7 +23,7 @@ async function onInstall(): Promise<void> {
     await installUpdate(update);
   } catch (error) {
     console.error("updateCheck: install failed", error);
-    installError.value = "Update failed to install. Please try again.";
+    installError.value = t("shell.updateDialog.installFailed");
     installing.value = false;
   }
 }
@@ -140,16 +142,16 @@ onUnmounted(() => {
       tabindex="-1"
     >
       <h2 id="update-dialog-heading">
-        Update available: {{ pendingUpdate.version }}
+        {{ t('shell.updateDialog.headingAvailable', { version: pendingUpdate.version }) }}
       </h2>
       <p class="version-line">
-        Current version {{ pendingUpdate.currentVersion }} → {{ pendingUpdate.version }}
+        {{ t('shell.updateDialog.versionLine', { current: pendingUpdate.currentVersion, next: pendingUpdate.version }) }}
       </p>
       <p
-        v-if="formatUpdateDate(pendingUpdate.date)"
+        v-if="formatUpdateDate(pendingUpdate.date, settings)"
         class="date-line"
       >
-        Released {{ formatUpdateDate(pendingUpdate.date) }}
+        {{ t('shell.updateDialog.releasedLine', { date: formatUpdateDate(pendingUpdate.date, settings) }) }}
       </p>
       <p
         v-if="pendingUpdate.body"
@@ -171,7 +173,7 @@ onUnmounted(() => {
           :disabled="installing"
           @click="onDismiss"
         >
-          Not Now
+          {{ t('shell.updateDialog.notNow') }}
         </AppButton>
         <AppButton
           type="button"
@@ -179,7 +181,7 @@ onUnmounted(() => {
           :disabled="installing"
           @click="onInstall"
         >
-          {{ installing ? "Installing…" : "Install & Restart" }}
+          {{ installing ? t('shell.updateDialog.installing') : t('shell.updateDialog.installAndRestart') }}
         </AppButton>
       </div>
     </div>
@@ -234,6 +236,11 @@ onUnmounted(() => {
 
 .actions {
   display: flex;
+  /* Was single-line only — "Installer et redémarrer" runs noticeably longer
+     than "Install & Restart", and this is the tightest button row in the
+     app (420px dialog minus padding, two buttons). Wrapping keeps both
+     buttons fully readable instead of letting the wider one overflow. */
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.8em;
   margin-top: 1.5em;

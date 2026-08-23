@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
-import { toToolError, type ToolError } from "../../shell/toolError";
+import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import { useRegistryStore } from "../../stores/registry";
 import type { HashDigests } from "./hashDigests";
 
+const { t } = useI18n();
+
 type CaseMode = "lower" | "upper";
 
+// Algorithm names (SHA-256, MD5, …) are not translated — they're proper
+// nouns/standard identifiers, same reasoning as tool names in the registry.
 const ROW_DEFS: { key: keyof HashDigests; label: string; legacy: boolean }[] = [
   { key: "sha256", label: "SHA-256", legacy: false },
   { key: "sha512", label: "SHA-512", legacy: false },
@@ -94,14 +99,14 @@ async function onCopyOne(value: string) {
 
 <template>
   <section>
-    <h1>Hash</h1>
+    <h1>{{ t('tools.hash.heading') }}</h1>
 
     <p class="drop-hint">
-      Drop a file anywhere in the window to hash it.
+      {{ t('tools.hash.dropHint') }}
     </p>
 
     <div class="field">
-      <label for="hash-input">Text input</label>
+      <label for="hash-input">{{ t('tools.hash.inputLabel') }}</label>
       <textarea
         id="hash-input"
         v-model="input"
@@ -110,7 +115,7 @@ async function onCopyOne(value: string) {
     </div>
 
     <fieldset>
-      <legend>Case</legend>
+      <legend>{{ t('tools.hash.caseLegend') }}</legend>
       <label>
         <input
           v-model="caseMode"
@@ -118,7 +123,7 @@ async function onCopyOne(value: string) {
           name="hash-case"
           value="lower"
         >
-        lowercase
+        {{ t('tools.hash.caseLower') }}
       </label>
       <label>
         <input
@@ -127,7 +132,7 @@ async function onCopyOne(value: string) {
           name="hash-case"
           value="upper"
         >
-        UPPERCASE
+        {{ t('tools.hash.caseUpper') }}
       </label>
     </fieldset>
 
@@ -136,13 +141,13 @@ async function onCopyOne(value: string) {
         type="button"
         @click="onCompute"
       >
-        Compute
+        {{ t('tools.hash.compute') }}
       </button>
       <button
         type="button"
         @click="onPaste"
       >
-        Paste from clipboard
+        {{ t('common.pasteFromClipboard') }}
       </button>
     </div>
 
@@ -150,7 +155,7 @@ async function onCopyOne(value: string) {
       v-if="error"
       role="alert"
     >
-      {{ error.message }}
+      {{ toolErrorMessage(error, t) }}
     </p>
 
     <ul
@@ -161,13 +166,13 @@ async function onCopyOne(value: string) {
         v-for="row in rows"
         :key="row.key"
       >
-        <label>{{ row.label }}<span v-if="row.legacy"> (legacy)</span></label>
+        <label>{{ row.legacy ? t('tools.hash.legacySuffix', { algorithm: row.label }) : row.label }}</label>
         <code>{{ row.value }}</code>
         <button
           type="button"
           @click="onCopyOne(row.value)"
         >
-          Copy
+          {{ t('common.copy') }}
         </button>
       </li>
     </ul>
@@ -218,6 +223,10 @@ p[role="alert"] {
 .results li {
   display: flex;
   align-items: center;
+  /* Allows the label column to wrap onto its own line instead of squeezing
+     the monospace digest — "SHA-256 (obsolète)" runs meaningfully longer
+     than "SHA-256 (legacy)". */
+  flex-wrap: wrap;
   gap: 0.6em;
   padding: 0.4em 0;
 }

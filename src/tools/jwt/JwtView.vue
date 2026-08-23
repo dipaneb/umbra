@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { readClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
-import { toToolError, type ToolError } from "../../shell/toolError";
+import { formatDateTime } from "../../shell/locale";
+import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
+import { useSettingsStore } from "../../stores/settings";
 import type { JwtDecoded } from "./jwtDecoded";
+
+const { t } = useI18n();
+const settings = useSettingsStore();
 
 const token = ref("");
 const decoded = ref<JwtDecoded | null>(null);
@@ -20,8 +26,11 @@ const prettyPayload = computed(() => (decoded.value ? JSON.stringify(decoded.val
 
 // Core returns unix-seconds epoch values (never milliseconds); `Date`
 // expects milliseconds, hence the `* 1000` here and in `isExpired` below.
+// Routed through formatDateTime (src/shell/locale.ts) rather than a bare
+// `toLocaleString()` so this follows the app's locale/date-format settings
+// instead of always the OS default (the pre-i18n behavior).
 function formatClaim(value: number | null): string {
-  return value === null ? "not present" : new Date(value * 1000).toLocaleString();
+  return value === null ? t("tools.jwt.claimNotPresent") : formatDateTime(new Date(value * 1000), settings);
 }
 
 const isExpired = computed(() => decoded.value?.exp != null && decoded.value.exp * 1000 < Date.now());
@@ -55,14 +64,14 @@ async function onPaste() {
 
 <template>
   <section>
-    <h1>JWT</h1>
+    <h1>{{ t('tools.jwt.heading') }}</h1>
 
     <p class="notice">
-      Signatures are not verified — this tool only decodes and displays a token's contents.
+      {{ t('tools.jwt.notice') }}
     </p>
 
     <div class="field">
-      <label for="jwt-token-input">Token</label>
+      <label for="jwt-token-input">{{ t('tools.jwt.tokenLabel') }}</label>
       <textarea
         id="jwt-token-input"
         v-model="token"
@@ -75,13 +84,13 @@ async function onPaste() {
         type="button"
         @click="onDecode"
       >
-        Decode
+        {{ t('tools.jwt.decode') }}
       </button>
       <button
         type="button"
         @click="onPaste"
       >
-        Paste from clipboard
+        {{ t('common.pasteFromClipboard') }}
       </button>
     </div>
 
@@ -89,7 +98,7 @@ async function onPaste() {
       v-if="error"
       role="alert"
     >
-      {{ error.message }}
+      {{ toolErrorMessage(error, t) }}
     </p>
 
     <div v-if="decoded">
@@ -98,30 +107,30 @@ async function onPaste() {
         role="status"
         class="expired"
       >
-        This token is expired.
+        {{ t('tools.jwt.expired') }}
       </p>
 
       <div class="field">
-        <label>Header</label>
+        <label>{{ t('tools.jwt.header') }}</label>
         <pre>{{ prettyHeader }}</pre>
       </div>
 
       <div class="field">
-        <label>Payload</label>
+        <label>{{ t('tools.jwt.payload') }}</label>
         <pre>{{ prettyPayload }}</pre>
       </div>
 
       <ul class="claims">
         <li>
-          <label>Expires (exp)</label>
+          <label>{{ t('tools.jwt.claimExpires') }}</label>
           <span>{{ formatClaim(decoded.exp) }}</span>
         </li>
         <li>
-          <label>Issued at (iat)</label>
+          <label>{{ t('tools.jwt.claimIssuedAt') }}</label>
           <span>{{ formatClaim(decoded.iat) }}</span>
         </li>
         <li>
-          <label>Not before (nbf)</label>
+          <label>{{ t('tools.jwt.claimNotBefore') }}</label>
           <span>{{ formatClaim(decoded.nbf) }}</span>
         </li>
       </ul>
@@ -184,6 +193,9 @@ p.expired {
 .claims li {
   display: flex;
   align-items: center;
+  /* Allows the label column to wrap onto its own line rather than crowd the
+     value — "Valide à partir de (nbf)" runs longer than "Not before (nbf)". */
+  flex-wrap: wrap;
   gap: 0.6em;
   padding: 0.4em 0;
 }

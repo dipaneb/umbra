@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { flattenJsonTree, type JsonTreeRow } from "./flattenJsonTree";
 import type { JsonTreeValue } from "./jsonTreeValue";
+
+const { t } = useI18n();
 
 const props = defineProps<{ value: JsonTreeValue | null }>();
 
@@ -138,7 +141,7 @@ async function onKeydown(event: KeyboardEvent, index: number) {
     v-if="value === null"
     role="status"
   >
-    Tree unavailable — fix the JSON to see its structure.
+    {{ t('tools.json.treeUnavailable') }}
   </p>
   <div
     v-else

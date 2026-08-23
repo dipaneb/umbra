@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useRegistryStore } from "../stores/registry";
 import { resolveIcon } from "./icons";
 import { searchTools } from "./paletteSearch";
 
+const { t } = useI18n();
 const registry = useRegistryStore();
 const router = useRouter();
 
@@ -101,8 +103,8 @@ onUnmounted(() => {
       <input
         ref="inputRef"
         v-model="query"
-        aria-label="Search tools"
-        placeholder="Search tools by name or alias…"
+        :aria-label="t('shell.commandPalette.searchLabel')"
+        :placeholder="t('shell.commandPalette.searchPlaceholder')"
         role="combobox"
         :aria-expanded="results.length > 0"
         :aria-controls="results.length > 0 ? listboxId : undefined"
@@ -132,7 +134,7 @@ onUnmounted(() => {
         v-else
         role="status"
       >
-        No tools match "{{ query }}".
+        {{ t('shell.commandPalette.noMatches', { query }) }}
       </p>
     </div>
   </div>

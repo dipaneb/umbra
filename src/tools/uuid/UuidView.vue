@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { writeClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
-import { toToolError, type ToolError } from "../../shell/toolError";
+import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import type { UuidVersion } from "./uuidVersion";
+
+const { t, n } = useI18n();
 
 const MAX_COUNT = 4294967295; // u32::MAX — mirrors umbra-core's u32 command parameter
 
@@ -18,7 +21,9 @@ const runLatestWins = createLatestWinsRunner();
 
 // uuid.rs's generate() always returns position: None, so there's no
 // LineCol/ByteOffset case to render here (unlike JsonView/Base64View).
-const alertMessage = computed(() => clientError.value ?? error.value?.message ?? null);
+const alertMessage = computed(() =>
+  clientError.value ?? (error.value ? toolErrorMessage(error.value, t) : null),
+);
 
 // A stale list generated under the previous version no longer "matches the
 // selected version" (AC3) until the next Generate click — clear it rather
@@ -40,7 +45,7 @@ async function onGenerate() {
   // surface a raw IPC error instead of a clean inline message. 0 itself is a
   // valid u32, so it's allowed through to hit the server's own rejection.
   if (!Number.isInteger(count.value) || count.value < 0 || count.value > MAX_COUNT) {
-    clientError.value = "Enter a whole number between 0 and 4294967295.";
+    clientError.value = t("tools.uuid.countOutOfRange", { max: n(MAX_COUNT, "grouped") });
     return;
   }
 
@@ -81,10 +86,10 @@ async function onCopyAll() {
 
 <template>
   <section>
-    <h1>UUID</h1>
+    <h1>{{ t('tools.uuid.heading') }}</h1>
 
     <fieldset>
-      <legend>Version</legend>
+      <legend>{{ t('tools.uuid.versionLegend') }}</legend>
       <label>
         <input
           v-model="version"
@@ -106,7 +111,7 @@ async function onCopyAll() {
     </fieldset>
 
     <div class="field">
-      <label for="uuid-count">Count</label>
+      <label for="uuid-count">{{ t('tools.uuid.countLabel') }}</label>
       <input
         id="uuid-count"
         v-model.number="count"
@@ -120,14 +125,14 @@ async function onCopyAll() {
         type="button"
         @click="onGenerate"
       >
-        Generate
+        {{ t('tools.uuid.generate') }}
       </button>
       <button
         v-if="results.length > 1"
         type="button"
         @click="onCopyAll"
       >
-        Copy all
+        {{ t('tools.uuid.copyAll') }}
       </button>
     </div>
 
@@ -151,7 +156,7 @@ async function onCopyAll() {
           type="button"
           @click="onCopyOne(uuid)"
         >
-          Copy
+          {{ t('common.copy') }}
         </button>
       </li>
     </ul>
@@ -164,7 +169,11 @@ async function onCopyAll() {
   flex-direction: column;
   gap: 0.4em;
   margin-bottom: 1em;
-  max-width: 8em;
+  /* Was a fixed 8em — tight enough that "Count"/"Nombre" plus the number
+     input could crowd. This field only ever holds a label + a number input,
+     so a max-width is still useful to keep it from stretching full-width,
+     just wide enough to survive French's longer labels. */
+  max-width: 16em;
 }
 
 fieldset {
