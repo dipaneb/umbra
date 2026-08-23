@@ -1,0 +1,4 @@
+# Exclude BMAD-METHOD tooling and its generated artifacts from GitHub's
+# language-percentage stats (Linguist). These aren't code written for Umbra.
+_bmad/** linguist-vendored
+_bmad-output/** linguist-generated
