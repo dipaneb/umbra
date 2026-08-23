@@ -202,6 +202,112 @@ describe("useSettingsStore", () => {
     expect(settings.themeOverride).toBe("system");
   });
 
+  it("defaults locale to system when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.locale).toBe("system");
+  });
+
+  it("setLocale persists and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setLocale("fr");
+
+    expect(settings.locale).toBe("fr");
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.locale", "fr");
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("falls back to system when the persisted locale value is invalid", async () => {
+    fakeStore.set("shell.locale", "klingon");
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.locale).toBe("system");
+  });
+
+  it("clearAll resets locale back to system", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setLocale("fr");
+
+    await settings.clearAll();
+
+    expect(settings.locale).toBe("system");
+  });
+
+  it("resetKey resets locale to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setLocale("fr");
+
+    await settings.resetKey("shell.locale");
+
+    expect(settings.locale).toBe("system");
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.locale");
+    await expect(settings.entries()).resolves.not.toContainEqual([
+      "shell.locale",
+      "fr",
+    ]);
+  });
+
+  it("defaults dateTimeFormat to auto when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.dateTimeFormat).toBe("auto");
+  });
+
+  it("setDateTimeFormat persists and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setDateTimeFormat("iso");
+
+    expect(settings.dateTimeFormat).toBe("iso");
+    expect(fakeStore.set).toHaveBeenCalledWith("shell.dateTimeFormat", "iso");
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("falls back to auto when the persisted dateTimeFormat value is invalid", async () => {
+    fakeStore.set("shell.dateTimeFormat", "stardate");
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.dateTimeFormat).toBe("auto");
+  });
+
+  it("clearAll resets dateTimeFormat back to auto", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setDateTimeFormat("iso");
+
+    await settings.clearAll();
+
+    expect(settings.dateTimeFormat).toBe("auto");
+  });
+
+  it("resetKey resets dateTimeFormat to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setDateTimeFormat("iso");
+
+    await settings.resetKey("shell.dateTimeFormat");
+
+    expect(settings.dateTimeFormat).toBe("auto");
+    expect(fakeStore.delete).toHaveBeenCalledWith("shell.dateTimeFormat");
+    await expect(settings.entries()).resolves.not.toContainEqual([
+      "shell.dateTimeFormat",
+      "iso",
+    ]);
+  });
+
   it("defaults sidebarCollapsed to false when the key is absent", async () => {
     const settings = useSettingsStore();
 

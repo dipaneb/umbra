@@ -1,3 +1,4 @@
+import { i18n } from "../i18n";
 import type { ToolRegistryEntry } from "../stores/registry";
 
 export function resolveActiveTool(
@@ -19,12 +20,12 @@ export function routeDrop(paths: string[], activeTool: ToolRegistryEntry | undef
     return {
       accepted: false,
       noticeMessage: activeTool
-        ? `${activeTool.name} doesn't accept dropped files.`
-        : "This view doesn't accept dropped files.",
+        ? i18n.global.t("shell.dropZone.toolDoesNotAcceptDrop", { name: activeTool.name })
+        : i18n.global.t("shell.dropZone.viewDoesNotAcceptDrop"),
     };
   }
   if (paths.length === 0) {
-    return { accepted: false, noticeMessage: "No file was found in that drop." };
+    return { accepted: false, noticeMessage: i18n.global.t("shell.dropZone.noFileFound") };
   }
   return { accepted: true, toolId: activeTool.id, paths };
 }

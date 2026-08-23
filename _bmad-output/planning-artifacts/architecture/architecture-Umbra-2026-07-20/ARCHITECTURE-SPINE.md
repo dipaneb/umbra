@@ -120,6 +120,35 @@ graph LR
 - **Prevents:** a half-localized privacy tool — UI in French, OCR and NL→cron still silently English-only
 - **Rule:** any release adding a UI language adds that language to the OCR models and the cron grammar + corpus in the same release, or the release does not ship. `[ADOPTED]`
 
+**Amendment (2026-08-23, French UI localization):** the French-UI release amends this
+rule's *letter* while preserving its *purpose* — the OCR leg ships as required, the
+NL→cron leg is deliberately deferred, and the deferral is disclosed rather than hidden:
+
+- **OCR:** the bundled recognition model's `character_dict.txt` already carries every
+  French accented glyph the language needs (`à ç è é ê î ï ô ù û ü œ`) — verified by
+  reading the dict directly, so no new model is needed. This makes French OCR support
+  *likely*, not yet *proven*: the end-to-end functional check (drop a real French-text
+  screenshot through the Bucket tool and confirm the accented characters come back
+  correctly) is a manual `pnpm tauri dev` step this amendment defers to, not one already
+  run as part of this change. If that check fails, this leg is not actually satisfied
+  and this amendment's "OCR ships as required" framing needs revisiting.
+- **NL→cron: deliberately NOT shipped.** `crates/umbra-core/src/cron.rs`'s
+  natural-language parser and its `describe()` sentence generator are both hand-written
+  English grammars, and AD-9 round-trips every result through `describe()` by string
+  equality — translating either half alone breaks the tool outright, and the cron tool
+  is separately slated for a full revamp, making a French grammar built against its
+  current shape throwaway work. Per this rule's own **Prevents** clause — a
+  half-localized tool must not silently assume English — the French UI's cron view
+  states this limitation explicitly (`tools.cron.englishOnlyNotice`) rather than
+  implying French input works. The tool's `description` key also keeps "in English"
+  explicit in French translation, not just in English.
+- This satisfies the rule's *purpose* (no silent English-only surface) while not
+  satisfying its *letter* (the NL→cron leg does not ship this release) — recorded here
+  as a deliberate, disclosed exception rather than an oversight, per this project's own
+  governance convention that a pattern not fully re-applied needs a reason on record.
+  The original rule stays `[ADOPTED]` for any *third* language, where the same
+  disclosure approach applies unless the cron revamp has landed by then.
+
 ### AD-14 — The shell owns OS I/O edges exactly once
 
 - **Binds:** drops, clipboard, keyboard shortcuts

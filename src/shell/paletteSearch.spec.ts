@@ -5,7 +5,7 @@ import type { ToolRegistryEntry } from "../stores/registry";
 const json: ToolRegistryEntry = {
   id: "json",
   name: "JSON",
-  description: "test",
+  descriptionKey: "test",
   aliases: ["json", "formatter"],
   route: "/tools/json",
   icon: "json",
@@ -15,7 +15,7 @@ const json: ToolRegistryEntry = {
 const base64: ToolRegistryEntry = {
   id: "b64",
   name: "Base64",
-  description: "test",
+  descriptionKey: "test",
   aliases: ["b64"],
   route: "/tools/b64",
   icon: "base64",
@@ -35,7 +35,7 @@ describe("searchTools", () => {
     const formatter: ToolRegistryEntry = {
       id: "fmt",
       name: "Formatter",
-      description: "test",
+      descriptionKey: "test",
       aliases: [],
       route: "/tools/fmt",
       icon: "json",
@@ -54,13 +54,30 @@ describe("searchTools", () => {
     expect(searchTools([json], "json")).toEqual([json]);
   });
 
+  it("matches a diacritic-free query against an accented alias, and vice versa", () => {
+    const jwt: ToolRegistryEntry = {
+      id: "jwt",
+      name: "JWT",
+      descriptionKey: "test",
+      aliases: ["jwt", "jeton", "décoder"],
+      route: "/tools/jwt",
+      icon: "jwt",
+      component: () => Promise.resolve({ template: "<div />" }),
+    };
+
+    // Typing the accent-free form matches the accented alias…
+    expect(searchTools([jwt], "decoder")).toEqual([jwt]);
+    // …and typing the accented form still matches too.
+    expect(searchTools([jwt], "décoder")).toEqual([jwt]);
+  });
+
   it("ranks an alias startsWith match above a name.includes match", () => {
     // base64: alias "b64" startsWith "b6" -> tier 3
     // cb6x:   name "Cb6x" includes "b6" (but no name/alias startsWith) -> tier 4
     const cb6x: ToolRegistryEntry = {
       id: "cb6x",
       name: "Cb6x",
-      description: "test",
+      descriptionKey: "test",
       aliases: [],
       route: "/tools/cb6x",
       icon: "hash",

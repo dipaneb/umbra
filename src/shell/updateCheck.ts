@@ -1,5 +1,8 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { i18n } from "../i18n";
+import { formatDate as formatLocaleDate } from "./locale";
+import type { useSettingsStore } from "../stores/settings";
 
 export type { Update };
 
@@ -24,8 +27,12 @@ export function getUpdateSeverity(update: Update | null): UpdateSeverity {
 
 // Shared with AppSidebar.vue's accessible-name suffix and SettingsView.vue's banner
 // heading (AC7) — a single source for these exact strings so the two can't drift apart.
+// Reads i18n.global directly (a pure module, not a component, so useI18n()
+// isn't available) — same pattern flattenJsonTree.ts's previewFor() uses.
 export function getUpdateSeverityLabel(severity: UpdateSeverity): string {
-  return severity === "security" ? "Security update available" : "Update available";
+  return severity === "security"
+    ? i18n.global.t("shell.updateCheck.securityUpdateAvailable")
+    : i18n.global.t("shell.updateCheck.updateAvailable");
 }
 
 // This project's principle (Story 7.6) is not leaking internal/implementation-facing
@@ -38,12 +45,17 @@ export function stripSeverityMarker(body: string | undefined): string | undefine
 // straight through by the plugin — confirmed via its own .d.ts, never a Date object).
 // Formats it for display; returns undefined (not the string "Invalid Date") for a missing
 // or unparseable value, so callers' existing `v-if="formatUpdateDate(...)"` correctly hides
-// the line rather than render nonsense.
-export function formatUpdateDate(date: string | undefined): string | undefined {
+// the line rather than render nonsense. Routed through formatDate (src/shell/locale.ts)
+// rather than a bare `toLocaleDateString(undefined, ...)`, so this follows the app's
+// locale/date-format settings instead of always the OS default (the pre-i18n behavior).
+export function formatUpdateDate(
+  date: string | undefined,
+  settings: Pick<ReturnType<typeof useSettingsStore>, "locale" | "dateTimeFormat">,
+): string | undefined {
   if (!date) return undefined;
   const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return undefined;
-  return parsed.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  return formatLocaleDate(parsed, settings);
 }
 
 // Tauri's own documented pattern: downloadAndInstall() replaces the binary but does not relaunch

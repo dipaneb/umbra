@@ -4,11 +4,13 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import "./styles/tokens.css";
 import App from "./App.vue";
+import { i18n } from "./i18n";
 import { createAppRouter } from "./router";
 import { useRegistryStore } from "./stores/registry";
 import { useSettingsStore } from "./stores/settings";
 import { attachWindowGeometryListeners } from "./shell/windowGeometry";
 import { attachThemeListener } from "./shell/theme";
+import { attachLocaleListener } from "./shell/locale";
 
 async function bootstrap(): Promise<void> {
   const pinia = createPinia();
@@ -31,6 +33,11 @@ async function bootstrap(): Promise<void> {
     // reactivity (OS changes, in-app toggle changes) before any restore step
     // below gets a chance to throw and skip past it.
     attachThemeListener(settings);
+    // Same reasoning as attachThemeListener above: applies the resolved
+    // locale before mount()/show(), so the window's first paint (it starts
+    // `visible: false`, per tauri.conf.json) is never a flash of English
+    // before a French preference kicks in.
+    attachLocaleListener(settings);
 
     if (settings.restoreEnabled) {
       const lastTool = settings.lastTool;
@@ -66,7 +73,7 @@ async function bootstrap(): Promise<void> {
       error,
     );
   } finally {
-    createApp(App).use(pinia).use(router).mount("#app");
+    createApp(App).use(pinia).use(router).use(i18n).mount("#app");
     try {
       await getCurrentWindow().show();
     } catch (error: unknown) {

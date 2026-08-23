@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
-import { toToolError, type ToolError } from "../../shell/toolError";
+import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import { useRegistryStore } from "../../stores/registry";
+
+const { t } = useI18n();
 
 type Alphabet = "standard" | "url_safe";
 
@@ -22,10 +25,10 @@ const runLatestWins = createLatestWinsRunner();
 const errorLocation = computed(() => {
   const position = error.value?.position;
   if (position?.kind === "LineCol") {
-    return `(line ${position.line}, column ${position.column})`;
+    return t("common.positionLineCol", { line: position.line, column: position.column });
   }
   if (position?.kind === "ByteOffset") {
-    return `(offset ${position.offset})`;
+    return t("common.positionByteOffset", { offset: position.offset });
   }
   return null;
 });
@@ -124,14 +127,14 @@ async function onCopy() {
 
 <template>
   <section>
-    <h1>Base64</h1>
+    <h1>{{ t('tools.base64.heading') }}</h1>
 
     <p class="drop-hint">
-      Drop a file anywhere in the window to Base64-encode it.
+      {{ t('tools.base64.dropHint') }}
     </p>
 
     <div class="field">
-      <label for="base64-input">Text or Base64 input</label>
+      <label for="base64-input">{{ t('tools.base64.inputLabel') }}</label>
       <textarea
         id="base64-input"
         v-model="input"
@@ -140,7 +143,7 @@ async function onCopy() {
     </div>
 
     <fieldset>
-      <legend>Alphabet (used by Encode only)</legend>
+      <legend>{{ t('tools.base64.alphabetLegend') }}</legend>
       <label>
         <input
           v-model="alphabet"
@@ -148,7 +151,7 @@ async function onCopy() {
           name="base64-alphabet"
           value="standard"
         >
-        Standard
+        {{ t('tools.base64.alphabetStandard') }}
       </label>
       <label>
         <input
@@ -157,7 +160,7 @@ async function onCopy() {
           name="base64-alphabet"
           value="url_safe"
         >
-        URL-safe
+        {{ t('tools.base64.alphabetUrlSafe') }}
       </label>
     </fieldset>
 
@@ -166,26 +169,26 @@ async function onCopy() {
         type="button"
         @click="onEncode"
       >
-        Encode
+        {{ t('tools.base64.encode') }}
       </button>
       <button
         type="button"
         @click="onDecode"
       >
-        Decode
+        {{ t('tools.base64.decode') }}
       </button>
       <button
         type="button"
         @click="onPaste"
       >
-        Paste from clipboard
+        {{ t('common.pasteFromClipboard') }}
       </button>
       <button
         type="button"
         :disabled="decodingToFile"
         @click="onDecodeToFile"
       >
-        Decode to file
+        {{ t('tools.base64.decodeToFile') }}
       </button>
     </div>
 
@@ -193,13 +196,13 @@ async function onCopy() {
       v-if="error"
       role="alert"
     >
-      {{ error.message }}<template v-if="errorLocation">
+      {{ toolErrorMessage(error, t) }}<template v-if="errorLocation">
         {{ errorLocation }}
       </template>
     </p>
 
     <div class="field">
-      <label for="base64-output">Output</label>
+      <label for="base64-output">{{ t('tools.base64.outputLabel') }}</label>
       <textarea
         id="base64-output"
         readonly
@@ -213,7 +216,7 @@ async function onCopy() {
       :disabled="output === ''"
       @click="onCopy"
     >
-      Copy to clipboard
+      {{ t('common.copyToClipboard') }}
     </button>
   </section>
 </template>
@@ -245,6 +248,7 @@ fieldset {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6em;
   margin-bottom: 1em;
 }

@@ -8,8 +8,19 @@ import type { ToolError } from "../shell/toolError";
 
 export interface ToolRegistryEntry {
   id: string;
+  // Proper noun/standard identifier ("JSON", "Base64", "JWT") — deliberately
+  // NOT translated, same reasoning as algorithm names in HashView.vue.
   name: string;
-  description: string;
+  // An i18n key (tools.<id>.description), not the string itself — resolved
+  // by whichever view renders it (GridHome.vue) via t(), so this registry
+  // stays locale-independent data, consistent with `name` and `aliases`
+  // below.
+  descriptionKey: string;
+  // Union of English AND French search terms, not a per-locale list: a
+  // French user searching "decode" and an English user searching "décoder"
+  // should both find the tool — partitioning by locale would only narrow
+  // ⌘K, never improve it. paletteSearch.ts normalizes diacritics on both
+  // sides, so "cle"/"clé" match each other regardless of which one is typed.
   aliases: string[];
   route: string;
   icon: IconName;
@@ -63,8 +74,8 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "json",
     name: "JSON",
-    description: "Format, validate, and explore JSON as a collapsible tree.",
-    aliases: ["json", "formatter"],
+    descriptionKey: "tools.json.description",
+    aliases: ["json", "formatter", "formateur"],
     route: "/tools/json",
     icon: "json",
     component: () => import("../tools/json/JsonView.vue"),
@@ -77,8 +88,8 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "base64",
     name: "Base64",
-    description: "Encode and decode text or files to and from Base64.",
-    aliases: ["base64", "b64", "decode"],
+    descriptionKey: "tools.base64.description",
+    aliases: ["base64", "b64", "decode", "décoder", "encoder"],
     route: "/tools/base64",
     icon: "base64",
     component: () => import("../tools/base64/Base64View.vue"),
@@ -94,8 +105,8 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "uuid",
     name: "UUID",
-    description: "Generate UUID v4 or v7 identifiers, single or in bulk.",
-    aliases: ["uuid", "guid"],
+    descriptionKey: "tools.uuid.description",
+    aliases: ["uuid", "guid", "identifiant"],
     route: "/tools/uuid",
     icon: "uuid",
     component: () => import("../tools/uuid/UuidView.vue"),
@@ -103,8 +114,8 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "hash",
     name: "Hash",
-    description: "Compute SHA-256, SHA-512, MD5, and SHA-1 digests of text or files.",
-    aliases: ["hash", "checksum", "sha256", "sha512", "md5", "sha1", "digest"],
+    descriptionKey: "tools.hash.description",
+    aliases: ["hash", "checksum", "sha256", "sha512", "md5", "sha1", "digest", "hachage", "empreinte"],
     route: "/tools/hash",
     icon: "hash",
     component: () => import("../tools/hash/HashView.vue"),
@@ -113,8 +124,8 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "jwt",
     name: "JWT",
-    description: "Decode a JWT's header and payload, entirely offline.",
-    aliases: ["jwt", "token", "decode"],
+    descriptionKey: "tools.jwt.description",
+    aliases: ["jwt", "token", "decode", "jeton"],
     route: "/tools/jwt",
     icon: "jwt",
     component: () => import("../tools/jwt/JwtView.vue"),
@@ -128,8 +139,8 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "cron",
     name: "Cron",
-    description: "Translate between plain English and cron expressions.",
-    aliases: ["cron", "crontab", "schedule"],
+    descriptionKey: "tools.cron.description",
+    aliases: ["cron", "crontab", "schedule", "planification", "horaire"],
     route: "/tools/cron",
     icon: "cron",
     component: () => import("../tools/cron/CronView.vue"),
@@ -137,7 +148,7 @@ const TOOLS: ToolRegistryEntry[] = [
   {
     id: "bucket",
     name: "Bucket",
-    description: "Extract text from images, and merge, split, or convert PDFs and images.",
+    descriptionKey: "tools.bucket.description",
     aliases: [
       "bucket",
       "ocr",
@@ -150,6 +161,10 @@ const TOOLS: ToolRegistryEntry[] = [
       "png",
       "jpeg",
       "webp",
+      "capture d'écran",
+      "fusionner",
+      "convertir",
+      "compresser",
     ],
     route: "/tools/bucket",
     icon: "bucket",

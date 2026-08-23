@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { useRegistryStore } from "../stores/registry";
 import type { ToolRegistryEntry } from "../stores/registry";
@@ -18,6 +19,7 @@ import {
   PhPushPinSlash,
 } from "@phosphor-icons/vue";
 
+const { t } = useI18n();
 const registry = useRegistryStore();
 const settings = useSettingsStore();
 const route = useRoute();
@@ -74,7 +76,7 @@ const sections = computed<NavSection[]>(() => {
   if (settings.pinnedToolsVisible && pinnedEntries.value.length > 0) {
     result.push({
       key: "pinned",
-      heading: "Pinned",
+      heading: t("shell.sidebar.pinnedHeading"),
       headingId: "nav-section-heading-pinned",
       listClass: "nav-pinned",
       tools: pinnedEntries.value,
@@ -83,7 +85,7 @@ const sections = computed<NavSection[]>(() => {
   if (settings.recentToolsVisible && recentEntries.value.length > 0) {
     result.push({
       key: "recent",
-      heading: "Recent",
+      heading: t("shell.sidebar.recentHeading"),
       headingId: "nav-section-heading-recent",
       listClass: "nav-recent",
       tools: recentEntries.value,
@@ -91,7 +93,7 @@ const sections = computed<NavSection[]>(() => {
   }
   result.push({
     key: "all",
-    heading: "All tools",
+    heading: t("shell.sidebar.allToolsHeading"),
     headingId: "nav-section-heading-all",
     listClass: "nav-all",
     tools: registry.tools,
@@ -147,8 +149,8 @@ async function announceClipboardMatchCount(matches: ClipboardMatchCandidate[]): 
   if (matches.length === 0) return;
   clipboardAnnouncement.value =
     matches.length === 1
-      ? `${matches[0].tool.name} suggested from clipboard`
-      : `${matches.length} tools suggested from clipboard`;
+      ? t("shell.sidebar.clipboardSuggestedOne", { name: matches[0].tool.name })
+      : t("shell.sidebar.clipboardSuggestedMany", { count: matches.length });
 }
 
 // AD-16: the read-and-match sequence below is async (`readClipboardText`), and two clipboard
@@ -232,7 +234,7 @@ watch(
 <template>
   <nav
     id="sidebar-nav"
-    aria-label="Tools"
+    :aria-label="t('shell.sidebar.toolsNav')"
     :class="{ collapsed: settings.sidebarCollapsed }"
   >
     <button
@@ -240,7 +242,7 @@ watch(
       class="collapse-toggle"
       :aria-expanded="!settings.sidebarCollapsed"
       aria-controls="sidebar-nav"
-      :aria-label="settings.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+      :aria-label="settings.sidebarCollapsed ? t('shell.sidebar.expandSidebar') : t('shell.sidebar.collapseSidebar')"
       @click="settings.setSidebarCollapsed(!settings.sidebarCollapsed)"
     >
       <component
@@ -266,7 +268,7 @@ watch(
           <span
             class="clipboard-match-label"
             :class="{ 'visually-hidden': settings.sidebarCollapsed }"
-          >Clipboard match</span>
+          >{{ t('shell.sidebar.clipboardMatchLabel') }}</span>
           <span class="clipboard-match-tool">
             <component
               :is="resolveIcon(match.tool.icon)"
@@ -278,7 +280,7 @@ watch(
           <span
             class="clipboard-match-preview"
             :class="{ 'visually-hidden': settings.sidebarCollapsed }"
-          >{{ match.preview ?? "Image copied" }}</span>
+          >{{ match.preview ?? t('shell.sidebar.imageCopied') }}</span>
         </RouterLink>
       </div>
       <div
@@ -309,14 +311,18 @@ watch(
                 size="1em"
                 :weight="route.name === tool.id ? 'bold' : 'regular'"
               />
-              <span :class="{ 'visually-hidden': settings.sidebarCollapsed }">{{ tool.name }}</span>
+              <span
+                class="nav-label"
+                :title="tool.name"
+                :class="{ 'visually-hidden': settings.sidebarCollapsed }"
+              >{{ tool.name }}</span>
             </RouterLink>
             <button
               v-if="!settings.sidebarCollapsed && settings.pinnedToolsVisible"
               type="button"
               class="pin-toggle"
               :aria-pressed="isPinned(tool.id)"
-              :aria-label="(isPinned(tool.id) ? 'Unpin ' : 'Pin ') + tool.name"
+              :aria-label="isPinned(tool.id) ? t('shell.sidebar.unpinTool', { name: tool.name }) : t('shell.sidebar.pinTool', { name: tool.name })"
               @click.stop.prevent="onTogglePin(tool.id)"
             >
               <component
@@ -346,11 +352,11 @@ watch(
           :class="updateSeverity"
         />
       </span>
-      <span :class="{ 'visually-hidden': settings.sidebarCollapsed }">Settings</span>
+      <span :class="{ 'visually-hidden': settings.sidebarCollapsed }">{{ t('shell.sidebar.settings') }}</span>
       <span
         v-if="updateSeverity !== 'none'"
         class="visually-hidden"
-      >, {{ updateSeverityLabel }}</span>
+      >{{ t('shell.sidebar.severitySuffix', { severity: updateSeverityLabel }) }}</span>
     </RouterLink>
   </nav>
 </template>
@@ -366,7 +372,14 @@ nav {
      precondition `.nav-scroll`'s `min-height: 0` trick below depends on. */
   display: flex;
   flex-direction: column;
-  width: 200px;
+  /* Was a fixed 200px — French nav labels ("Correspondance presse-papiers"
+     in the clipboard-match callout, "Tous les outils") run meaningfully
+     longer than their English counterparts. `clamp()` keeps the sidebar at
+     today's 200px by default but lets it grow up to 264px on a wider
+     window, rather than clipping (`.nav-scroll` below sets
+     `overflow-x: hidden`, so today's fixed width silently clips overflow
+     instead of visibly breaking). */
+  width: clamp(200px, 18vw, 264px);
   /* Bottom padding added (was 0) so the now bottom-pinned Settings link
      isn't flush against the window edge — 0.6em matches
      `.collapse-toggle`'s own top padding for top/bottom symmetry. */
@@ -519,6 +532,19 @@ a {
    from the already-tight collapsed content box. */
 a svg {
   flex-shrink: 0;
+}
+
+/* Same flexbox-truncation reasoning as `.clipboard-match-preview` below:
+   `min-width: 0` lets the label actually shrink to `a`'s available width
+   (flex items default to `min-width: auto`, refusing to shrink below their
+   own unwrapped text) so a long French tool label ellipsizes instead of
+   pushing the pin button off the row's edge. `:title` on the element
+   (template) surfaces the full name on hover for anything clipped. */
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 /* Direct child of the column-flex `nav`, sibling of `.nav-scroll` — pinned

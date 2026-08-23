@@ -87,7 +87,11 @@ describe("UpdateDialog", () => {
     expect(dialog.exists()).toBe(true);
     expect(dialog.text()).toContain("1.0.0");
     expect(dialog.text()).toContain("1.1.0");
-    expect(dialog.text()).toContain(formatUpdateDate("2026-08-09"));
+    // Matches the fresh pinia/settings store's defaults from beforeEach (locale
+    // "system", dateTimeFormat "auto") — what UpdateDialog.vue itself reads.
+    expect(dialog.text()).toContain(
+      formatUpdateDate("2026-08-09", { locale: "system", dateTimeFormat: "auto" }),
+    );
     expect(dialog.text()).toContain("Bug fixes and improvements.");
   });
 

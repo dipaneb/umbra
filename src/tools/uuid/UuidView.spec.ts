@@ -129,7 +129,11 @@ describe("UuidView", () => {
     expect(invokeMock).toHaveBeenCalledWith("uuid_generate", { version: "v4", count: 0 });
     const alert = wrapper!.find("[role='alert']");
     expect(alert.exists()).toBe(true);
-    expect(alert.text()).toContain("count must be at least 1");
+    // Deliberately NOT the raw Rust message ("count must be at least 1") —
+    // uuid-count-zero is one of the few ToolError codes toolErrorMessage()
+    // translates client-side (src/shell/toolError.ts), so this asserts the
+    // rendered, translated string instead.
+    expect(alert.text()).toContain("Enter a count of at least 1.");
   });
 
   it("clears a previous result when switching version (AC3)", async () => {

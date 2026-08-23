@@ -141,6 +141,18 @@ Also open **Settings** and the **⌘K palette** during the capture. Neither make
 `CommandPalette.vue` — both are pure local state/search), but the tour should
 demonstrate that directly rather than assume it. Re-checking costs nothing.
 
+### Exercise in both languages (French UI release onward)
+
+Since the French-UI release, run the exercise list above **once in English and once in
+French** (Settings → Appearance → Language). This isn't a network check — it's the
+i18n-equivalent of the network tour's own logic: a missing/mis-keyed French string, a
+layout that clips under French's longer text, or an untranslated surface would otherwise
+only ever surface if someone happens to be running the app in French, exactly the way an
+untested network call would otherwise only surface if someone happened to trigger it. For
+Bucket specifically, also confirm OCR against a French-text screenshot (accented
+characters `é è à ç ô`) — see the AD-13 amendment note in `ARCHITECTURE-SPINE.md` for
+why this is the one leg not otherwise covered by automated tests.
+
 ## What "zero outbound connections" actually means — read this carefully
 
 This is the part most likely to be misread, so it's stated precisely:

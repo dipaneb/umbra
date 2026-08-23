@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 export interface JsonTreeRow {
@@ -27,12 +28,22 @@ function truncate(text: string): string {
   return text.length > MAX_PREVIEW_LEN ? `${text.slice(0, MAX_PREVIEW_LEN)}…` : text;
 }
 
+// Reads i18n.global directly (a pure module, not a component, so useI18n()
+// isn't available) — same pattern updateCheck.ts's getUpdateSeverityLabel()
+// uses. This picks an explicit "…CountOne"/"…CountOther" key per value
+// rather than relying on vue-i18n's `|`-pipe plural syntax; see i18n.ts's
+// comment on why.
 function previewFor(value: JsonTreeValue, childCount: number): string {
+  const t = i18n.global.t;
   switch (value.kind) {
     case "Object":
-      return childCount === 1 ? "{1 key}" : `{${childCount} keys}`;
+      return childCount === 1
+        ? t("tools.json.treeKeysCountOne")
+        : t("tools.json.treeKeysCountOther", { count: childCount });
     case "Array":
-      return childCount === 1 ? "[1 item]" : `[${childCount} items]`;
+      return childCount === 1
+        ? t("tools.json.treeItemsCountOne")
+        : t("tools.json.treeItemsCountOther", { count: childCount });
     case "String":
       return truncate(JSON.stringify(value.data));
     case "Number":

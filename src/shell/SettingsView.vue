@@ -1,11 +1,31 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useSettingsStore, type ThemeOverride } from "../stores/settings";
+import { useI18n } from "vue-i18n";
+import { formatDateTimeWithFormat, resolveLocale } from "./locale";
+import { useSettingsStore, type DateTimeFormat, type LocaleOverride, type ThemeOverride } from "../stores/settings";
 import { getUpdateSeverity, getUpdateSeverityLabel } from "./updateCheck";
 import { openDialog, pendingUpdate } from "./updateSignal";
 import AppButton from "../components/AppButton.vue";
 
+const { t } = useI18n();
 const settings = useSettingsStore();
+
+// A live example next to each date-time format option (see the <select>
+// below) is the only way the difference between "ISO 8601", "Français", and
+// "English (US)" is actually legible — a bare option label doesn't show it.
+// `now` is computed once at component creation, not re-ticked live: this is
+// a format preview, not a clock, so a stale-by-minutes example is fine and
+// avoids an unnecessary interval timer on a settings page.
+const now = new Date();
+const dateTimeFormatPreview = computed(() => {
+  const uiLocale = resolveLocale(settings.locale, navigator.languages);
+  return {
+    iso: formatDateTimeWithFormat(now, "iso", uiLocale),
+    "fr-FR": formatDateTimeWithFormat(now, "fr-FR", uiLocale),
+    "en-US": formatDateTimeWithFormat(now, "en-US", uiLocale),
+    "en-GB": formatDateTimeWithFormat(now, "en-GB", uiLocale),
+  };
+});
 const updateSeverity = computed(() => getUpdateSeverity(pendingUpdate.value));
 const updateSeverityLabel = computed(() => getUpdateSeverityLabel(updateSeverity.value));
 const persistedEntries = ref<[string, unknown][]>([]);
@@ -36,6 +56,20 @@ function onChangeTheme(event: Event): void {
   const value = (event.target as HTMLSelectElement).value as ThemeOverride;
   void settings.setThemeOverride(value).catch((error: unknown) => {
     console.error("settings: failed to persist theme override", error);
+  });
+}
+
+function onChangeLocale(event: Event): void {
+  const value = (event.target as HTMLSelectElement).value as LocaleOverride;
+  void settings.setLocale(value).catch((error: unknown) => {
+    console.error("settings: failed to persist locale override", error);
+  });
+}
+
+function onChangeDateTimeFormat(event: Event): void {
+  const value = (event.target as HTMLSelectElement).value as DateTimeFormat;
+  void settings.setDateTimeFormat(value).catch((error: unknown) => {
+    console.error("settings: failed to persist date-time format", error);
   });
 }
 
@@ -93,7 +127,7 @@ async function onClearAll(): Promise<void> {
 <template>
   <section aria-labelledby="settings-heading">
     <h1 id="settings-heading">
-      Settings
+      {{ t('shell.settings.heading') }}
     </h1>
 
     <div
@@ -104,7 +138,7 @@ async function onClearAll(): Promise<void> {
         {{ updateSeverityLabel }}
       </h2>
       <p class="update-banner-version">
-        Version {{ pendingUpdate.version }}
+        {{ t('shell.settings.version', { version: pendingUpdate.version }) }}
       </p>
       <AppButton
         type="button"
@@ -112,40 +146,91 @@ async function onClearAll(): Promise<void> {
         class="update-banner-action"
         @click="openDialog"
       >
-        View update…
+        {{ t('shell.settings.viewUpdate') }}
       </AppButton>
     </div>
 
     <div class="settings-section">
       <h2 class="section-heading">
-        Appearance
+        {{ t('shell.settings.appearance') }}
       </h2>
 
       <label class="settings-toggle">
         <input
           type="checkbox"
-          aria-label="Restore last tool and window position on launch"
+          :aria-label="t('shell.settings.restoreLabel')"
           :checked="settings.restoreEnabled"
           @change="onToggleRestore"
         >
-        Restore last tool and window position on launch
+        {{ t('shell.settings.restoreLabel') }}
       </label>
 
       <label class="settings-toggle">
-        Theme
+        {{ t('shell.settings.theme') }}
         <select
-          aria-label="Theme"
+          :aria-label="t('shell.settings.theme')"
           :value="settings.themeOverride"
           @change="onChangeTheme"
         >
           <option value="system">
-            System
+            {{ t('shell.settings.themeSystem') }}
           </option>
           <option value="light">
-            Light
+            {{ t('shell.settings.themeLight') }}
           </option>
           <option value="dark">
-            Dark
+            {{ t('shell.settings.themeDark') }}
+          </option>
+        </select>
+      </label>
+
+      <label class="settings-toggle">
+        {{ t('shell.settings.language') }}
+        <select
+          :aria-label="t('shell.settings.language')"
+          :value="settings.locale"
+          @change="onChangeLocale"
+        >
+          <option value="system">
+            {{ t('shell.settings.languageSystem') }}
+          </option>
+          <!-- Deliberately not translated: a language's own name is
+               conventionally shown in that language, so the option stays
+               legible to someone stuck in a UI language they don't read
+               (the whole reason this control exists). -->
+          <option value="en">
+            English
+          </option>
+          <option value="fr">
+            Français
+          </option>
+        </select>
+      </label>
+
+      <label class="settings-toggle">
+        {{ t('shell.settings.dateTimeFormat') }}
+        <select
+          :aria-label="t('shell.settings.dateTimeFormat')"
+          :value="settings.dateTimeFormat"
+          @change="onChangeDateTimeFormat"
+        >
+          <option value="auto">
+            {{ t('shell.settings.dateTimeAuto') }} — {{ dateTimeFormatPreview[settings.locale === 'fr' ? 'fr-FR' : 'en-US'] }}
+          </option>
+          <option value="system">
+            {{ t('shell.settings.dateTimeSystem') }}
+          </option>
+          <option value="iso">
+            {{ t('shell.settings.dateTimeIso') }} — {{ dateTimeFormatPreview['iso'] }}
+          </option>
+          <option value="fr-FR">
+            Français — {{ dateTimeFormatPreview['fr-FR'] }}
+          </option>
+          <option value="en-US">
+            English (US) — {{ dateTimeFormatPreview['en-US'] }}
+          </option>
+          <option value="en-GB">
+            English (UK) — {{ dateTimeFormatPreview['en-GB'] }}
           </option>
         </select>
       </label>
@@ -153,30 +238,30 @@ async function onClearAll(): Promise<void> {
       <label class="settings-toggle">
         <input
           type="checkbox"
-          aria-label="Show pinned tools in the sidebar"
+          :aria-label="t('shell.settings.showPinnedAriaLabel')"
           :checked="settings.pinnedToolsVisible"
           @change="onTogglePinnedVisible"
         >
-        Show pinned tools
+        {{ t('shell.settings.showPinnedLabel') }}
       </label>
 
       <label class="settings-toggle">
         <input
           type="checkbox"
-          aria-label="Show recent tools in the sidebar"
+          :aria-label="t('shell.settings.showRecentAriaLabel')"
           :checked="settings.recentToolsVisible"
           @change="onToggleRecentVisible"
         >
-        Show recent tools
+        {{ t('shell.settings.showRecentLabel') }}
       </label>
 
       <label class="settings-toggle">
-        Clipboard suggestions to show
+        {{ t('shell.settings.clipboardSuggestionsToShow') }}
         <input
           type="number"
           min="0"
           max="5"
-          aria-label="Clipboard suggestions to show"
+          :aria-label="t('shell.settings.clipboardSuggestionsToShow')"
           :value="settings.clipboardSuggestionMaxCount"
           @change="onChangeClipboardSuggestionMaxCount"
         >
@@ -185,30 +270,29 @@ async function onClearAll(): Promise<void> {
 
     <div class="settings-section">
       <h2 class="section-heading">
-        Data
+        {{ t('shell.settings.data') }}
       </h2>
       <p>
-        Umbra saves your preferences and recent activity on this device,
-        including layout, theme, and recently used tools.
+        {{ t('shell.settings.dataDescription') }}
       </p>
 
       <button
         type="button"
         class="clear-all-button"
-        aria-label="Clear all stored data"
+        :aria-label="t('shell.settings.clearAllStoredData')"
         @click="onClearAll"
       >
-        Clear all stored data
+        {{ t('shell.settings.clearAllStoredData') }}
       </button>
 
       <label class="settings-toggle advanced-toggle">
         <input
           type="checkbox"
-          aria-label="Show stored data"
+          :aria-label="t('shell.settings.showStoredData')"
           :checked="showAdvanced"
           @change="onToggleAdvanced"
         >
-        Show stored data
+        {{ t('shell.settings.showStoredData') }}
       </label>
 
       <ul
@@ -225,10 +309,10 @@ async function onClearAll(): Promise<void> {
           <button
             type="button"
             class="reset-button"
-            :aria-label="`Reset ${key}`"
+            :aria-label="t('shell.settings.resetKeyLabel', { key })"
             @click="onResetKey(key)"
           >
-            Clear stored data
+            {{ t('shell.settings.resetKeyAction') }}
           </button>
         </li>
       </ul>
@@ -236,20 +320,19 @@ async function onClearAll(): Promise<void> {
         v-else-if="showAdvanced"
         class="entries-empty"
       >
-        Nothing is currently stored.
+        {{ t('shell.settings.nothingStored') }}
       </p>
     </div>
 
     <div class="settings-section">
       <h2 class="section-heading">
-        Privacy
+        {{ t('shell.settings.privacy') }}
       </h2>
       <p>
-        The only network call Umbra makes is an automatic check for updates.
-        Nothing installs without your confirmation, and there's no telemetry.
+        {{ t('shell.settings.privacyNetwork') }}
       </p>
       <p>
-        Umbra reads your clipboard locally to suggest a matching tool. Nothing leaves your device.
+        {{ t('shell.settings.privacyClipboard') }}
       </p>
     </div>
   </section>
@@ -274,6 +357,13 @@ async function onClearAll(): Promise<void> {
 .settings-toggle {
   display: flex;
   align-items: center;
+  /* Was a fixed single-line row with no wrap — French labels ("Restaurer le
+     dernier outil et la position de la fenêtre au lancement") run noticeably
+     longer than English, and this row already had the longest label in the
+     app before translation. A control's own label must wrap rather than
+     truncate (policy: buttons/setting labels always wrap, never clip). */
+  flex-wrap: wrap;
+  row-gap: 0.4em;
   gap: 0.5em;
   margin: 1em 0;
 }
@@ -293,6 +383,7 @@ async function onClearAll(): Promise<void> {
 .entries li {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--spacing-4);
   padding: 0.3em 0;

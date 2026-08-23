@@ -15,6 +15,7 @@
         "title": "Umbra",
         "width": 800,
         "height": 600,
+        "minWidth": 640,
         "visible": false
       }
     ],

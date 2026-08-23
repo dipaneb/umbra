@@ -21,6 +21,41 @@ function isThemeOverride(value: unknown): value is ThemeOverride {
   );
 }
 
+// "system" resolves via navigator.language at apply-time (src/shell/locale.ts) —
+// mirrors themeOverride's "system" | explicit shape exactly.
+export type LocaleOverride = "system" | "en" | "fr";
+
+const LOCALE_OVERRIDES: readonly LocaleOverride[] = ["system", "en", "fr"];
+
+function isLocaleOverride(value: unknown): value is LocaleOverride {
+  return (
+    typeof value === "string" &&
+    (LOCALE_OVERRIDES as readonly string[]).includes(value)
+  );
+}
+
+// Separate from LocaleOverride on purpose: a French UI and a preference for
+// ISO-8601/US/UK timestamps aren't mutually exclusive for a developer tool.
+// "auto" (the default) follows the resolved UI language; "system" preserves
+// the app's pre-i18n behavior of following the OS region unconditionally.
+export type DateTimeFormat = "auto" | "system" | "iso" | "en-US" | "en-GB" | "fr-FR";
+
+const DATE_TIME_FORMATS: readonly DateTimeFormat[] = [
+  "auto",
+  "system",
+  "iso",
+  "en-US",
+  "en-GB",
+  "fr-FR",
+];
+
+function isDateTimeFormat(value: unknown): value is DateTimeFormat {
+  return (
+    typeof value === "string" &&
+    (DATE_TIME_FORMATS as readonly string[]).includes(value)
+  );
+}
+
 function toStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? [...new Set(value.filter((v): v is string => typeof v === "string"))]
@@ -43,6 +78,8 @@ const DEFAULTS = {
   recentToolsVisible: true,
   updateSignalDismissedVersion: undefined as string | undefined,
   clipboardSuggestionMaxCount: 3 as number,
+  locale: "system" as LocaleOverride,
+  dateTimeFormat: "auto" as DateTimeFormat,
 };
 
 // This store's first numeric `shell.*` key (Story 7.8) — every prior key is a plain
@@ -82,6 +119,8 @@ export const useSettingsStore = defineStore("settings", () => {
     DEFAULTS.updateSignalDismissedVersion,
   );
   const clipboardSuggestionMaxCount = ref<number>(DEFAULTS.clipboardSuggestionMaxCount);
+  const locale = ref<LocaleOverride>(DEFAULTS.locale);
+  const dateTimeFormat = ref<DateTimeFormat>(DEFAULTS.dateTimeFormat);
 
   async function init(): Promise<void> {
     try {
@@ -120,6 +159,16 @@ export const useSettingsStore = defineStore("settings", () => {
         (await store.get<number>("shell.clipboardSuggestionMaxCount")) ??
           DEFAULTS.clipboardSuggestionMaxCount,
       );
+      const storedLocale = await store.get<string>("shell.locale");
+      locale.value = isLocaleOverride(storedLocale)
+        ? storedLocale
+        : DEFAULTS.locale;
+      const storedDateTimeFormat = await store.get<string>(
+        "shell.dateTimeFormat",
+      );
+      dateTimeFormat.value = isDateTimeFormat(storedDateTimeFormat)
+        ? storedDateTimeFormat
+        : DEFAULTS.dateTimeFormat;
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -181,6 +230,22 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!backingStore) return;
     const store = backingStore;
     await store.set("shell.clipboardSuggestionMaxCount", clamped);
+    await store.save();
+  }
+
+  async function setLocale(value: LocaleOverride): Promise<void> {
+    locale.value = value;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.locale", value);
+    await store.save();
+  }
+
+  async function setDateTimeFormat(value: DateTimeFormat): Promise<void> {
+    dateTimeFormat.value = value;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("shell.dateTimeFormat", value);
     await store.save();
   }
 
@@ -277,6 +342,12 @@ export const useSettingsStore = defineStore("settings", () => {
       case "shell.clipboardSuggestionMaxCount":
         clipboardSuggestionMaxCount.value = DEFAULTS.clipboardSuggestionMaxCount;
         break;
+      case "shell.locale":
+        locale.value = DEFAULTS.locale;
+        break;
+      case "shell.dateTimeFormat":
+        dateTimeFormat.value = DEFAULTS.dateTimeFormat;
+        break;
     }
     if (!backingStore) return;
     const store = backingStore;
@@ -297,6 +368,8 @@ export const useSettingsStore = defineStore("settings", () => {
     recentToolsVisible.value = DEFAULTS.recentToolsVisible;
     updateSignalDismissedVersion.value = DEFAULTS.updateSignalDismissedVersion;
     clipboardSuggestionMaxCount.value = DEFAULTS.clipboardSuggestionMaxCount;
+    locale.value = DEFAULTS.locale;
+    dateTimeFormat.value = DEFAULTS.dateTimeFormat;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -315,6 +388,8 @@ export const useSettingsStore = defineStore("settings", () => {
     recentToolsVisible,
     updateSignalDismissedVersion,
     clipboardSuggestionMaxCount,
+    locale,
+    dateTimeFormat,
     init,
     setRestoreEnabled,
     setThemeOverride,
@@ -323,6 +398,8 @@ export const useSettingsStore = defineStore("settings", () => {
     setRecentToolsVisible,
     setUpdateSignalDismissed,
     setClipboardSuggestionMaxCount,
+    setLocale,
+    setDateTimeFormat,
     togglePinned,
     recordRecentTool,
     recordLastTool,

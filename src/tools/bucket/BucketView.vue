@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useRegistryStore } from "../../stores/registry";
 import { writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
 import { createLatestWinsRunner } from "../../shell/invoke";
-import { toToolError, type ToolError } from "../../shell/toolError";
+import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import type { OcrOutcome } from "./ocrOutcome";
 import type { ImageTargetFormat } from "./imageTargetFormat";
+
+const { t, n } = useI18n();
 
 type BucketResult = { toolId: string; value: unknown } | { toolId: string; error: ToolError };
 
@@ -76,7 +79,14 @@ async function onCopy() {
 // gets its own local latest-wins runner rather than reusing `registry.getLatestWinsRunner
 // ("bucket")` — reusing it would let a PDF operation spuriously mark an in-flight OCR
 // extraction as "superseded," or vice versa, per AD-16's amendment (see ARCHITECTURE-SPINE.md).
-const PDF_FILTERS = [{ name: "PDF", extensions: ["pdf"] }];
+// A function, not a module-level const: these render in the OS's native
+// file-picker dialog, so the label must reflect the *current* locale at the
+// moment the dialog opens — a plain const captured at component-creation
+// time would go stale if the user switches language without navigating away
+// from this view.
+function pdfFilters() {
+  return [{ name: t("tools.bucket.pdfFilterName"), extensions: ["pdf"] }];
+}
 
 const pdfError = ref<ToolError | null>(null);
 const runPdf = createLatestWinsRunner();
@@ -97,7 +107,7 @@ const pdfTextExtracted = ref(false);
 async function onAddPdfsForMerge() {
   pdfError.value = null;
   try {
-    const paths = await open({ multiple: true, filters: PDF_FILTERS });
+    const paths = await open({ multiple: true, filters: pdfFilters() });
     if (paths === null) return;
     pdfMergeFiles.value.push(...paths);
   } catch (err) {
@@ -128,7 +138,7 @@ async function onMergePdfs() {
   pdfError.value = null;
   pdfMerging.value = true;
   try {
-    const outputPath = await save({ filters: PDF_FILTERS });
+    const outputPath = await save({ filters: pdfFilters() });
     if (outputPath === null) return;
     const result = await runPdf(() =>
       invoke("bucket_merge_pdfs", { paths: pdfMergeFiles.value, outputPath }),
@@ -146,7 +156,7 @@ async function onMergePdfs() {
 async function onPickExtractPagesFile() {
   pdfError.value = null;
   try {
-    const path = await open({ filters: PDF_FILTERS });
+    const path = await open({ filters: pdfFilters() });
     if (path === null) return;
     pdfExtractPagesPath.value = path;
   } catch (err) {
@@ -159,7 +169,7 @@ async function onExtractPages() {
   pdfError.value = null;
   pdfExtractingPages.value = true;
   try {
-    const outputPath = await save({ filters: PDF_FILTERS });
+    const outputPath = await save({ filters: pdfFilters() });
     if (outputPath === null) return;
     await runPdf(() =>
       invoke("bucket_extract_pdf_pages", {
@@ -179,7 +189,7 @@ async function onExtractPages() {
 async function onPickExtractTextFile() {
   pdfError.value = null;
   try {
-    const path = await open({ filters: PDF_FILTERS });
+    const path = await open({ filters: pdfFilters() });
     if (path === null) return;
     pdfExtractTextPath.value = path;
     pdfExtractedText.value = "";
@@ -227,7 +237,10 @@ async function onCopyExtractedPdfText() {
 // matching CronView.vue's "two disjoint state-groups get two runners" reasoning (not
 // Base64View.vue's "three same-shape actions share one" reasoning, which fits discrete
 // non-overlapping clicks only).
-const IMAGE_FILTERS = [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp"] }];
+// Same reasoning as pdfFilters() above — a function, not a module-level const.
+function imageFilters() {
+  return [{ name: t("tools.bucket.imageFilterName"), extensions: ["png", "jpg", "jpeg", "webp"] }];
+}
 
 // The save dialog's `filters` only names *extensions*, not which target format each one maps to
 // — so a single filter entry listing all four (fine for the *open* picker, which accepts any of
@@ -249,7 +262,7 @@ function targetExtension(format: ImageTargetFormat): string {
 
 function defaultConvertedFileName(sourcePath: string, format: ImageTargetFormat): string {
   const baseName = sourcePath.split(/[/\\]/).pop() ?? "";
-  const stem = baseName.replace(/\.[^./\\]+$/, "") || "converted";
+  const stem = baseName.replace(/\.[^./\\]+$/, "") || t("tools.bucket.defaultFileNameStem");
   return `${stem}.${targetExtension(format)}`;
 }
 
@@ -267,7 +280,7 @@ const imageConverting = ref(false);
 async function onPickImage() {
   imageError.value = null;
   try {
-    const path = await open({ filters: IMAGE_FILTERS });
+    const path = await open({ filters: imageFilters() });
     if (path === null) return;
     imagePath.value = path;
     imageEstimatedSize.value = null;
@@ -332,7 +345,7 @@ async function onConvertImage() {
   imageConverting.value = true;
   try {
     const outputPath = await save({
-      filters: [{ name: "Image", extensions: [targetExtension(targetFormat)] }],
+      filters: [{ name: t("tools.bucket.imageFilterName"), extensions: [targetExtension(targetFormat)] }],
       defaultPath: defaultConvertedFileName(path, targetFormat),
     });
     if (outputPath === null) return;
@@ -353,42 +366,45 @@ async function onConvertImage() {
 
 // No existing byte-formatting helper in this codebase (confirmed by reading BucketView.vue,
 // Base64View.vue, HashView.vue) — small enough to keep local rather than a new shared module.
+// Routed through n() (vue-i18n's Intl.NumberFormat wrapper) rather than a bare `.toFixed(1)`,
+// so the decimal separator follows the app's locale — French uses a comma ("1,5 Mo"), not a
+// period — and through translated unit keys, since French uses "Ko"/"Mo" (octet), not "KB"/"MB".
 function formatEstimatedSize(bytes: number): string {
   const kb = bytes / 1024;
   if (kb >= 1024) {
-    return `${(kb / 1024).toFixed(1)} MB`;
+    return `${n(kb / 1024, "decimal1")} ${t("tools.bucket.sizeUnitMb")}`;
   }
-  return `${kb.toFixed(1)} KB`;
+  return `${n(kb, "decimal1")} ${t("tools.bucket.sizeUnitKb")}`;
 }
 </script>
 
 <template>
   <section>
-    <h1>Bucket</h1>
+    <h1>{{ t('tools.bucket.heading') }}</h1>
 
     <p class="drop-hint">
-      Drop a PNG, JPEG, or WebP image anywhere in the window, or paste (⌘V), to extract its text.
+      {{ t('tools.bucket.dropHint') }}
     </p>
 
     <p
       v-if="error"
       role="alert"
     >
-      {{ error.message }}
+      {{ toolErrorMessage(error, t) }}
     </p>
 
     <p
       v-if="outcome && !outcome.text.trim()"
       role="status"
     >
-      No text was found in this image.
+      {{ t('tools.bucket.noTextInImage') }}
     </p>
 
     <div
       v-if="outcome && outcome.text.trim()"
       class="field"
     >
-      <label for="bucket-result">Extracted text</label>
+      <label for="bucket-result">{{ t('tools.bucket.extractedTextLabel') }}</label>
       <textarea
         id="bucket-result"
         v-model="editedText"
@@ -399,28 +415,28 @@ function formatEstimatedSize(bytes: number): string {
         type="button"
         @click="onCopy"
       >
-        Copy
+        {{ t('common.copy') }}
       </button>
     </div>
 
     <section class="pdf-section">
-      <h2>PDF tools</h2>
+      <h2>{{ t('tools.bucket.pdfSectionHeading') }}</h2>
 
       <p
         v-if="pdfError"
         role="alert"
       >
-        {{ pdfError.message }}
+        {{ toolErrorMessage(pdfError, t) }}
       </p>
 
       <div class="pdf-flow">
-        <h3>Merge</h3>
+        <h3>{{ t('tools.bucket.mergeHeading') }}</h3>
         <button
           type="button"
           :disabled="pdfMerging"
           @click="onAddPdfsForMerge"
         >
-          Add PDFs…
+          {{ t('tools.bucket.addPdfs') }}
         </button>
         <ul v-if="pdfMergeFiles.length">
           <li
@@ -431,6 +447,7 @@ function formatEstimatedSize(bytes: number): string {
             <button
               type="button"
               :disabled="index === 0"
+              :aria-label="t('tools.bucket.moveUp')"
               @click="moveMergeFileUp(index)"
             >
               ↑
@@ -438,6 +455,7 @@ function formatEstimatedSize(bytes: number): string {
             <button
               type="button"
               :disabled="index === pdfMergeFiles.length - 1"
+              :aria-label="t('tools.bucket.moveDown')"
               @click="moveMergeFileDown(index)"
             >
               ↓
@@ -446,7 +464,7 @@ function formatEstimatedSize(bytes: number): string {
               type="button"
               @click="removeMergeFile(index)"
             >
-              Remove
+              {{ t('tools.bucket.remove') }}
             </button>
           </li>
         </ul>
@@ -455,22 +473,22 @@ function formatEstimatedSize(bytes: number): string {
           :disabled="pdfMergeFiles.length < 2 || pdfMerging"
           @click="onMergePdfs"
         >
-          Merge
+          {{ t('tools.bucket.merge') }}
         </button>
       </div>
 
       <div class="pdf-flow">
-        <h3>Split / Extract pages</h3>
+        <h3>{{ t('tools.bucket.splitExtractHeading') }}</h3>
         <button
           type="button"
           @click="onPickExtractPagesFile"
         >
-          Choose PDF…
+          {{ t('tools.bucket.choosePdf') }}
         </button>
         <p v-if="pdfExtractPagesPath">
           {{ pdfExtractPagesPath }}
         </p>
-        <label for="pdf-start-page">Start page</label>
+        <label for="pdf-start-page">{{ t('tools.bucket.startPage') }}</label>
         <input
           id="pdf-start-page"
           v-model.number="pdfStartPage"
@@ -478,7 +496,7 @@ function formatEstimatedSize(bytes: number): string {
           min="1"
           step="1"
         >
-        <label for="pdf-end-page">End page</label>
+        <label for="pdf-end-page">{{ t('tools.bucket.endPage') }}</label>
         <input
           id="pdf-end-page"
           v-model.number="pdfEndPage"
@@ -498,17 +516,17 @@ function formatEstimatedSize(bytes: number): string {
           "
           @click="onExtractPages"
         >
-          Extract pages
+          {{ t('tools.bucket.extractPages') }}
         </button>
       </div>
 
       <div class="pdf-flow">
-        <h3>Extract text</h3>
+        <h3>{{ t('tools.bucket.extractTextHeading') }}</h3>
         <button
           type="button"
           @click="onPickExtractTextFile"
         >
-          Choose PDF…
+          {{ t('tools.bucket.choosePdf') }}
         </button>
         <p v-if="pdfExtractTextPath">
           {{ pdfExtractTextPath }}
@@ -518,21 +536,21 @@ function formatEstimatedSize(bytes: number): string {
           :disabled="!pdfExtractTextPath || pdfExtractingText"
           @click="onExtractText"
         >
-          Extract text
+          {{ t('tools.bucket.extractText') }}
         </button>
 
         <p
           v-if="pdfTextExtracted && !pdfExtractedText.trim()"
           role="status"
         >
-          No text was found in this PDF.
+          {{ t('tools.bucket.noTextInPdf') }}
         </p>
 
         <div
           v-if="pdfExtractedText"
           class="field"
         >
-          <label for="pdf-extracted-text">Extracted text</label>
+          <label for="pdf-extracted-text">{{ t('tools.bucket.extractedTextLabel') }}</label>
           <textarea
             id="pdf-extracted-text"
             v-model="pdfExtractedText"
@@ -543,20 +561,20 @@ function formatEstimatedSize(bytes: number): string {
             type="button"
             @click="onCopyExtractedPdfText"
           >
-            Copy
+            {{ t('common.copy') }}
           </button>
         </div>
       </div>
     </section>
 
     <section class="image-section">
-      <h2>Image tools</h2>
+      <h2>{{ t('tools.bucket.imageSectionHeading') }}</h2>
 
       <p
         v-if="imageError"
         role="alert"
       >
-        {{ imageError.message }}
+        {{ toolErrorMessage(imageError, t) }}
       </p>
 
       <div class="image-flow">
@@ -565,13 +583,13 @@ function formatEstimatedSize(bytes: number): string {
           :disabled="imageConverting"
           @click="onPickImage"
         >
-          Choose image…
+          {{ t('tools.bucket.chooseImage') }}
         </button>
         <p v-if="imagePath">
           {{ imagePath }}
         </p>
 
-        <label for="image-target-format">Target format</label>
+        <label for="image-target-format">{{ t('tools.bucket.targetFormat') }}</label>
         <select
           id="image-target-format"
           v-model="imageTargetFormat"
@@ -592,7 +610,7 @@ function formatEstimatedSize(bytes: number): string {
           v-if="imageTargetFormat === 'jpeg'"
           class="field"
         >
-          <label for="image-quality">Quality ({{ imageQuality }})</label>
+          <label for="image-quality">{{ t('tools.bucket.qualityLabel', { quality: imageQuality }) }}</label>
           <input
             id="image-quality"
             v-model.number="imageQuality"
@@ -607,13 +625,13 @@ function formatEstimatedSize(bytes: number): string {
           v-if="imageEstimating"
           role="status"
         >
-          Estimating…
+          {{ t('tools.bucket.estimating') }}
         </p>
         <p
           v-else-if="imageEstimatedSize !== null"
           role="status"
         >
-          Estimated size: {{ formatEstimatedSize(imageEstimatedSize) }}
+          {{ t('tools.bucket.estimatedSize', { size: formatEstimatedSize(imageEstimatedSize) }) }}
         </p>
 
         <button
@@ -621,7 +639,7 @@ function formatEstimatedSize(bytes: number): string {
           :disabled="!imagePath || imageConverting"
           @click="onConvertImage"
         >
-          Convert
+          {{ t('tools.bucket.convert') }}
         </button>
       </div>
     </section>
@@ -645,6 +663,18 @@ p[role="alert"] {
 .field {
   display: flex;
   flex-direction: column;
+  gap: 0.4em;
+}
+
+/* French labels ("Ajouter des PDF…", "Choisir une image…") next to a
+   filesystem path can crowd a narrow window — this section mixes buttons,
+   labels, and inline `<p>` path text with no flex container of its own
+   (plain block flow), so nothing here needs flex-wrap; the risk instead is
+   the reorder/remove button row inside `<li>` below. */
+.pdf-flow li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.4em;
 }
 
