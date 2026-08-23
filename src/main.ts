@@ -17,10 +17,12 @@ async function bootstrap(): Promise<void> {
   const settings = useSettingsStore(pinia);
 
   // The window starts invisible (tauri.conf.json's "visible": false) so
-  // restored geometry/route apply before first paint. mount()+show() live in
+  // restored geometry/route apply before first paint. mount() lives in
   // `finally` so a failed restore (corrupted settings.json, plugin IPC
   // failure) degrades to "app opens at default geometry/route", never to
-  // "app never appears".
+  // "app never mounts". The restore try/catch below and show()'s own
+  // try/catch further ensure a failure at any single step can only cost
+  // that step — never the mount, the show, or the wiring that follows.
   try {
     await settings.init();
 
@@ -54,9 +56,24 @@ async function bootstrap(): Promise<void> {
         );
       }
     }
+  } catch (error: unknown) {
+    // Swallowed here (rather than left to propagate past the finally below)
+    // so a restore failure costs only the restore — router.afterEach and
+    // attachWindowGeometryListeners still register afterward instead of
+    // being silently skipped for the rest of the session.
+    console.error(
+      "main: session restore failed, continuing with defaults",
+      error,
+    );
   } finally {
     createApp(App).use(pinia).use(router).mount("#app");
-    await getCurrentWindow().show();
+    try {
+      await getCurrentWindow().show();
+    } catch (error: unknown) {
+      // The window starts invisible; if show() itself fails, it stays
+      // invisible for the rest of the session unless this is caught here.
+      console.error("main: failed to show the window", error);
+    }
   }
 
   router.afterEach((to) => {
@@ -72,7 +89,14 @@ async function bootstrap(): Promise<void> {
       });
     }
   });
-  await attachWindowGeometryListeners(settings.recordWindowGeometry);
+  try {
+    await attachWindowGeometryListeners(settings.recordWindowGeometry);
+  } catch (error: unknown) {
+    console.error(
+      "main: failed to attach window geometry listeners",
+      error,
+    );
+  }
 }
 
 bootstrap().catch((error: unknown) => {

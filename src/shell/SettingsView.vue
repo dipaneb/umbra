@@ -19,7 +19,11 @@ async function refreshEntries(): Promise<void> {
   persistedEntries.value = await settings.entries();
 }
 
-onMounted(refreshEntries);
+onMounted(() => {
+  void refreshEntries().catch((error: unknown) => {
+    console.error("settings: failed to read persisted entries", error);
+  });
+});
 
 function onToggleRestore(event: Event): void {
   const checked = (event.target as HTMLInputElement).checked;
