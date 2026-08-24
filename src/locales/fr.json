@@ -91,12 +91,24 @@
       "indentTab": "Tabulation",
       "format": "Formater",
       "minify": "Minifier",
-      "outputLabel": "Sortie JSON",
       "treeUnavailable": "Arbre indisponible — corrigez le JSON pour voir sa structure.",
       "treeKeysCountOne": "{'{'}1 clé{'}'}",
       "treeKeysCountOther": "{'{'}{count} clés{'}'}",
       "treeItemsCountOne": "[1 élément]",
-      "treeItemsCountOther": "[{count} éléments]"
+      "treeItemsCountOther": "[{count} éléments]",
+      "copyValue": "Valeur",
+      "copyValueAriaLabel": "Copier la valeur",
+      "copyPath": "Chemin",
+      "copyPathAriaLabel": "Copier le JSONPath",
+      "comingSoon": "Bientôt disponible.",
+      "tab": {
+        "explorer": "Explorateur",
+        "validate": "Validation",
+        "repair": "Réparation",
+        "query": "Requête",
+        "diff": "Diff",
+        "transform": "Transformation"
+      }
     },
     "base64": {
       "description": "Encoder et décoder du texte ou des fichiers en Base64.",

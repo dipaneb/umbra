@@ -102,4 +102,17 @@ describe("flattenJsonTree", () => {
     expect(rows[0]?.preview.length).toBeLessThan(longString.length);
     expect(rows[0]?.preview.endsWith("…")).toBe(true);
   });
+
+  it("carries the row's own JsonTreeValue and a matching JSONPath for copy actions", () => {
+    const root = obj([["a", arr([str("x"), str("y")])]]);
+    const rows = flattenJsonTree(root, new Set(["[]", '["a"]']));
+
+    const rowA = rows.find((r) => r.keyLabel === "a");
+    expect(rowA?.value).toEqual(arr([str("x"), str("y")]));
+    expect(rowA?.jsonPath).toBe("$.a");
+
+    const rowY = rows.find((r) => r.keyLabel === "1");
+    expect(rowY?.value).toEqual(str("y"));
+    expect(rowY?.jsonPath).toBe("$.a[1]");
+  });
 });

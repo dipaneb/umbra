@@ -2,7 +2,8 @@
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
-import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
+import AppButton from "../../components/AppButton.vue";
+import AppTabs, { type AppTab } from "../../components/AppTabs.vue";
 import { debounce } from "../../shell/debounce";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { isToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
@@ -13,16 +14,26 @@ import type { JsonTreeValue } from "./jsonTreeValue";
 const { t } = useI18n();
 
 const input = ref("");
-const output = ref("");
 const indent = ref<JsonIndent>("two_spaces");
 const error = ref<ToolError | null>(null);
 const treeValue = ref<JsonTreeValue | null>(null);
 
+// Story 8.1 Task 2 (AC6): six tabs replace the old single flat panel; every
+// tab reads this one shared `input`. Only Explorer is wired up so far — the
+// rest render an honest "not built yet" placeholder rather than fabricating
+// functionality (AD-9).
+const TAB_IDS = ["explorer", "validate", "repair", "query", "diff", "transform"] as const;
+type TabId = (typeof TAB_IDS)[number];
+const activeTab = ref<TabId>("explorer");
+const tabs = computed<AppTab[]>(() =>
+  TAB_IDS.map((id) => ({ id, label: t(`tools.json.tab.${id}`) })),
+);
+
 const runLatestWins = createLatestWinsRunner();
-// Dedicated to live tree-parsing, separate from the Format/Minify/Paste
-// runner above: live parsing fires on every debounced keystroke, independently
-// of those mutually-exclusive user-triggered actions. Sharing one counter
-// would let typing bump the shared request ID and cause an in-flight Format
+// Dedicated to live tree-parsing, separate from the Format/Minify runner
+// above: live parsing fires on every debounced keystroke, independently of
+// those mutually-exclusive user-triggered actions. Sharing one counter would
+// let typing bump the shared request ID and cause an in-flight Format
 // click's legitimate result to be misidentified as superseded and dropped.
 const runTreeParse = createLatestWinsRunner();
 
@@ -66,20 +77,17 @@ function toToolError(err: unknown): ToolError {
   return isToolError(err) ? err : { code: "unknown", message: String(err), position: null, context: null };
 }
 
+// Story 8.1 Task 2 (AC6): Format/Minify now rewrite `input` in place instead
+// of populating a separate output box — with six tabs each deriving their
+// own view from one document, a second "output" textarea doesn't compose.
 async function runTransform(task: () => Promise<string>) {
-  // Cleared unconditionally, before we know if this call wins the latest-wins
-  // race: whichever call turns out to be newest already cleared it when IT
-  // started, so a stale error can never linger next to a fresher result.
   error.value = null;
   try {
     const result = await runLatestWins(task);
     if (!result.superseded) {
-      output.value = result.value;
+      input.value = result.value;
     }
   } catch (err) {
-    // Also clear output: a failed transform must never leave a *previous*
-    // success sitting next to the new error looking like the current result.
-    output.value = "";
     error.value = toToolError(err);
   }
 }
@@ -94,27 +102,8 @@ async function onMinify() {
   await runTransform(() => invoke<string>("json_minify", { input: input.value }));
 }
 
-async function onPaste() {
-  error.value = null;
-  try {
-    const result = await runLatestWins(() => readClipboardText());
-    if (!result.superseded) {
-      input.value = result.value;
-      // A prior Format/Minify result no longer corresponds to this new input.
-      output.value = "";
-    }
-  } catch (err) {
-    error.value = toToolError(err);
-  }
-}
-
-async function onCopy() {
-  error.value = null;
-  try {
-    await writeClipboardText(output.value);
-  } catch (err) {
-    error.value = toToolError(err);
-  }
+function onTreeCopyError(err: unknown) {
+  error.value = toToolError(err);
 }
 </script>
 
@@ -122,76 +111,47 @@ async function onCopy() {
   <section>
     <h1>{{ t('tools.json.heading') }}</h1>
 
-    <div class="panels">
-      <div class="field">
-        <label for="json-input">{{ t('tools.json.inputLabel') }}</label>
-        <textarea
-          id="json-input"
-          v-model="input"
-          rows="10"
-          spellcheck="false"
-          autocorrect="off"
-        />
-      </div>
-
-      <div class="tree-panel">
-        <span class="tree-panel-label">{{ t('tools.json.treeViewLabel') }}</span>
-        <JsonTree :value="treeValue" />
-      </div>
+    <div class="field">
+      <label for="json-input">{{ t('tools.json.inputLabel') }}</label>
+      <textarea
+        id="json-input"
+        v-model="input"
+        rows="10"
+        spellcheck="false"
+        autocorrect="off"
+      />
     </div>
-
-    <fieldset>
-      <legend>{{ t('tools.json.indentationLegend') }}</legend>
-      <label>
-        <input
-          v-model="indent"
-          type="radio"
-          name="json-indent"
-          value="two_spaces"
-        >
-        {{ t('tools.json.indentTwoSpaces') }}
-      </label>
-      <label>
-        <input
-          v-model="indent"
-          type="radio"
-          name="json-indent"
-          value="four_spaces"
-        >
-        {{ t('tools.json.indentFourSpaces') }}
-      </label>
-      <label>
-        <input
-          v-model="indent"
-          type="radio"
-          name="json-indent"
-          value="tab"
-        >
-        {{ t('tools.json.indentTab') }}
-      </label>
-    </fieldset>
 
     <div class="actions">
-      <button
-        type="button"
-        @click="onFormat"
-      >
+      <AppButton @click="onFormat">
         {{ t('tools.json.format') }}
-      </button>
-      <button
-        type="button"
-        @click="onMinify"
-      >
+      </AppButton>
+      <AppButton @click="onMinify">
         {{ t('tools.json.minify') }}
-      </button>
-      <button
-        type="button"
-        @click="onPaste"
-      >
-        {{ t('common.pasteFromClipboard') }}
-      </button>
+      </AppButton>
+      <div class="indent-picker">
+        <label for="json-indent">{{ t('tools.json.indentationLegend') }}</label>
+        <select
+          id="json-indent"
+          v-model="indent"
+        >
+          <option value="two_spaces">
+            {{ t('tools.json.indentTwoSpaces') }}
+          </option>
+          <option value="four_spaces">
+            {{ t('tools.json.indentFourSpaces') }}
+          </option>
+          <option value="tab">
+            {{ t('tools.json.indentTab') }}
+          </option>
+        </select>
+      </div>
     </div>
 
+    <!-- Provisional placement: attached to the shared input panel (relevant
+         regardless of active tab) rather than gated behind the Validate tab.
+         Validate's own slice (AC8) still owns whether this fully moves into
+         that tab or a summary stays here with detail there. -->
     <p
       v-if="error"
       role="alert"
@@ -201,55 +161,39 @@ async function onCopy() {
       </template>
     </p>
 
-    <div class="field">
-      <label for="json-output">{{ t('tools.json.outputLabel') }}</label>
-      <textarea
-        id="json-output"
-        readonly
-        rows="10"
-        :value="output"
+    <AppTabs
+      v-model="activeTab"
+      :tabs="tabs"
+    />
+
+    <div
+      v-if="activeTab === 'explorer'"
+      :id="`tabpanel-explorer`"
+      role="tabpanel"
+      aria-labelledby="tab-explorer"
+      class="tab-panel"
+    >
+      <span class="tree-panel-label">{{ t('tools.json.treeViewLabel') }}</span>
+      <JsonTree
+        :value="treeValue"
+        @copy-error="onTreeCopyError"
       />
     </div>
-
-    <button
-      type="button"
-      :disabled="output === ''"
-      @click="onCopy"
+    <div
+      v-else
+      :id="`tabpanel-${activeTab}`"
+      role="tabpanel"
+      :aria-labelledby="`tab-${activeTab}`"
+      class="tab-panel"
     >
-      {{ t('common.copyToClipboard') }}
-    </button>
+      <p class="coming-soon">
+        {{ t('tools.json.comingSoon') }}
+      </p>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.panels {
-  display: flex;
-  gap: 1em;
-  margin-bottom: 1em;
-}
-
-.panels .field {
-  flex: 1;
-  margin-bottom: 0;
-}
-
-.tree-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4em;
-  min-width: 0;
-}
-
-.tree-panel-label {
-  font-weight: bold;
-}
-
-.tree-panel :deep(.json-tree-scroll) {
-  height: 220px;
-  border: 1px solid #d1d5db;
-}
-
 .field {
   display: flex;
   flex-direction: column;
@@ -258,21 +202,78 @@ async function onCopy() {
 }
 
 textarea {
-  font-family: monospace;
-}
-
-fieldset {
-  margin-bottom: 1em;
+  font-family: var(--font-code-family);
+  font-size: var(--font-code-size);
+  /* Deliberately wide, not full-bleed-by-default: pretty-printed JSON's deep
+     indentation produces long lines that wrap poorly in a narrow box, so this
+     stays generous — but a floor stops it collapsing awkwardly in a narrow
+     window, and a ceiling stops it reading as an arbitrary full-width slab
+     on a wide display. */
+  min-width: 20em;
+  max-width: 70em;
+  width: 100%;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6em;
+  align-items: center;
+  gap: var(--spacing-3);
   margin-bottom: 1em;
 }
 
+/* A dropdown, not the old three-way radio row: this is a pick-once,
+   rarely-revisited setting, not a frequently-toggled choice — and only
+   Format actually reads it (Minify ignores indentation entirely), so it
+   sits inline next to the buttons rather than owning its own row. */
+.indent-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  /* Extra breathing room beyond the row's own button-to-button gap, so this
+     reads as a separate, adjacent control rather than a third button. */
+  margin-left: var(--spacing-2);
+}
+
+.indent-picker label {
+  font-family: var(--font-label-family);
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  color: var(--color-text-secondary);
+}
+
+.indent-picker select {
+  font-family: var(--font-body-family);
+  font-size: var(--font-body-size);
+  color: var(--color-text-primary);
+  background: none;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-default);
+  padding: 0.3em 0.5em;
+}
+
 p[role="alert"] {
-  color: #b00020;
+  color: var(--color-accent-destructive);
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  min-height: 220px;
+}
+
+.tree-panel-label {
+  font-weight: bold;
+}
+
+.tab-panel :deep(.json-tree-scroll) {
+  height: 320px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-default);
+}
+
+.coming-soon {
+  color: var(--color-text-secondary);
 }
 </style>

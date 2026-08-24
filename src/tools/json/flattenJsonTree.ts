@@ -1,14 +1,17 @@
 import { i18n } from "../../i18n";
+import { jsonPathFromSegments } from "./jsonPath";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 export interface JsonTreeRow {
   path: string;
+  jsonPath: string;
   depth: number;
   keyLabel: string | null;
   kind: JsonTreeValue["kind"];
   preview: string;
   expandable: boolean;
   expanded: boolean;
+  value: JsonTreeValue;
 }
 
 // Both branches already yield an ordered list of [key, value] pairs straight
@@ -82,12 +85,14 @@ export function flattenJsonTree(
 
     rows.push({
       path,
+      jsonPath: jsonPathFromSegments(segments),
       depth,
       keyLabel,
       kind: value.kind,
       preview: previewFor(value, entries.length),
       expandable,
       expanded: isExpanded,
+      value,
     });
 
     // A collapsed node's descendants are never pushed into `rows` at all —

@@ -2,12 +2,31 @@
 import { computed, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useVirtualizer } from "@tanstack/vue-virtual";
+import { writeClipboardText } from "../../shell/clipboard";
 import { flattenJsonTree, type JsonTreeRow } from "./flattenJsonTree";
+import { jsonTreeValueToText } from "./jsonTreeValue";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 const { t } = useI18n();
 
 const props = defineProps<{ value: JsonTreeValue | null }>();
+const emit = defineEmits<{ (e: "copy-error", error: unknown): void }>();
+
+async function copyValue(row: JsonTreeRow) {
+  try {
+    await writeClipboardText(jsonTreeValueToText(row.value));
+  } catch (err) {
+    emit("copy-error", err);
+  }
+}
+
+async function copyPath(row: JsonTreeRow) {
+  try {
+    await writeClipboardText(row.jsonPath);
+  } catch (err) {
+    emit("copy-error", err);
+  }
+}
 
 // Default: root expanded, everything else starts collapsed. "[]" is
 // `JSON.stringify([])`, the root's path per flattenJsonTree's encoding. This
@@ -180,6 +199,24 @@ async function onKeydown(event: KeyboardEvent, index: number) {
           class="json-tree-key"
         >{{ row.keyLabel }}:</span>
         <span class="json-tree-preview">{{ row.preview }}</span>
+        <span class="json-tree-row-actions">
+          <button
+            type="button"
+            class="json-tree-copy-button"
+            :aria-label="t('tools.json.copyValueAriaLabel')"
+            @click.stop="copyValue(row)"
+          >
+            {{ t('tools.json.copyValue') }}
+          </button>
+          <button
+            type="button"
+            class="json-tree-copy-button"
+            :aria-label="t('tools.json.copyPathAriaLabel')"
+            @click.stop="copyPath(row)"
+          >
+            {{ t('tools.json.copyPath') }}
+          </button>
+        </span>
       </div>
     </div>
   </div>
@@ -205,12 +242,46 @@ async function onKeydown(event: KeyboardEvent, index: number) {
 }
 
 .json-tree-key {
-  color: #6b7280;
+  color: var(--color-text-secondary);
 }
 
 .json-tree-preview {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+.json-tree-row-actions {
+  display: flex;
+  gap: 0.3em;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.json-tree-row:hover .json-tree-row-actions,
+.json-tree-row:focus-within .json-tree-row-actions {
+  opacity: 1;
+}
+
+.json-tree-copy-button {
+  font-family: var(--font-caption-family);
+  font-size: var(--font-caption-size);
+  color: var(--color-text-secondary);
+  background: none;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+  padding: 0 0.4em;
+  cursor: pointer;
+}
+
+.json-tree-copy-button:hover {
+  color: inherit;
+}
+
+.json-tree-copy-button:focus-visible {
+  outline: 2px solid var(--color-accent-signature);
+  outline-offset: 1px;
+  opacity: 1;
 }
 </style>

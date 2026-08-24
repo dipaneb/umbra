@@ -35,11 +35,30 @@ chosen for spec standardization, direct compatibility with the existing `serde_j
 core type, and consistency with Explorer's own copy-JSONPath output (JMESPath rejected —
 would produce a query syntax Explorer's copied paths can't paste into).
 
-6. **Given** the redesign lands, **when** the JSON tool renders, **then** it presents six
+6. **Given** the redesign lands, **when** the JSON tool renders, **then** a persistent
+   input panel (the paste target, Format, Minify, and an indentation picker) sits above six
    tabs — Explorer, Validate, Repair, Query, Diff, Transform — using `DESIGN.md`'s Tab
    component (`{colors.accent-default}` underline/pill for the active tab,
-   `{colors.text-secondary}` for inactive tabs), replacing the current single flat panel;
-   each tab name answers a distinct job a user could name.
+   `{colors.text-secondary}` for inactive tabs); every tab reads that one shared input
+   document (Diff alone also owns a second, tab-local document for the comparison side),
+   and each tab name answers a distinct job a user could name. **Behavior change from
+   today, resolved in this AC-writing session:** Format/Minify now rewrite the shared input
+   in place rather than populating a separate output box — the old two-textarea
+   input/output split doesn't compose with six tabs each deriving their own view from one
+   document, so it's retired. **Revised again after a design-review pass with the
+   developer (2026-08-24, post-implementation):** the toolbar's generic Paste and Copy
+   buttons are cut, not kept — a developer audience already reaches for Cmd+V/Cmd+C, Copy
+   in particular lost its one clear job once there was no separate output box to copy
+   *from*, and each tab will own its own precise copy action instead (Explorer's
+   value/path copy already does; Query/Diff/Transform will need their own). Indentation
+   drops the three-way radio group (its own full row) for a compact `<select>` inline next
+   to the buttons — a pick-once, rarely-revisited setting doesn't earn a whole row, and
+   only Format reads it at all (Minify ignores indentation). Neither Format nor Minify
+   gets `AppButton`'s `primary` (orange) variant: DESIGN.md reserves that color for one
+   true signature action per screen, and a six-job tool no longer has a single action that
+   qualifies — both stay `default`, consistent with Hash/UUID's own Compute/Generate
+   *not* being the pattern to copy here (those tools genuinely have one signature verb;
+   JSON doesn't anymore).
 7. **Explorer** — **Given** valid JSON is loaded, **when** the user interacts with the
    Explorer tab's tree, **then** they can inline-edit values (add/remove/move/duplicate
    fields), search/filter the tree by key or value, and click a node to copy either its
@@ -102,6 +121,38 @@ would produce a query syntax Explorer's copied paths can't paste into).
       is its own tab (cross-linked from Validate), Query speaks JSONPath (RFC 9535) via
       `serde_json_path`. See "Acceptance Criteria — Task 2 (Redesign)" above.
 - [ ] **Task 2b: Redesign — implementation (AC6–14)**
+  - [x] Build the six-tab shell (Explorer/Validate/Repair/Query/Diff/Transform) — new
+        `src/components/AppTabs.vue` (DESIGN.md's Tab component, first real consumer;
+        full WAI-ARIA tablist keyboard pattern), mounted in `JsonView.vue` above six
+        `role="tabpanel"`s. Only Explorer renders real content; the other five render an
+        honest `tools.json.comingSoon` placeholder (AD-9) until their own slices land.
+        Consumes Epic 7's token system throughout (`--color-*`, `--font-code-*` for the
+        input textarea, `--radius-*`, `--spacing-*`) — including the three hex values the
+        decision record flagged as still-untokenized (`#d1d5db`→`--color-border-hairline`,
+        `#6b7280`→`--color-text-secondary` in `JsonTree.vue`, `#b00020`→
+        `--color-accent-destructive` in `JsonView.vue`); `#2563eb` was already tokenized
+        by PR #104. **Behavior change (AC6):** Format/Minify now rewrite the shared input
+        in place; the old separate output textarea is retired.
+  - [x] Design-review pass with the developer (2026-08-24, after first seeing the shell
+        rendered) — caught three reflexive-copy mistakes worth fixing before they set a
+        pattern for the other five tabs: Format/Minify had been given `AppButton`'s
+        `primary` (orange) variant by copying Hash/UUID's shape without checking that
+        DESIGN.md reserves that color for one true signature action, which a six-job tool
+        no longer has (**fixed:** both now `default`). The three-way indent radio group
+        (its own full row) became a compact `<select>` inline with the buttons — a
+        pick-once setting that only Format even reads didn't earn a whole row, doubly so
+        with six tabs competing for vertical space. The generic Paste/Copy buttons are
+        **cut**: this audience already uses Cmd+V/Cmd+C, and Copy specifically lost its
+        one clear referent once there was no separate output box to copy *from* — each
+        tab will own its own precise copy action going forward (Explorer's already does).
+        Textarea gained a `min-width`/`max-width` instead of unconstrained full-bleed.
+  - [x] Explorer, first slice (AC7, partial) — click-a-node-to-copy: `JsonTree.vue` gained
+        per-row "Value"/"Path" actions (new `jsonPathFromSegments` in
+        `jsonPath.ts`, RFC 9535 dot/bracket notation matching the Query tab's own future
+        expression language; new `jsonTreeValueToText` in `jsonTreeValue.ts` for
+        compact-JSON value copy). `flattenJsonTree.ts`'s `JsonTreeRow` now carries `value`
+        and `jsonPath` per row. **Still open, next Explorer slice:** inline editing
+        (add/remove/move/duplicate) and tree search/filter by key or value.
   - [ ] Add `serde_json_path` to `crates/umbra-core/Cargo.toml`; verify it against the
         RFC 9535 conformance suite it tracks before wiring it into a new query function
         (per this project's standing dependency-verification discipline — Task 2 owns this
@@ -110,14 +161,8 @@ would produce a query syntax Explorer's copied paths can't paste into).
         `serde_json_path`), `diff` (structural, over `JsonTreeValue`), and `to_typescript`
         pure functions per the decision record's AD-1 split — each with its own regression
         tests, sanity-checked against the 10 MB / Story 1.9 performance floor (AC14).
-  - [ ] Build the six-tab shell (Explorer/Validate/Repair/Query/Diff/Transform) using
-        `DESIGN.md`'s Tab component, consuming Epic 7's token system (`src/styles/tokens.css`'s
-        `--color-*`, `--font-<role>-family|size|weight|line-height`, `--radius-*`,
-        `--spacing-*`, `--shadow-floating`) and established component patterns (Card) —
-        not the tool's remaining hardcoded hex values (`#d1d5db`, `#6b7280`, `#b00020`
-        across `JsonView.vue`/`JsonTree.vue`; `#2563eb` already tokenized by PR #104).
-  - [ ] Make Explorer's tree editable (inline add/remove/move/duplicate, search/filter,
-        click-to-copy value/JSONPath) — extends `JsonTree.vue`, keeps its existing
+  - [ ] Explorer, next slice: inline editing (add/remove/move/duplicate fields) and
+        search/filter by key or value — extends `JsonTree.vue`, keeps its existing
         path-based focus tracking and ARIA tree roles.
   - [ ] Rewrite Validate's error messages, register new `json-*` codes in
         `TRANSLATABLE_CODES` (`src/shell/toolError.ts`), add the "Try Repair" cross-link.
@@ -169,8 +214,41 @@ would produce a query syntax Explorer's copied paths can't paste into).
 
 ### Agent Model Used
 
+Claude Sonnet 5 (`claude-sonnet-5`)
+
 ### Debug Log References
 
 ### Completion Notes List
 
+- 2026-08-24: Task 2b, first Explorer slice. Six-tab shell built (`AppTabs.vue` +
+  `JsonView.vue` restructuring); Explorer's click-to-copy (value/JSONPath) implemented and
+  tested. Format/Minify now rewrite the shared input in place (AC6 behavior change).
+  Verification pass run: `pnpm lint`, `pnpm test` (496/496), `vue-tsc --noEmit`, `pnpm
+  build` — all clean. No `crates/` files touched this slice, so `cargo fmt`/`cargo test`
+  were not run (nothing to check).
+- 2026-08-24: Design-review pass, same slice, after the developer saw it rendered.
+  Caught reflexive pattern-copying from Hash/UUID that didn't actually fit a six-job tool:
+  Format/Minify's `primary` (orange) variant dropped (DESIGN.md reserves that color for
+  one signature action; a six-tab tool doesn't have one), indentation radios replaced with
+  an inline `<select>`, generic Paste/Copy buttons cut (Copy lost its referent once the
+  output box merged into input; Paste is redundant for this audience). Textarea gained
+  `min-width`/`max-width`. Re-verified: `pnpm lint`, `pnpm test` (491/491 — 5 fewer than
+  the prior pass, all removed Paste/Copy tests), `vue-tsc --noEmit`, visual confirmation
+  against the developer's running dev server.
+
 ### File List
+
+- `src/components/AppTabs.vue` (new)
+- `src/components/AppTabs.spec.ts` (new)
+- `src/tools/json/jsonPath.ts` (new)
+- `src/tools/json/jsonPath.spec.ts` (new)
+- `src/tools/json/jsonTreeValue.spec.ts` (new)
+- `src/tools/json/JsonView.vue` (modified)
+- `src/tools/json/JsonView.spec.ts` (modified)
+- `src/tools/json/JsonTree.vue` (modified)
+- `src/tools/json/JsonTree.spec.ts` (modified)
+- `src/tools/json/flattenJsonTree.ts` (modified)
+- `src/tools/json/flattenJsonTree.spec.ts` (modified)
+- `src/tools/json/jsonTreeValue.ts` (modified)
+- `src/locales/en.json` (modified)
+- `src/locales/fr.json` (modified)

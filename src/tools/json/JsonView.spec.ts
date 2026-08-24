@@ -4,9 +4,8 @@ import JsonView from "./JsonView.vue";
 import JsonTree from "./JsonTree.vue";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
-const { invokeMock, readTextMock, writeTextMock } = vi.hoisted(() => ({
+const { invokeMock, writeTextMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
-  readTextMock: vi.fn(),
   writeTextMock: vi.fn(),
 }));
 
@@ -14,8 +13,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
+// Only JsonTree's own copy-value/copy-path actions still touch the
+// clipboard now that the toolbar's generic Paste/Copy are gone (Story 8.1
+// Task 2 design pass) — kept for the copy-error-surfacing test below.
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
-  readText: () => readTextMock(),
   writeText: (text: string) => writeTextMock(text),
 }));
 
@@ -33,7 +34,6 @@ afterEach(() => {
   wrapper?.unmount();
   wrapper = undefined;
   invokeMock.mockReset();
-  readTextMock.mockReset();
   writeTextMock.mockReset();
   vi.useRealTimers();
 });
@@ -52,8 +52,8 @@ function inputTextarea(w: VueWrapper) {
   return w.find("#json-input");
 }
 
-function outputValue(w: VueWrapper) {
-  return (w.find("#json-output").element as HTMLTextAreaElement).value;
+function inputValue(w: VueWrapper) {
+  return (inputTextarea(w).element as HTMLTextAreaElement).value;
 }
 
 function clickButton(w: VueWrapper, text: string) {
@@ -75,7 +75,7 @@ describe("JsonView", () => {
       input: '{"a":1}',
       indent: "two_spaces",
     });
-    expect(outputValue(wrapper)).toBe('{\n  "a": 1\n}');
+    expect(inputValue(wrapper)).toBe('{\n  "a": 1\n}');
   });
 
   it("passes the four-space indent choice to json_format (AC1)", async () => {
@@ -83,7 +83,7 @@ describe("JsonView", () => {
     wrapper = mount(JsonView);
 
     await inputTextarea(wrapper).setValue('{"a":1}');
-    await wrapper.find('input[type="radio"][value="four_spaces"]').setValue();
+    await wrapper.find("#json-indent").setValue("four_spaces");
     await clickButton(wrapper, "Format");
     await flushPromises();
 
@@ -98,7 +98,7 @@ describe("JsonView", () => {
     wrapper = mount(JsonView);
 
     await inputTextarea(wrapper).setValue('{"a":1}');
-    await wrapper.find('input[type="radio"][value="tab"]').setValue();
+    await wrapper.find("#json-indent").setValue("tab");
     await clickButton(wrapper, "Format");
     await flushPromises();
 
@@ -117,7 +117,7 @@ describe("JsonView", () => {
     await flushPromises();
 
     expect(invokeMock).toHaveBeenCalledWith("json_minify", { input: '{\n  "a": 1\n}' });
-    expect(outputValue(wrapper)).toBe('{"a":1}');
+    expect(inputValue(wrapper)).toBe('{"a":1}');
   });
 
   it("renders a rejected ToolError's structured message and position, not a raw string (AC2)", async () => {
@@ -138,46 +138,22 @@ describe("JsonView", () => {
     expect(alert.text()).toContain("(line 3, column 5)");
   });
 
-  it("populates the input field from the clipboard on Paste (AC3)", async () => {
-    readTextMock.mockResolvedValueOnce("pasted text");
+  it("does not render a Paste or Copy button — cut in the Story 8.1 Task 2 design pass", () => {
     wrapper = mount(JsonView);
 
-    await clickButton(wrapper, "Paste from clipboard");
-    await flushPromises();
-
-    expect((inputTextarea(wrapper).element as HTMLTextAreaElement).value).toBe("pasted text");
+    const labels = wrapper.findAll("button").map((b) => b.text());
+    expect(labels).not.toContain("Paste from clipboard");
+    expect(labels).not.toContain("Copy to clipboard");
   });
 
-  it("copies the current output text to the clipboard on Copy (AC3)", async () => {
-    invokeMock.mockResolvedValueOnce('{"a":1}');
-    writeTextMock.mockResolvedValueOnce(undefined);
-    wrapper = mount(JsonView);
-
-    await inputTextarea(wrapper).setValue('{"a":1}');
-    await clickButton(wrapper, "Minify");
-    await flushPromises();
-
-    await clickButton(wrapper, "Copy to clipboard");
-    await flushPromises();
-
-    expect(writeTextMock).toHaveBeenCalledWith('{"a":1}');
-  });
-
-  it("disables Copy to clipboard while output is empty", () => {
-    wrapper = mount(JsonView);
-
-    const copyButton = wrapper.findAll("button").find((b) => b.text() === "Copy to clipboard");
-    expect(copyButton?.attributes("disabled")).toBeDefined();
-  });
-
-  it("clears a stale successful output when a later Format call fails", async () => {
+  it("leaves input as the user's current (invalid) text when Format fails, instead of reverting to a prior success", async () => {
     invokeMock.mockResolvedValueOnce('{\n  "a": 1\n}');
     wrapper = mount(JsonView);
 
     await inputTextarea(wrapper).setValue('{"a":1}');
     await clickButton(wrapper, "Format");
     await flushPromises();
-    expect(outputValue(wrapper)).toBe('{\n  "a": 1\n}');
+    expect(inputValue(wrapper)).toBe('{\n  "a": 1\n}');
 
     invokeMock.mockRejectedValueOnce({
       code: "json-syntax",
@@ -189,70 +165,30 @@ describe("JsonView", () => {
     await clickButton(wrapper, "Format");
     await flushPromises();
 
-    expect(outputValue(wrapper)).toBe("");
-    const copyButton = wrapper.findAll("button").find((b) => b.text() === "Copy to clipboard");
-    expect(copyButton?.attributes("disabled")).toBeDefined();
+    expect(inputValue(wrapper)).toBe("{");
+    expect(wrapper.find("[role='alert']").exists()).toBe(true);
   });
 
-  it("clears stale output and error when Paste supplies new input", async () => {
-    invokeMock.mockResolvedValueOnce('{"a":1}');
+  it("clears a stale error on the next successful Format", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "json-syntax",
+      message: "unexpected end of input",
+      position: { kind: "LineCol", line: 1, column: 1 },
+      context: null,
+    });
     wrapper = mount(JsonView);
 
+    await inputTextarea(wrapper).setValue("{");
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+    expect(wrapper.find("[role='alert']").exists()).toBe(true);
+
+    invokeMock.mockResolvedValueOnce('{\n  "a": 1\n}');
     await inputTextarea(wrapper).setValue('{"a":1}');
-    await clickButton(wrapper, "Minify");
-    await flushPromises();
-    expect(outputValue(wrapper)).toBe('{"a":1}');
-
-    readTextMock.mockResolvedValueOnce("new pasted text");
-    await clickButton(wrapper, "Paste from clipboard");
+    await clickButton(wrapper, "Format");
     await flushPromises();
 
-    expect(outputValue(wrapper)).toBe("");
     expect(wrapper.find("[role='alert']").exists()).toBe(false);
-  });
-
-  it("surfaces a Paste rejection via the error alert instead of failing silently (AC3)", async () => {
-    readTextMock.mockRejectedValueOnce(new Error("clipboard permission denied"));
-    wrapper = mount(JsonView);
-
-    await clickButton(wrapper, "Paste from clipboard");
-    await flushPromises();
-
-    expect(wrapper.find("[role='alert']").text()).toContain("clipboard permission denied");
-  });
-
-  it("surfaces a Copy rejection via the error alert instead of failing silently (AC3)", async () => {
-    invokeMock.mockResolvedValueOnce('{"a":1}');
-    writeTextMock.mockRejectedValueOnce(new Error("clipboard write failed"));
-    wrapper = mount(JsonView);
-
-    await inputTextarea(wrapper).setValue('{"a":1}');
-    await clickButton(wrapper, "Minify");
-    await flushPromises();
-    await clickButton(wrapper, "Copy to clipboard");
-    await flushPromises();
-
-    expect(wrapper.find("[role='alert']").text()).toContain("clipboard write failed");
-  });
-
-  it("discards a stale Paste read that resolves after a newer Paste click", async () => {
-    const first = deferred<string>();
-    const second = deferred<string>();
-    readTextMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    wrapper = mount(JsonView);
-
-    const pasteButton = wrapper.findAll("button").find((b) => b.text() === "Paste from clipboard")!;
-    const firstClick = pasteButton.trigger("click");
-    const secondClick = pasteButton.trigger("click");
-
-    second.resolve("second paste");
-    await flushPromises();
-    first.resolve("first paste");
-    await flushPromises();
-    await firstClick;
-    await secondClick;
-
-    expect((inputTextarea(wrapper).element as HTMLTextAreaElement).value).toBe("second paste");
   });
 
   it("renders a fallback message when a rejection is not ToolError-shaped", async () => {
@@ -348,7 +284,7 @@ describe("JsonView", () => {
     await firstClick;
     await secondClick;
 
-    expect(outputValue(wrapper)).toBe('{\n  "a": 2\n}');
+    expect(inputValue(wrapper)).toBe('{\n  "a": 2\n}');
   });
 
   it("keeps the newer of two distinct non-null live-parsed trees when an older parse resolves late (AC2)", async () => {
@@ -372,5 +308,30 @@ describe("JsonView", () => {
     first.resolve(treeA);
     await flushPromises();
     expect(wrapper.findComponent(JsonTree).props("value")).toEqual(treeB);
+  });
+
+  it("shows Explorer (with the live tree) as the default active tab (AC6)", () => {
+    wrapper = mount(JsonView);
+
+    const explorerTab = wrapper.find("#tab-explorer");
+    expect(explorerTab.attributes("aria-selected")).toBe("true");
+    expect(wrapper.findComponent(JsonTree).exists()).toBe(true);
+  });
+
+  it("shows an honest placeholder, not the tree, for a not-yet-built tab (AC6)", async () => {
+    wrapper = mount(JsonView);
+
+    await wrapper.find("#tab-validate").trigger("click");
+
+    expect(wrapper.findComponent(JsonTree).exists()).toBe(false);
+    expect(wrapper.find("#tabpanel-validate").text()).toBe("Coming soon.");
+  });
+
+  it("surfaces a tree copy failure through the same error alert as Format/Minify", async () => {
+    wrapper = mount(JsonView);
+    await wrapper.findComponent(JsonTree).vm.$emit("copy-error", new Error("clipboard write failed"));
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").text()).toContain("clipboard write failed");
   });
 });

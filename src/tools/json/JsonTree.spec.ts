@@ -23,7 +23,7 @@ Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
   value: 500,
 });
 
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 afterAll(() => {
   if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
@@ -34,7 +34,17 @@ import { nextTick } from "vue";
 import JsonTree from "./JsonTree.vue";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
+const { writeTextMock } = vi.hoisted(() => ({ writeTextMock: vi.fn() }));
+
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+  writeText: (text: string) => writeTextMock(text),
+}));
+
 let wrapper: VueWrapper | undefined;
+
+beforeEach(() => {
+  writeTextMock.mockReset();
+});
 
 afterEach(() => {
   wrapper?.unmount();
@@ -55,6 +65,18 @@ function nestedFixture(): JsonTreeValue {
 
 function treeItems(w: VueWrapper) {
   return w.findAll('[role="treeitem"]');
+}
+
+// `row.text()` now also includes the "Value"/"Path" copy-action button
+// labels, both of which happen to contain the letter "a" — matching a row by
+// `.text().includes("a")` would silently pick the wrong row (or the root) as
+// soon as those buttons exist. Match on the `.json-tree-key` span itself
+// instead, which only ever holds the exact `"<key>:"` label.
+function rowByKey(w: VueWrapper, key: string) {
+  return treeItems(w).find((row) => {
+    const keyEl = row.find(".json-tree-key");
+    return keyEl.exists() && keyEl.text() === `${key}:`;
+  });
 }
 
 // The virtualizer only learns the scroll container's real size once Vue
@@ -87,45 +109,33 @@ describe("JsonTree", () => {
   it("reveals children on click and hides them again on a second click", async () => {
     wrapper = await mountTree(nestedFixture());
 
-    const rowA = treeItems(wrapper).find((row) => row.text().includes("a"));
-    await rowA?.trigger("click");
-
+    await rowByKey(wrapper, "a")?.trigger("click");
     expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(true);
 
-    const rowAAgain = treeItems(wrapper).find(
-      (row) => row.text().includes("a") && !row.text().includes("deep"),
-    );
-    await rowAAgain?.trigger("click");
-
+    await rowByKey(wrapper, "a")?.trigger("click");
     expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(false);
   });
 
   it("toggles a focused expandable row with Enter and Space", async () => {
     wrapper = await mountTree(nestedFixture());
 
-    const rowA = treeItems(wrapper).find((row) => row.text().includes("a"));
-    await rowA?.trigger("keydown", { key: "Enter" });
+    await rowByKey(wrapper, "a")?.trigger("keydown", { key: "Enter" });
     expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(true);
 
-    const rowAAgain = treeItems(wrapper).find(
-      (row) => row.text().includes("a") && !row.text().includes("deep"),
-    );
-    await rowAAgain?.trigger("keydown", { key: " " });
+    await rowByKey(wrapper, "a")?.trigger("keydown", { key: " " });
     expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(false);
   });
 
   it("expands with ArrowRight and collapses with ArrowLeft", async () => {
     wrapper = await mountTree(nestedFixture());
 
-    const rowA = treeItems(wrapper).find((row) => row.text().includes("a"));
-    await rowA?.trigger("keydown", { key: "ArrowRight" });
+    await rowByKey(wrapper, "a")?.trigger("keydown", { key: "ArrowRight" });
     expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(true);
 
     const deepRow = treeItems(wrapper).find((row) => row.text().includes("deep"));
     await deepRow?.trigger("keydown", { key: "ArrowLeft" });
 
-    const rowAAgain = treeItems(wrapper).find((row) => row.text().includes("a"));
-    await rowAAgain?.trigger("keydown", { key: "ArrowLeft" });
+    await rowByKey(wrapper, "a")?.trigger("keydown", { key: "ArrowLeft" });
     expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(false);
   });
 
@@ -154,5 +164,45 @@ describe("JsonTree", () => {
 
     const leafRow = treeItems(wrapper).find((row) => row.text().includes("shallow"));
     expect(leafRow?.attributes("aria-expanded")).toBeUndefined();
+  });
+
+  it("copies a leaf's JSON-serialized value on Copy value, without also toggling the row", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    const rowB = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+    await rowB?.find('button[aria-label="Copy value"]').trigger("click");
+
+    expect(writeTextMock).toHaveBeenCalledWith('"shallow"');
+    // A row-scoped copy click must not also fire the row's own toggle handler.
+    expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(false);
+  });
+
+  it("copies a container's subtree as compact JSON on Copy value", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    await rowByKey(wrapper, "a")?.find('button[aria-label="Copy value"]').trigger("click");
+
+    expect(writeTextMock).toHaveBeenCalledWith('{"deep":"hidden"}');
+  });
+
+  it("copies a JSONPath locator on Copy path", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    const rowB = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+    await rowB?.find('button[aria-label="Copy JSONPath"]').trigger("click");
+
+    expect(writeTextMock).toHaveBeenCalledWith("$.b");
+  });
+
+  it("surfaces a clipboard write failure via a copy-error emit instead of failing silently", async () => {
+    writeTextMock.mockRejectedValueOnce(new Error("clipboard write failed"));
+    wrapper = await mountTree(nestedFixture());
+
+    const rowB = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+    await rowB?.find('button[aria-label="Copy value"]').trigger("click");
+    await nextTick();
+
+    const emitted = wrapper.emitted("copy-error");
+    expect(emitted?.[0]?.[0]).toBeInstanceOf(Error);
   });
 });
