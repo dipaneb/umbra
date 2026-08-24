@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
+import AppButton from "../../components/AppButton.vue";
 import { writeClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
@@ -121,19 +122,18 @@ async function onCopyAll() {
     </div>
 
     <div class="actions">
-      <button
-        type="button"
+      <AppButton
+        variant="primary"
         @click="onGenerate"
       >
         {{ t('tools.uuid.generate') }}
-      </button>
-      <button
+      </AppButton>
+      <AppButton
         v-if="results.length > 1"
-        type="button"
         @click="onCopyAll"
       >
         {{ t('tools.uuid.copyAll') }}
-      </button>
+      </AppButton>
     </div>
 
     <p
@@ -152,12 +152,9 @@ async function onCopyAll() {
         :key="index"
       >
         <code>{{ uuid }}</code>
-        <button
-          type="button"
-          @click="onCopyOne(uuid)"
-        >
+        <AppButton @click="onCopyOne(uuid)">
           {{ t('common.copy') }}
-        </button>
+        </AppButton>
       </li>
     </ul>
   </section>

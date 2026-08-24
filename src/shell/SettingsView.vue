@@ -467,7 +467,7 @@ async function onClearAll(): Promise<void> {
 input:focus-visible,
 select:focus-visible,
 button:focus-visible {
-  outline: 2px solid #396cd8;
+  outline: 2px solid var(--color-accent-signature);
   outline-offset: 2px;
 }
 </style>

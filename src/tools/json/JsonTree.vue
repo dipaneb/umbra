@@ -200,7 +200,7 @@ async function onKeydown(event: KeyboardEvent, index: number) {
 }
 
 .json-tree-row:focus {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--color-accent-signature);
   outline-offset: -2px;
 }
 

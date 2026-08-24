@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
+import AppButton from "../../components/AppButton.vue";
 import { readClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { formatDateTime } from "../../shell/locale";
@@ -82,18 +83,15 @@ async function onPaste() {
     </div>
 
     <div class="actions">
-      <button
-        type="button"
+      <AppButton
+        variant="primary"
         @click="onDecode"
       >
         {{ t('tools.jwt.decode') }}
-      </button>
-      <button
-        type="button"
-        @click="onPaste"
-      >
+      </AppButton>
+      <AppButton @click="onPaste">
         {{ t('common.pasteFromClipboard') }}
-      </button>
+      </AppButton>
     </div>
 
     <p

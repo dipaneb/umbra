@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
+import AppButton from "../../components/AppButton.vue";
 import { readClipboardText, writeClipboardText } from "../../shell/clipboard";
 import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import { useRegistryStore } from "../../stores/registry";
@@ -139,18 +140,15 @@ async function onCopyOne(value: string) {
     </fieldset>
 
     <div class="actions">
-      <button
-        type="button"
+      <AppButton
+        variant="primary"
         @click="onCompute"
       >
         {{ t('tools.hash.compute') }}
-      </button>
-      <button
-        type="button"
-        @click="onPaste"
-      >
+      </AppButton>
+      <AppButton @click="onPaste">
         {{ t('common.pasteFromClipboard') }}
-      </button>
+      </AppButton>
     </div>
 
     <p
@@ -170,12 +168,9 @@ async function onCopyOne(value: string) {
       >
         <label>{{ row.legacy ? t('tools.hash.legacySuffix', { algorithm: row.label }) : row.label }}</label>
         <code>{{ row.value }}</code>
-        <button
-          type="button"
-          @click="onCopyOne(row.value)"
-        >
+        <AppButton @click="onCopyOne(row.value)">
           {{ t('common.copy') }}
-        </button>
+        </AppButton>
       </li>
     </ul>
   </section>
