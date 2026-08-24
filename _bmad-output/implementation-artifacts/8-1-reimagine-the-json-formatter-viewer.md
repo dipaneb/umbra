@@ -146,6 +146,25 @@ would produce a query syntax Explorer's copied paths can't paste into).
         one clear referent once there was no separate output box to copy *from* — each
         tab will own its own precise copy action going forward (Explorer's already does).
         Textarea gained a `min-width`/`max-width` instead of unconstrained full-bleed.
+  - [x] Tree visual redesign, same design-review pass, after the developer saw a real
+        populated tree (verified via a local IPC-mock injected into the live dev server,
+        since the tree can't render without a real `json_parse` backend). The prior look
+        had no expand/collapse affordance beyond an ARIA attribute invisible to sighted
+        users, no indentation guide lines, "Value"/"Path" text buttons unstyled and pushed
+        to the far edge of an unbounded-width panel, and the "{N keys}" collapsed summary
+        rendered identically to a real leaf value. Rebuilt: a `PhCaretRight`/`PhCaretDown`
+        chevron per expandable row (Phosphor, matching `AppSidebar.vue`'s own existing
+        collapse-icon convention — not invented fresh), a fixed-width chevron column so
+        leaf and expandable rows still align, per-depth indentation guide lines via a
+        `repeating-linear-gradient` background (derived from `--color-text-secondary` at
+        25% via `color-mix()` — `--color-border-hairline`'s 7% is real but tuned for a
+        *decorative* card edge per DESIGN.md's own documented trade-off, too faint for a
+        *functional* wayfinding line), the collapsed summary restyled muted+italic to read
+        as metadata rather than content, row hover highlighting, and "Value"/"Path" text
+        buttons replaced with compact icon-only buttons (`PhCopySimple`/`PhLink`,
+        `aria-label` unchanged) that only need to fit an icon, not a word. The tree panel
+        also gained the same `max-width: 70em` as the input textarea, so its far-right
+        actions don't drift away from the row's text on a wide screen.
   - [x] Explorer, first slice (AC7, partial) — click-a-node-to-copy: `JsonTree.vue` gained
         per-row "Value"/"Path" actions (new `jsonPathFromSegments` in
         `jsonPath.ts`, RFC 9535 dot/bracket notation matching the Query tab's own future
@@ -235,6 +254,24 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   `min-width`/`max-width`. Re-verified: `pnpm lint`, `pnpm test` (491/491 — 5 fewer than
   the prior pass, all removed Paste/Copy tests), `vue-tsc --noEmit`, visual confirmation
   against the developer's running dev server.
+- 2026-08-24: Tree visual redesign, same design-review pass, prompted by the developer
+  seeing a populated tree for the first time (no chevrons, no indentation guides, unstyled
+  far-right text buttons, collapsed summary indistinguishable from real content). Verified
+  visually via a `window.__TAURI_INTERNALS__.invoke` mock injected into the live dev
+  server's browser tab — the real IPC backend isn't reachable outside the native Tauri
+  window, so this was the only way to see a populated tree without asking the developer
+  for a screenshot. Checked in both light and dark mode. Re-verified: `pnpm lint`, `pnpm
+  test` (493/493 — 2 new chevron/summary-styling tests), `vue-tsc --noEmit`, `pnpm build`.
+- 2026-08-24: Follow-up polish on the same tree redesign, developer feedback on the
+  rendered result. Copy icons were unreadable at their original em-relative size (scaled
+  against the row's small 13px code font); switched to fixed px (24px button, 16px icon).
+  Added `title` attributes to both copy buttons for a native hover tooltip — the codebase
+  already has this exact pattern (`AppSidebar.vue`'s nav `:title`), no Tauri-specific API
+  needed, it's plain HTML. Guide-line offset corrected from the indent column's raw edge
+  to its center, so each line now sits directly under the ancestor chevron it traces.
+  Re-verified: `pnpm lint`, `pnpm test` (49/49 for the JSON tool suite), `vue-tsc
+  --noEmit`, visual confirmation (icon legibility, `title`/`aria-label` DOM attributes,
+  guide-line alignment) against the mocked-IPC dev server tab.
 
 ### File List
 

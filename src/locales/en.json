@@ -96,9 +96,7 @@
       "treeKeysCountOther": "{'{'}{count} keys{'}'}",
       "treeItemsCountOne": "[1 item]",
       "treeItemsCountOther": "[{count} items]",
-      "copyValue": "Value",
       "copyValueAriaLabel": "Copy value",
-      "copyPath": "Path",
       "copyPathAriaLabel": "Copy JSONPath",
       "comingSoon": "Coming soon.",
       "tab": {

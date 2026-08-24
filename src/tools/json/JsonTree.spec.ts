@@ -166,6 +166,26 @@ describe("JsonTree", () => {
     expect(leafRow?.attributes("aria-expanded")).toBeUndefined();
   });
 
+  it("shows a chevron on an expandable row and none on a leaf row", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    const rowA = rowByKey(wrapper, "a");
+    const leafRow = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+
+    expect(rowA?.find(".json-tree-chevron svg").exists()).toBe(true);
+    expect(leafRow?.find(".json-tree-chevron svg").exists()).toBe(false);
+  });
+
+  it("styles a collapsed container's key-count summary distinctly from a real leaf value", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    const rowA = rowByKey(wrapper, "a");
+    const leafRow = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+
+    expect(rowA?.find(".json-tree-preview").classes()).toContain("json-tree-summary");
+    expect(leafRow?.find(".json-tree-preview").classes()).not.toContain("json-tree-summary");
+  });
+
   it("copies a leaf's JSON-serialized value on Copy value, without also toggling the row", async () => {
     wrapper = await mountTree(nestedFixture());
 

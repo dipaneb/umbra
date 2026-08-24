@@ -269,6 +269,10 @@ p[role="alert"] {
 
 .tab-panel :deep(.json-tree-scroll) {
   height: 320px;
+  /* Matches the input textarea's own max-width: on a wide screen, an
+     unbounded tree let each row's copy actions drift far to the right of
+     the text they act on. */
+  max-width: 70em;
   border: 1px solid var(--color-border-hairline);
   border-radius: var(--radius-default);
 }

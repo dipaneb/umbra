@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useVirtualizer } from "@tanstack/vue-virtual";
+import { PhCaretDown, PhCaretRight, PhCopySimple, PhLink } from "@phosphor-icons/vue";
 import { writeClipboardText } from "../../shell/clipboard";
 import { flattenJsonTree, type JsonTreeRow } from "./flattenJsonTree";
 import { jsonTreeValueToText } from "./jsonTreeValue";
@@ -51,6 +52,43 @@ const focusedIndex = computed(() => {
 });
 
 const ROW_HEIGHT_PX = 24;
+// Shared between the row's own `padding-left` and the indent-guide-line
+// background below — they must stay in lockstep, or the faint vertical
+// lines drift away from the chevron column they're meant to align with.
+const INDENT_EM = 1.2;
+
+// Faint vertical guide lines through a row's indentation, one per ancestor
+// level — without them, deep nesting is legible only by carefully counting
+// whitespace. A single `repeating-linear-gradient` background (sized to
+// exactly `depth * INDENT_EM`) draws all of a row's guide lines in one
+// paint, cheaper than a DOM node per ancestor on a virtualized, possibly
+// deep tree.
+// `--color-border-hairline` itself is too faint to reuse here — DESIGN.md
+// documents its 7% opacity as deliberately tuned for a decorative card
+// boundary (~1.2:1 contrast, explicitly "not a WCAG violation" *because* a
+// card edge is decorative). A guide line here is functional, not decorative
+// — it's how a user traces which closing brace belongs to which node — so
+// it derives from `--color-text-secondary` (already visible, already
+// theme-aware) at a low but real mixed-in opacity instead.
+const GUIDE_LINE_COLOR = "color-mix(in srgb, var(--color-text-secondary) 25%, transparent)";
+// `.json-tree-chevron` is a `width: 1em` box with its icon centered inside
+// — so a chevron's own visual center sits half an em in from its column's
+// left edge (the ancestor's own `padding-left`), not at the edge itself.
+// Offsetting the guide line by this same half-em is what makes each line
+// land exactly under the chevron whose expand state it's tracing, instead
+// of in the empty gap beside it.
+const CHEVRON_CENTER_OFFSET_EM = 0.5;
+
+function indentGuideStyle(depth: number) {
+  if (depth === 0) return {};
+  const offset = CHEVRON_CENTER_OFFSET_EM;
+  return {
+    backgroundImage:
+      `repeating-linear-gradient(to right, transparent 0, transparent calc(${offset}em - 0.5px), ${GUIDE_LINE_COLOR} calc(${offset}em - 0.5px), ${GUIDE_LINE_COLOR} calc(${offset}em + 0.5px), transparent calc(${offset}em + 0.5px), transparent ${INDENT_EM}em)`,
+    backgroundSize: `${depth * INDENT_EM}em 100%`,
+    backgroundRepeat: "no-repeat",
+  };
+}
 
 const virtualizer = useVirtualizer(
   computed(() => ({
@@ -188,33 +226,46 @@ async function onKeydown(event: KeyboardEvent, index: number) {
           width: '100%',
           height: `${ROW_HEIGHT_PX}px`,
           transform: `translateY(${virtualRow.start}px)`,
-          paddingLeft: `${row.depth * 1.2}em`,
+          paddingLeft: `${row.depth * INDENT_EM}em`,
+          ...indentGuideStyle(row.depth),
         }"
         @click="toggle(virtualRow.index)"
         @keydown="onKeydown($event, virtualRow.index)"
         @focus="focusedPath = row.path"
       >
+        <span class="json-tree-chevron">
+          <component
+            :is="row.expanded ? PhCaretDown : PhCaretRight"
+            v-if="row.expandable"
+            aria-hidden="true"
+          />
+        </span>
         <span
           v-if="row.keyLabel !== null"
           class="json-tree-key"
         >{{ row.keyLabel }}:</span>
-        <span class="json-tree-preview">{{ row.preview }}</span>
+        <span
+          class="json-tree-preview"
+          :class="{ 'json-tree-summary': row.expandable }"
+        >{{ row.preview }}</span>
         <span class="json-tree-row-actions">
           <button
             type="button"
             class="json-tree-copy-button"
             :aria-label="t('tools.json.copyValueAriaLabel')"
+            :title="t('tools.json.copyValueAriaLabel')"
             @click.stop="copyValue(row)"
           >
-            {{ t('tools.json.copyValue') }}
+            <PhCopySimple aria-hidden="true" />
           </button>
           <button
             type="button"
             class="json-tree-copy-button"
             :aria-label="t('tools.json.copyPathAriaLabel')"
+            :title="t('tools.json.copyPathAriaLabel')"
             @click.stop="copyPath(row)"
           >
-            {{ t('tools.json.copyPath') }}
+            <PhLink aria-hidden="true" />
           </button>
         </span>
       </div>
@@ -232,8 +283,13 @@ async function onKeydown(event: KeyboardEvent, index: number) {
   display: flex;
   gap: 0.4em;
   align-items: center;
-  font-family: monospace;
+  font-family: var(--font-code-family);
+  font-size: var(--font-code-size);
   cursor: default;
+}
+
+.json-tree-row:hover {
+  background: var(--color-border-hairline);
 }
 
 .json-tree-row:focus {
@@ -241,8 +297,27 @@ async function onKeydown(event: KeyboardEvent, index: number) {
   outline-offset: -2px;
 }
 
+/* Fixed-width regardless of expandability, so every row's key/value starts
+   at the same x position — a leaf row still reserves the column, just
+   leaves it empty, rather than the whole tree jaggedly re-indenting itself
+   between expandable and leaf rows at the same depth. */
+.json-tree-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.json-tree-chevron svg {
+  width: 0.8em;
+  height: 0.8em;
+}
+
 .json-tree-key {
   color: var(--color-text-secondary);
+  flex-shrink: 0;
 }
 
 .json-tree-preview {
@@ -250,11 +325,21 @@ async function onKeydown(event: KeyboardEvent, index: number) {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  color: var(--color-text-primary);
+}
+
+/* The collapsed "{N keys}"/"[N items]" summary is metadata about the node,
+   not a value the document actually contains — styled like `.json-tree-key`
+   (muted, not the leaf-value color) so it reads as structural information,
+   not as if the node's real content were a literal string "{2 keys}". */
+.json-tree-summary {
+  color: var(--color-text-secondary);
+  font-style: italic;
 }
 
 .json-tree-row-actions {
   display: flex;
-  gap: 0.3em;
+  gap: 0.2em;
   flex-shrink: 0;
   opacity: 0;
 }
@@ -264,19 +349,31 @@ async function onKeydown(event: KeyboardEvent, index: number) {
   opacity: 1;
 }
 
+/* Fixed px, not em: the row's own font-size is `--font-code-size` (13px) —
+   sizing the icon relative to that made both the hit target and the glyph
+   too small to read at a glance. A copy icon's legibility floor doesn't
+   scale down with the surrounding text the way a letterform can. */
 .json-tree-copy-button {
-  font-family: var(--font-caption-family);
-  font-size: var(--font-caption-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   color: var(--color-text-secondary);
   background: none;
-  border: 1px solid var(--color-border-hairline);
+  border: none;
   border-radius: var(--radius-sm);
-  padding: 0 0.4em;
   cursor: pointer;
 }
 
+.json-tree-copy-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 .json-tree-copy-button:hover {
-  color: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-bg-base);
 }
 
 .json-tree-copy-button:focus-visible {
