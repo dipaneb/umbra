@@ -41,7 +41,21 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-18
+last_updated: 2026-08-24
+# note: story 8-1 created 2026-08-24 (first story of Epic 8, explicitly directed by the
+# developer -- epic-8 moved backlog -> in-progress). No same-epic previous story existed, and
+# Epic 8's own shared story shape cites Story 6-3's decision-record pattern as precedent, but
+# 6-3 is itself still backlog, never executed -- this story establishes the actual first
+# real-world instance of the "Task 1 decision record gates Task 2" gate, not a follower of a
+# proven example. baseline_commit confirmed as origin/main's real tip (0690f83) directly --
+# local main and origin/main both resolve to it, clean tree except the pre-existing untracked
+# .claude/workflows/ directory. Per epics.md's explicit instruction that Task 2 ACs would be
+# fiction before Task 1's decision record exists, only Task 1 (discovery) carries real
+# Given/When/Then acceptance criteria in this draft; Task 2's ACs are deferred to a follow-up
+# edit of this same story file once the decision record lands. Live-read the full current JSON
+# tool implementation (JsonView.vue, JsonTree.vue, json.rs, and supporting modules) plus
+# ARCHITECTURE-SPINE.md's AD-1/AD-4/AD-5/AD-6/AD-16 and Story 1.9's 10 MB performance profile,
+# so Task 1's discovery session starts from confirmed fact rather than assumption.
 # note: story 7-8 code review 2026-08-18 (bmad-code-review, status moves "review" -> "done") --
 # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) against
 # the uncommitted diff. 3 decision-needed findings resolved live with the developer (Base64
@@ -1139,8 +1153,8 @@ development_status:
   7-8-clipboard-suggestion-surface: done
   epic-7-retrospective: optional
 
-  epic-8: backlog
-  8-1-reimagine-the-json-formatter-viewer: backlog
+  epic-8: in-progress
+  8-1-reimagine-the-json-formatter-viewer: ready-for-dev
   8-2-reimagine-base64-encode-decode: backlog
   8-3-reimagine-the-uuid-generator: backlog
   8-4-reimagine-the-hash-generator: backlog

@@ -1,0 +1,176 @@
+---
+baseline_commit: b357aff
+---
+
+# Story 8.1: Reimagine the JSON Formatter/Viewer
+
+Status: ready-for-dev
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As the developer,
+I want to reconsider the JSON Formatter/Viewer's feature set through open discovery before redesigning its UI,
+so that the redesign reflects a deliberately chosen scope, not a visual reskin of whatever shipped first.
+
+## Acceptance Criteria
+
+**This story ships in two gated tasks (epics.md's own shared Epic 8 shape). Task 1's ACs below are real and testable now. Task 2 (redesign) has no ACs yet — writing them before Task 1's decision record exists would be fiction, per epics.md's explicit instruction — they are added to this story file as a follow-up edit once Task 1 completes, not fabricated here.**
+
+1. **Given** open scope discovery is run for the JSON tool (`bmad-party-mode`, or `bmad-forge-idea` for a narrower pressure-test), framed explicitly as reconsidering the tool's scope from first principles, **when** discovery concludes, **then** a written decision record exists stating what is kept, cut, and added relative to today's shipped implementation (format/minify with 2-space/4-space/tab indentation, syntax validation with line/column error position, a collapsible virtualized tree view, paste/copy), with rationale for each call — the existing implementation is reference only, not a decision to preserve by default.
+2. **Given** the decision record, **when** it is produced, **then** it states which of FR6–FR9 remain accurate, which are revised, and which are newly added — Epic 8's own preamble makes this revision each story's own output, not predicted in advance.
+3. **Given** any idea considered and cut during discovery, **when** the decision record lands, **then** it is added to the public backlog (FR35) as a candidate — the same disclosure discipline Story 6.3's own AC established for its FR29 decision, not silently dropped.
+4. **Given** the chosen scope, **when** the decision record completes, **then** it states which parts of the existing `crates/umbra-core/src/json.rs` functional core survive as-is (AD-1: core owns every transformation) versus which need new pure functions — Task 2 builds directly on this split.
+5. **Given** Task 1 has not yet produced its decision record, **when** this story starts, **then** Task 2 (redesign, and its own Given/When/Then acceptance criteria) has not begun — no implementation starts before the decision record exists.
+
+## Acceptance Criteria — Task 2 (Redesign)
+
+Written 2026-08-24 via `bmad-party-mode` (same room as Task 1), scoped strictly to
+`8-1-json-decision-record.md`. Two items the decision record left open for this task are
+resolved here: **Repair ships as its own tab**, cross-linked from Validate's error state
+(not merged into Validate — different interaction model, preview-then-confirm needs its
+own real estate); **Query speaks JSONPath (RFC 9535)** via the `serde_json_path` crate,
+chosen for spec standardization, direct compatibility with the existing `serde_json::Value`
+core type, and consistency with Explorer's own copy-JSONPath output (JMESPath rejected —
+would produce a query syntax Explorer's copied paths can't paste into).
+
+6. **Given** the redesign lands, **when** the JSON tool renders, **then** it presents six
+   tabs — Explorer, Validate, Repair, Query, Diff, Transform — using `DESIGN.md`'s Tab
+   component (`{colors.accent-default}` underline/pill for the active tab,
+   `{colors.text-secondary}` for inactive tabs), replacing the current single flat panel;
+   each tab name answers a distinct job a user could name.
+7. **Explorer** — **Given** valid JSON is loaded, **when** the user interacts with the
+   Explorer tab's tree, **then** they can inline-edit values (add/remove/move/duplicate
+   fields), search/filter the tree by key or value, and click a node to copy either its
+   value or its JSONPath (e.g. `$.data[3].user.email`) — extending FR8 from a read-only
+   view to an editable one.
+8. **Validate** — **Given** malformed JSON is submitted, **when** validation fails, **then**
+   the tool surfaces a specific, rewritten failure message (not `serde_json`'s generic text
+   passed through unchanged) with line/column position; that message's error code is
+   registered in `TRANSLATABLE_CODES` (`src/shell/toolError.ts`, currently zero `json-*`
+   coverage) so French renders correctly; any runtime value embedded in the message (byte
+   count, token) is carried in a structured field, never baked into the translated string;
+   and the error state offers a "Try Repair" action that switches to the Repair tab with the
+   same input carried over.
+9. **Repair** — **Given** malformed JSON that fixable heuristics can address
+   (trailing/missing commas, single quotes, unquoted keys, JS-style comments, unclosed
+   brackets), **when** the user opens the Repair tab (directly or via Validate's cross-link),
+   **then** the tool shows a preview of the proposed fix with a per-change description before
+   anything is applied, and the original input is only modified after an explicit confirm —
+   never silently auto-applied (AD-9, `EXPERIENCE.md` honesty bar).
+10. **Query** — **Given** valid JSON is loaded, **when** the user enters a JSONPath
+    expression (RFC 9535) in the Query tab, **then** the tool evaluates it via
+    `serde_json_path` against the parsed document and displays the matching node(s), with an
+    invalid expression surfaced as a clear error rather than a silent empty result.
+11. **Diff** — **Given** two JSON documents, **when** the user opens the Diff tab, **then**
+    the tool computes a structural diff (not a text/string diff) between them and renders it
+    as tree-mode highlighting of additions, removals, and changes, reusing `JsonTreeValue`'s
+    existing order-preserving, exact-text-number representation for both sides.
+12. **Transform** — **Given** valid JSON is loaded, **when** the user opens the Transform
+    tab, **then** the tool generates a TypeScript interface reflecting the document's shape;
+    no other target language ships in this story (Go/Python/YAML/CSV remain explicitly
+    deferred as their own later decision).
+13. **Given** the redesigned tool renders, **when** its panels, tabs, and controls are
+    styled, **then** they consume Epic 7's token system (`--font-code-*` for
+    input/output/tree/query panels per `DESIGN.md`'s `{typography.code}` role;
+    `--color-*`/`--radius-*`/`--spacing-*` elsewhere) instead of the tool's remaining
+    hardcoded hex values (`#d1d5db`, `#6b7280`, `#b00020` — `#2563eb` already tokenized by
+    PR #104).
+14. **Given** any new tab performs non-trivial computation (repair, query, diff, transform),
+    **when** that command runs, **then** it dispatches via `spawn_blocking` (AD-4) and is
+    invoked through its own `createLatestWinsRunner()` scope for its independent state group
+    (AD-16) — not sharing the existing Format/Minify/Paste or live-tree-parse runners — and
+    its latency against a 10 MB document is sanity-checked against Story 1.9's ~440–540 ms
+    baseline before shipping.
+
+## Tasks / Subtasks
+
+- [ ] **Task 0: Branch setup (AC: all)**
+  - [ ] Confirm `baseline_commit` (`b357aff`) is `origin/main`'s real tip: `git fetch origin && git log --oneline -1 origin/main`. Bumped 2026-08-24 from this story's original `0690f83` after PR #104 landed mid-discovery (tokenized `JsonTree.vue`'s focus ring, added `src/styles/base.css` — see Dev Notes); re-confirm at implementation start in case `main` has moved again since.
+  - [ ] `git checkout -b feat/story-8-1-reimagine-the-json-formatter-viewer origin/main`.
+
+- [x] **Task 1: Discovery — produce the decision record (AC1–4)** — complete 2026-08-24, see `8-1-json-decision-record.md`.
+  - [x] Run `bmad-party-mode` (recommended default — a full multi-persona roundtable matches the weight of "reconsider this tool's scope from first principles"; fall back to the narrower `bmad-forge-idea` only if a lighter pressure-test is preferred at execution time) framed explicitly as: *open scope discovery for the JSON Formatter/Viewer — the existing implementation is reference only, not a scope to preserve.*
+  - [x] Feed the session the current, real state so it starts from fact, not assumption (all confirmed by direct read this drafting session, see Dev Notes): format/minify with 3 indent modes; syntax validation surfacing `ToolError`'s `LineCol` position; a collapsible, keyboard-navigable, virtualized tree view (`@tanstack/vue-virtual`); a 100 MB input cap plus reliance on `serde_json`'s 128-level recursion limit as CWE-400 guards; paste/copy via the shared clipboard service; zero token-system styling yet (hardcoded hex colors, untouched by any Epic 7 story).
+  - [x] Ground the session in what Epic 7 already locked — `DESIGN.md`/`EXPERIENCE.md`'s precision-instrument register, the `{typography.code}` (Geist Mono) role named by `DESIGN.md` as serving exactly this tool's output, and the Card/token system — so the redesign direction composes with what's already committed, not invented independently of it.
+  - [x] Produce the written decision record satisfying AC1–3: what's kept/cut/added and why, the FR6–FR9 revision, and a public-backlog entry for anything cut. Saved to `_bmad-output/implementation-artifacts/8-1-json-decision-record.md`.
+  - [x] Record the AD-1 functional-core split satisfying AC4: which of `format`/`minify`/`parse`/`JsonTreeValue` survive unchanged versus what new pure functions `crates/umbra-core/src/json.rs` needs. See decision record's "AD-1 functional-core split" section.
+
+- [x] **Task 2a: Redesign ACs — write real Given/When/Then (AC6–14)** — complete 2026-08-24
+      via `bmad-party-mode`. Both items the decision record left open are resolved: Repair
+      is its own tab (cross-linked from Validate), Query speaks JSONPath (RFC 9535) via
+      `serde_json_path`. See "Acceptance Criteria — Task 2 (Redesign)" above.
+- [ ] **Task 2b: Redesign — implementation (AC6–14)**
+  - [ ] Add `serde_json_path` to `crates/umbra-core/Cargo.toml`; verify it against the
+        RFC 9535 conformance suite it tracks before wiring it into a new query function
+        (per this project's standing dependency-verification discipline — Task 2 owns this
+        live check, not assumed from Task 1's research).
+  - [ ] `crates/umbra-core/src/json.rs`: add `repair`, `query` (JSONPath via
+        `serde_json_path`), `diff` (structural, over `JsonTreeValue`), and `to_typescript`
+        pure functions per the decision record's AD-1 split — each with its own regression
+        tests, sanity-checked against the 10 MB / Story 1.9 performance floor (AC14).
+  - [ ] Build the six-tab shell (Explorer/Validate/Repair/Query/Diff/Transform) using
+        `DESIGN.md`'s Tab component, consuming Epic 7's token system (`src/styles/tokens.css`'s
+        `--color-*`, `--font-<role>-family|size|weight|line-height`, `--radius-*`,
+        `--spacing-*`, `--shadow-floating`) and established component patterns (Card) —
+        not the tool's remaining hardcoded hex values (`#d1d5db`, `#6b7280`, `#b00020`
+        across `JsonView.vue`/`JsonTree.vue`; `#2563eb` already tokenized by PR #104).
+  - [ ] Make Explorer's tree editable (inline add/remove/move/duplicate, search/filter,
+        click-to-copy value/JSONPath) — extends `JsonTree.vue`, keeps its existing
+        path-based focus tracking and ARIA tree roles.
+  - [ ] Rewrite Validate's error messages, register new `json-*` codes in
+        `TRANSLATABLE_CODES` (`src/shell/toolError.ts`), add the "Try Repair" cross-link.
+  - [ ] Build Repair's preview-then-confirm UI (per-change description, explicit apply step
+        — never silent auto-apply).
+  - [ ] Build Query's expression input + result view over the new `query` command.
+  - [ ] Build Diff's two-document input + tree-mode highlighted result over the new `diff`
+        command.
+  - [ ] Build Transform's TypeScript-interface output over the new `to_typescript` command.
+  - [ ] Give each new async command its own `createLatestWinsRunner()` scope (AD-16) and
+        `spawn_blocking` dispatch (AD-4) — do not share the existing Format/Minify/Paste or
+        live-tree-parse runners.
+  - [ ] Implement per AC6–14; run the standard verification pass (`pnpm lint`, `pnpm test`,
+        `vue-tsc --noEmit`, `pnpm build`, `cargo fmt --check`, `cargo test --workspace`).
+
+## Dev Notes
+
+- **This is the first story of Epic 8 — and there is no fully-executed precedent for its own shared pattern.** Epic 8's shared story shape explicitly cites "the same decision-story shape Story 6.3 already established for FR29" — but Story 6.3 (`6-3-choose-the-second-ai-feature`) is itself still `backlog`, never executed. This story is the first real attempt at "Task 1 decision record gates Task 2," not a follower of a proven example. Treat Story 6.3's *written* AC shape (epics.md lines 972–991) as the template, not an artifact to consult.
+- **Current implementation, read in full this drafting session** — treat as the discovery session's factual starting point, not as this story's own scope:
+  - `src/tools/json/JsonView.vue` (278 lines): input/output textareas, Format/Minify/Paste/Copy actions via `runLatestWins`, a 3-way indent radio group, inline `ToolError` display with `errorLocation` (line/col or byte-offset), a separate `runTreeParse` runner powering live debounced tree parsing.
+  - `src/tools/json/JsonTree.vue` (216 lines): `@tanstack/vue-virtual`-backed virtualized tree, full keyboard nav (Enter/Space toggle, arrows expand/collapse/move), `role="tree"`/`role="treeitem"` ARIA, path-based (not index-based) focus tracking so collapse/expand never desyncs focus.
+  - `jsonTreeValue.ts`, `flattenJsonTree.ts`, `jsonIndent.ts`: small supporting modules for the tree/indent types.
+  - `crates/umbra-core/src/json.rs` (397 lines): `format`/`minify`/`parse`, the `JsonTreeValue` wire type (order-preserving `Object(Vec<(String, JsonTreeValue)>)`, exact-text `Number(String)` to survive Tauri IPC without precision loss), a 100 MB `MAX_INPUT_BYTES` cap, and reliance on `serde_json`'s 128-level recursion limit — both CWE-400 guards with dedicated regression tests including a 10 MB fixture.
+- **Styling is mostly pre-Epic-7, with one recent exception — re-verify against the live tree before assuming staleness.** PR #104 (`fix(ui): apply design tokens and AppButton consistently across tool views`, merged after this story was drafted, `baseline_commit` bumped to include it) tokenized `JsonTree.vue`'s focus outline (`#2563eb` → `var(--color-accent-signature)`) and added `src/styles/base.css`, a new global base layer (loaded after `tokens.css`) that gives bare `textarea`/`select`/`input` elements a token-driven border and focus-visible ring by default. Neither `JsonView.vue` nor `crates/umbra-core/src/json.rs` was touched by that PR (confirmed via `git diff` against this story's original baseline). Practical effect for Task 2: `JsonView.vue`'s two `<textarea>`s already inherit a real border and focus ring from `base.css` for free — don't re-style what's already covered. What's still genuinely untokenized: `.tree-panel :deep(.json-tree-scroll)`'s `#d1d5db` border (a `div`, outside `base.css`'s element selectors), the tree's `#6b7280` key color, and `p[role="alert"]`'s `#b00020` error red — these three are Task 2's real remaining work, not the whole stylesheet.
+- **AD-1 boundary for Task 1 to scope against:** any newly-considered feature that is a pure transformation (e.g. schema inference, diff, query) belongs in `crates/umbra-core/src/json.rs`, not computed client-side in Vue — core returns machine values, the view renders them.
+- **AD-4/AD-16 boundary for Task 2:** any new feature with non-trivial CPU cost must dispatch async via `spawn_blocking` (AD-4), and any new slow command must go through `createLatestWinsRunner()`/`runLatestWins` (AD-16) — `JsonView.vue` already uses two separate runner instances (Format/Minify/Paste vs. live tree-parsing) per AD-16's 2026-08-04 amendment on per-independent-state-group scoping. Don't collapse them, and don't add a third runner without first checking whether it's a genuinely independent state group.
+- **Performance ceiling already proven — sanity-check against it, don't re-litigate it.** Story 1.9 profiled `json_format`/`json_minify`/`json_parse` against a 10 MB fixture at ~440–540 ms Rust-side (release build), UI staying responsive throughout. Any Task 1 addition that touches this hot path should be checked against this baseline.
+- `DESIGN.md`'s `{typography.code}` role (Geist Mono) is named directly against this tool's structured text output — Task 2 should use `--font-code-*` tokens for the input/output/tree panels, not `--font-body-*`.
+- Epic 8's preamble states no ordering dependency exists between 8.1–8.9 — this story runs first because the developer chose to, not because the epic requires it.
+
+### Project Structure Notes
+
+- **Likely touched, contingent on Task 1's decision — confirm during Task 2:** `src/tools/json/JsonView.vue`, `JsonTree.vue`, `jsonTreeValue.ts`, `flattenJsonTree.ts`, `jsonIndent.ts`, and their `.spec.ts` files; `crates/umbra-core/src/json.rs` only if Task 1 decides new core transformations are needed.
+- **New:** Task 1's decision-record artifact (suggested `_bmad-output/implementation-artifacts/8-1-json-decision-record.md`; exact path is the implementing session's call).
+- **Out of scope regardless of Task 1's outcome:** any other tool's files (AD-6, tools are islands) and any shared `src/shell/`/`src/stores/` file beyond what Epic 7 already generalized (`tokens.css`, `icons.ts`) — unless the decision record explicitly justifies a shared-infrastructure change, in which case this project's CLAUDE.md governance-check discipline applies: present it as options with trade-offs to the developer, don't decide it silently.
+
+### References
+
+- [Source: `_bmad-output/implementation-artifacts/8-1-json-decision-record.md` — Task 1's completed deliverable: kept/cut/added scope, the FR6–FR9 revision, the AD-1 core/UI split, and the i18n/AD-13 finding. Task 2 works from this directly.]
+- [Source: `_bmad-output/planning-artifacts/epics.md` — Epic 8 preamble and shared story shape (lines 231–243, 1318–1337); Story 8.1 (1338–1340); Story 6.3, the cited (unexecuted) pattern precedent (972–991); FR6–FR9 (40–45); Epic 1's original JSON stories 1.7–1.9 (402–473)]
+- [Source: `_bmad-output/planning-artifacts/architecture/architecture-Umbra-2026-07-20/ARCHITECTURE-SPINE.md` — AD-1 (45–49), AD-3 (57–61), AD-4 (63–67), AD-5 (69–73), AD-6 (75–79), AD-16 + its 2026-08-04 runner-scoping amendment (164–175); Stack table's `@tanstack/vue-virtual` row (211); Structural Seed (218–253); Deferred's "JSON tree IPC transfer strategy" and "JSON single-payload strategy profiled" entries (288–289)]
+- [Source: `_bmad-output/planning-artifacts/ux-designs/ux-umbra-2026-08-15/DESIGN.md` — full token frontmatter (6–113); Typography's `{typography.code}` rationale (154); Do's-and-Don'ts (187–196)]
+- [Source: `_bmad-output/planning-artifacts/ux-designs/ux-umbra-2026-08-15/EXPERIENCE.md` — Information Architecture three-views table (16–29); Voice and Tone error-message bar (50); State Patterns Error row (71); Accessibility Floor (86–94)]
+- [Source: `_bmad-output/implementation-artifacts/7-1-design-tokens-and-icon-system-land-in-the-shell.md` — the token naming convention (`--color-*`, `--font-<role>-family|size|weight|line-height`, `--radius-*`, `--shadow-floating`) Task 2 must consume, not reinvent]
+- [Source: `_bmad-output/implementation-artifacts/1-8-inspect-json-as-a-collapsible-tree.md`, `1-9-stay-responsive-on-10mb-documents.md` — original acceptance criteria and the 10 MB performance profile for the tree view Task 1 must treat as reference, not a decision to preserve]
+- Live-read this session: `src/tools/json/JsonView.vue`, `JsonTree.vue`, `jsonTreeValue.ts`, `flattenJsonTree.ts`, `jsonIndent.ts`, `crates/umbra-core/src/json.rs` (full contents — confirms current feature set and existing guards before discovery reconsiders them).
+
+## Dev Agent Record
+
+### Agent Model Used
+
+### Debug Log References
+
+### Completion Notes List
+
+### File List
