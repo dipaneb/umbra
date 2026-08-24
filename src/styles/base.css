@@ -1,0 +1,39 @@
+/* Base layer — default styling for native elements that don't have a
+   dedicated component yet (textarea, select, checkbox, radio, number/text
+   input). Loaded after tokens.css so it can consume design tokens; kept
+   deliberately small — element defaults only, no component-specific rules.
+   Elements that grow real variant/behavior logic (see AppButton.vue) belong
+   in their own component instead of growing more selectors here. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  /* Recolors native checkbox/radio/range/progress controls to the app's
+     accent without needing a custom component for each — the browser still
+     owns their behavior and accessibility. */
+  accent-color: var(--color-accent-signature);
+}
+
+textarea,
+select,
+input[type="text"],
+input[type="number"] {
+  font-family: inherit;
+  font-size: var(--font-body-size);
+  color: var(--color-text-primary);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-default);
+  padding: 0.5em 0.7em;
+}
+
+textarea:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-accent-signature);
+  outline-offset: 2px;
+}

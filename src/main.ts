@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import "./styles/tokens.css";
+import "./styles/base.css";
 import App from "./App.vue";
 import { i18n } from "./i18n";
 import { createAppRouter } from "./router";
