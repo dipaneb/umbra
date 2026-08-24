@@ -437,6 +437,74 @@ describe("JsonTree", () => {
     expect(marks()[2]?.classes()).toContain("json-tree-highlight-current");
   });
 
+  it("pulses only the chevron for the direction navigated, on click", async () => {
+    wrapper = await mountTree(twoMatchFixture());
+    await searchInput(wrapper).setValue("apple");
+    await waitForSearchDebounce();
+
+    const nextIcon = () => wrapper?.find('button[aria-label="Next match"] svg');
+    const prevIcon = () => wrapper?.find('button[aria-label="Previous match"] svg');
+    expect(nextIcon()?.classes()).not.toContain("json-tree-nav-pulse");
+    expect(prevIcon()?.classes()).not.toContain("json-tree-nav-pulse");
+
+    await wrapper.find('button[aria-label="Next match"]').trigger("click");
+    await nextTick();
+    expect(nextIcon()?.classes()).toContain("json-tree-nav-pulse");
+    expect(prevIcon()?.classes()).not.toContain("json-tree-nav-pulse");
+
+    await wrapper.find('button[aria-label="Previous match"]').trigger("click");
+    await nextTick();
+    expect(prevIcon()?.classes()).toContain("json-tree-nav-pulse");
+  });
+
+  it("pulses the matching chevron on ArrowDown/ArrowUp from the search input too", async () => {
+    wrapper = await mountTree(twoMatchFixture());
+    await searchInput(wrapper).setValue("apple");
+    await waitForSearchDebounce();
+
+    await searchInput(wrapper).trigger("keydown", { key: "ArrowDown" });
+    await nextTick();
+    expect(wrapper.find('button[aria-label="Next match"] svg').classes()).toContain("json-tree-nav-pulse");
+
+    await searchInput(wrapper).trigger("keydown", { key: "ArrowUp" });
+    await nextTick();
+    expect(wrapper.find('button[aria-label="Previous match"] svg').classes()).toContain("json-tree-nav-pulse");
+  });
+
+  it("does not pulse either chevron on Enter — only ArrowUp/ArrowDown and the buttons do", async () => {
+    wrapper = await mountTree(twoMatchFixture());
+    await searchInput(wrapper).setValue("apple");
+    await waitForSearchDebounce();
+
+    await searchInput(wrapper).trigger("keydown", { key: "Enter" });
+    await nextTick();
+
+    expect(wrapper.find('button[aria-label="Next match"] svg').classes()).not.toContain("json-tree-nav-pulse");
+    expect(wrapper.find('button[aria-label="Previous match"] svg').classes()).not.toContain(
+      "json-tree-nav-pulse",
+    );
+  });
+
+  it("re-triggers the pulse on repeated same-direction presses, not just the first", async () => {
+    wrapper = await mountTree(multiOccurrenceFixture());
+    await searchInput(wrapper).setValue("banana");
+    await waitForSearchDebounce();
+
+    await wrapper.find('button[aria-label="Next match"]').trigger("click");
+    await nextTick();
+    const firstIconElement = wrapper.find('button[aria-label="Next match"] svg').element;
+
+    await wrapper.find('button[aria-label="Next match"]').trigger("click");
+    await nextTick();
+    const secondIconElement = wrapper.find('button[aria-label="Next match"] svg').element;
+
+    // The `:key`-driven remount is what guarantees the CSS animation
+    // actually replays on a second press — if this were the same DOM node,
+    // a browser would not restart an already-finished animation just
+    // because a class stayed applied.
+    expect(secondIconElement).not.toBe(firstIconElement);
+  });
+
   it("shows 'No matches' without hiding the tree when nothing matches", async () => {
     wrapper = await mountTree(nestedFixture());
 

@@ -370,6 +370,27 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   Re-verified: `pnpm lint`, `pnpm test` (521/521 — 7 new tests across both files covering
   multi-occurrence counting in keys, values, and both on one row, plus the
   truncated-match fallback), `vue-tsc --noEmit`, `pnpm build`.
+- 2026-08-24: Polish — a brief scale-pulse animation on whichever nav chevron fired
+  (Previous/Next click or the matching ArrowUp/ArrowDown key), so navigating a match
+  feels like it *did* something beyond the count text updating. One shared keyframe
+  (`json-tree-nav-pulse`, scale 1 → 1.35 → 1) serves both chevrons rather than mirrored
+  up/down variants, since a scale pulse reads as "this fired" regardless of which icon
+  it's on. Gated behind `@media (prefers-reduced-motion: no-preference)`.
+  Reliably re-triggering a CSS animation on a repeated same-direction press needed real
+  care: toggling a class via a plain ref (null → value) doesn't guarantee a restart,
+  since Vue's render flush and the browser's paint aren't synchronized with that toggle
+  and a fast repeat can coalesce both mutations into one frame. Used `:key` on each
+  chevron instead, bumped on every press — Vue destroys and recreates the icon's DOM
+  node each time, and a freshly-mounted element always plays its animation from the
+  start, with no reflow-forcing or `animationend` bookkeeping needed. Enter/Shift+Enter
+  deliberately don't pulse (scoped to "arrow pressed," matching the actual ask), nor
+  does the auto-navigate-to-first-match that fires on a fresh query (not a user-pressed
+  action). Verified live in a real browser (not just jsdom): the correct single chevron
+  gets the class per direction, and a second same-direction press produces a genuinely
+  new DOM node (`sameNode: false`), confirming the animation actually replays rather
+  than silently no-op'ing on repeat. Re-verified: `pnpm lint`, `pnpm test` (525/525 — 4
+  new tests: correct-chevron-only pulsing, keyboard parity, Enter exclusion, and the
+  remount-on-repeat guarantee), `vue-tsc --noEmit`, `pnpm build`.
 
 ### File List
 

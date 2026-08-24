@@ -244,16 +244,42 @@ function withOccurrenceIndex(segments: HighlightSegment[]): Array<HighlightSegme
   return segments.map((seg) => ({ ...seg, occurrenceIndex: seg.matched ? next++ : -1 }));
 }
 
+// Feedback for a Next/Previous navigation — a brief pulse on whichever
+// chevron fired, so ArrowUp/Down and the buttons feel like they *did*
+// something instead of only the count text changing. Each direction keys
+// its own icon off an incrementing counter rather than toggling a CSS class
+// on/off: reliably restarting a CSS animation on a repeated trigger needs
+// the DOM to actually drop the class, flush, then re-add it, which a plain
+// `ref = null` then `ref = value` doesn't guarantee (Vue's own render flush
+// and the browser's paint aren't synchronized with that toggle, so a fast
+// repeat can coalesce both mutations into one frame and the animation never
+// replays). Bumping the `:key` instead makes Vue destroy and recreate the
+// icon's DOM node every press — a freshly-mounted element always plays its
+// animation from the start, with no reflow-forcing or `animationend`
+// bookkeeping needed. `Up`/`down` get independent counters so pressing one
+// never disturbs the other icon's own state.
+const upPulseKey = ref(0);
+const downPulseKey = ref(0);
+
+function pulseNav(direction: "up" | "down") {
+  if (direction === "up") upPulseKey.value += 1;
+  else downPulseKey.value += 1;
+}
+
 // Jumps to match `index` (wrapping around at either end, matching standard
 // find-bar Next/Previous behavior), expanding whichever of its ancestors
 // aren't already open and scrolling it into view. Deliberately does *not*
 // move keyboard focus into the tree — focus stays in the search input the
 // same way a browser's own Ctrl+F bar keeps focus put, so repeated
 // Enter/Shift+Enter keeps cycling matches without the user needing to click
-// back into the search box each time.
-async function goToMatch(index: number) {
+// back into the search box each time. `direction`, when given, pulses the
+// matching chevron — omitted for the auto-navigate-to-first-match on a
+// fresh query (below), which isn't a user-initiated press and shouldn't
+// animate as if it were one.
+async function goToMatch(index: number, direction?: "up" | "down") {
   const total = matches.value.length;
   if (total === 0) return;
+  if (direction) pulseNav(direction);
   const wrapped = ((index % total) + total) % total;
   currentMatchIndex.value = wrapped;
 
@@ -309,11 +335,11 @@ function onSearchKeydown(event: KeyboardEvent) {
       break;
     case "ArrowDown":
       event.preventDefault();
-      void goToMatch(currentMatchIndex.value + 1);
+      void goToMatch(currentMatchIndex.value + 1, "down");
       break;
     case "ArrowUp":
       event.preventDefault();
-      void goToMatch(currentMatchIndex.value - 1);
+      void goToMatch(currentMatchIndex.value - 1, "up");
       break;
   }
 }
@@ -356,9 +382,13 @@ function onSearchKeydown(event: KeyboardEvent) {
           :disabled="matches.length === 0"
           :aria-label="t('tools.json.explorerPreviousMatch')"
           :title="t('tools.json.explorerPreviousMatchTitle')"
-          @click="goToMatch(currentMatchIndex - 1)"
+          @click="goToMatch(currentMatchIndex - 1, 'up')"
         >
-          <PhCaretUp aria-hidden="true" />
+          <PhCaretUp
+            :key="upPulseKey"
+            aria-hidden="true"
+            :class="{ 'json-tree-nav-pulse': upPulseKey > 0 }"
+          />
         </button>
         <button
           type="button"
@@ -366,9 +396,13 @@ function onSearchKeydown(event: KeyboardEvent) {
           :disabled="matches.length === 0"
           :aria-label="t('tools.json.explorerNextMatch')"
           :title="t('tools.json.explorerNextMatchTitle')"
-          @click="goToMatch(currentMatchIndex + 1)"
+          @click="goToMatch(currentMatchIndex + 1, 'down')"
         >
-          <PhCaretDown aria-hidden="true" />
+          <PhCaretDown
+            :key="downPulseKey"
+            aria-hidden="true"
+            :class="{ 'json-tree-nav-pulse': downPulseKey > 0 }"
+          />
         </button>
       </span>
     </div>
@@ -524,6 +558,30 @@ function onSearchKeydown(event: KeyboardEvent) {
 .json-tree-nav-button:focus-visible {
   outline: 2px solid var(--color-accent-signature);
   outline-offset: 1px;
+}
+
+@keyframes json-tree-nav-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* A scale pulse rather than a directional nudge: it reads as "this fired"
+   regardless of which chevron it's on, so one keyframe set serves both
+   Previous and Next instead of needing a mirrored up/down variant. Gated
+   behind `prefers-reduced-motion` — the class still applies with no visible
+   effect for a viewer who's asked for reduced motion, since the animation
+   itself is what's suppressed, not the (harmless) class. */
+@media (prefers-reduced-motion: no-preference) {
+  .json-tree-nav-pulse {
+    animation: json-tree-nav-pulse 220ms ease-out;
+  }
 }
 
 .json-tree-scroll {
