@@ -131,6 +131,8 @@ async function onCopySchedule() {
           id="cron-expression-input"
           v-model="expression"
           rows="2"
+          spellcheck="false"
+          autocorrect="off"
         />
       </div>
 
@@ -204,6 +206,8 @@ async function onCopySchedule() {
           v-model="phrase"
           rows="2"
           :placeholder="t('tools.cron.schedulePlaceholder')"
+          spellcheck="false"
+          autocorrect="off"
         />
       </div>
 

@@ -111,6 +111,8 @@ async function onCopyOne(value: string) {
         id="hash-input"
         v-model="input"
         rows="10"
+        spellcheck="false"
+        autocorrect="off"
       />
     </div>
 

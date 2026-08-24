@@ -129,6 +129,8 @@ async function onCopy() {
           id="json-input"
           v-model="input"
           rows="10"
+          spellcheck="false"
+          autocorrect="off"
         />
       </div>
 
