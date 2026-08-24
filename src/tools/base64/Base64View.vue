@@ -139,6 +139,8 @@ async function onCopy() {
         id="base64-input"
         v-model="input"
         rows="10"
+        spellcheck="false"
+        autocorrect="off"
       />
     </div>
 

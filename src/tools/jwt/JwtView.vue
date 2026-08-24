@@ -76,6 +76,8 @@ async function onPaste() {
         id="jwt-token-input"
         v-model="token"
         rows="6"
+        spellcheck="false"
+        autocorrect="off"
       />
     </div>
 

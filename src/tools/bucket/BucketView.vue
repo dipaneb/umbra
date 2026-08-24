@@ -410,6 +410,8 @@ function formatEstimatedSize(bytes: number): string {
         v-model="editedText"
         class="result"
         rows="10"
+        spellcheck="false"
+        autocorrect="off"
       />
       <button
         type="button"
@@ -556,6 +558,8 @@ function formatEstimatedSize(bytes: number): string {
             v-model="pdfExtractedText"
             class="result"
             rows="10"
+            spellcheck="false"
+            autocorrect="off"
           />
           <button
             type="button"
