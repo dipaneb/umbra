@@ -316,18 +316,26 @@ describe("JsonTree", () => {
     expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 2");
   });
 
-  it("marks the current match row distinctly from other matches", async () => {
+  it("marks the current match's highlighted text distinctly from other matches", async () => {
     wrapper = await mountTree(twoMatchFixture());
 
     await searchInput(wrapper).setValue("apple");
     await waitForSearchDebounce();
-    expect(rowByKey(wrapper, "first")?.classes()).toContain("json-tree-row-current-match");
-    expect(rowByKey(wrapper, "second")?.classes()).not.toContain("json-tree-row-current-match");
+    expect(
+      rowByKey(wrapper, "first")?.find(".json-tree-highlight").classes(),
+    ).toContain("json-tree-highlight-current");
+    expect(
+      rowByKey(wrapper, "second")?.find(".json-tree-highlight").classes(),
+    ).not.toContain("json-tree-highlight-current");
 
     await wrapper.find('button[aria-label="Next match"]').trigger("click");
     await nextTick();
-    expect(rowByKey(wrapper, "first")?.classes()).not.toContain("json-tree-row-current-match");
-    expect(rowByKey(wrapper, "second")?.classes()).toContain("json-tree-row-current-match");
+    expect(
+      rowByKey(wrapper, "first")?.find(".json-tree-highlight").classes(),
+    ).not.toContain("json-tree-highlight-current");
+    expect(
+      rowByKey(wrapper, "second")?.find(".json-tree-highlight").classes(),
+    ).toContain("json-tree-highlight-current");
   });
 
   it("shows 'No matches' without hiding the tree when nothing matches", async () => {

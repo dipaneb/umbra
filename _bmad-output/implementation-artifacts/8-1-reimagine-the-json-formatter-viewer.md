@@ -191,9 +191,11 @@ would produce a query syntax Explorer's copied paths can't paste into).
         `<mark>` within each row's key/preview text (a display-layer concern, deliberately
         decoupled from `findMatches`'s raw-value matching — a row's preview can be truncated
         or JSON-escaped, so highlighting re-scans whatever text is actually on screen rather
-        than mapping raw-value offsets onto it). The current match's row gets the same
-        outline treatment `:focus` already uses; the visible label above the input was
-        dropped too (developer feedback: redundant next to a self-explanatory placeholder) —
+        than mapping raw-value offsets onto it). The current match's own highlighted text
+        (not the whole row — reworked after developer feedback) gets a stronger, filled
+        treatment distinct from every other match's lighter tint. The visible label above
+        the input was dropped too (developer feedback: redundant next to a self-explanatory
+        placeholder) —
         the input keeps an `aria-label` for a11y. Query input stays debounced (150ms),
         same class of debounce `JsonView.vue` already uses for live re-parsing. **Still
         open, next Explorer slice:** inline editing (add/remove/move/duplicate fields).
@@ -315,6 +317,19 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   highlighting, current-match outline moving on Next, unrelated siblings staying visible
   throughout. Re-verified: `pnpm lint`, `pnpm test` (512/512), `vue-tsc --noEmit`, `pnpm
   build`.
+- 2026-08-24: Two developer-reported issues on the same find bar. (1) The match-count
+  text sat too close to the search input — the input's own focus ring (base.css: 2px
+  outline + 2px offset, 4px total) visually overlapped it the moment the input was
+  focused. Fixed with real clearance (`margin-left: 0.75em` on a wrapping status group),
+  not just a larger token-sized gap. (2) The whole-row outline marking the current match
+  read as too heavy-handed; replaced with a two-tier highlight on the matched text itself
+  — `.json-tree-highlight` (any match, `color-mix()`-derived low-opacity signature tint)
+  vs. `.json-tree-highlight-current` (the current one, solid signature fill + white text,
+  reusing `AppButton`'s own already-documented primary-variant treatment rather than
+  inventing new contrast). The row-level outline is gone. Re-verified: `pnpm lint`, `pnpm
+  test` (512/512), `vue-tsc --noEmit`, `pnpm build`, visual confirmation (ring clearance
+  while focused; current vs. other match colors side by side) against the mocked-IPC dev
+  server tab.
 
 ### File List
 

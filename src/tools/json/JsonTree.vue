@@ -290,7 +290,10 @@ function onSearchKeydown(event: KeyboardEvent) {
         @keydown.escape="clearSearch"
         @keydown="onSearchKeydown"
       >
-      <template v-if="isSearching">
+      <span
+        v-if="isSearching"
+        class="json-tree-search-status"
+      >
         <span
           role="status"
           class="json-tree-match-count"
@@ -319,7 +322,7 @@ function onSearchKeydown(event: KeyboardEvent) {
         >
           <PhCaretDown aria-hidden="true" />
         </button>
-      </template>
+      </span>
     </div>
     <div
       ref="scrollParentRef"
@@ -335,7 +338,6 @@ function onSearchKeydown(event: KeyboardEvent) {
           :key="String(virtualRow.key)"
           role="treeitem"
           class="json-tree-row"
-          :class="{ 'json-tree-row-current-match': row.path === currentMatchPath }"
           :data-index="virtualRow.index"
           :tabindex="virtualRow.index === focusedIndex ? 0 : -1"
           :aria-level="row.depth + 1"
@@ -370,6 +372,7 @@ function onSearchKeydown(event: KeyboardEvent) {
           ><mark
             v-if="seg.matched"
             class="json-tree-highlight"
+            :class="{ 'json-tree-highlight-current': row.path === currentMatchPath }"
           >{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template>:</span>
           <span
             class="json-tree-preview"
@@ -380,6 +383,7 @@ function onSearchKeydown(event: KeyboardEvent) {
           ><mark
             v-if="seg.matched"
             class="json-tree-highlight"
+            :class="{ 'json-tree-highlight-current': row.path === currentMatchPath }"
           >{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template></span>
           <span class="json-tree-row-actions">
             <button
@@ -411,7 +415,6 @@ function onSearchKeydown(event: KeyboardEvent) {
 .json-tree-search {
   display: flex;
   align-items: center;
-  gap: 0.3em;
   margin-bottom: var(--spacing-2);
 }
 
@@ -422,11 +425,24 @@ function onSearchKeydown(event: KeyboardEvent) {
   font-size: var(--font-code-size);
 }
 
+/* The input's own focus ring protrudes 4px beyond its border (base.css:
+   2px outline + 2px offset) — this needs real clearance from it, not just
+   a token-sized gap, or the ring visually overlaps the count/nav buttons
+   the moment the input is focused (the actual bug report). */
+.json-tree-search-status {
+  display: flex;
+  align-items: center;
+  gap: 0.2em;
+  margin-left: 0.75em;
+  flex-shrink: 0;
+}
+
 .json-tree-match-count {
   font-family: var(--font-caption-family);
   font-size: var(--font-caption-size);
   color: var(--color-text-secondary);
   white-space: nowrap;
+  margin-right: 0.2em;
 }
 
 .json-tree-nav-button {
@@ -485,21 +501,23 @@ function onSearchKeydown(event: KeyboardEvent) {
   outline-offset: -2px;
 }
 
-/* The row currently targeted by search navigation — same outline language
-   `:focus` above already uses ("this is where your attention is"), so the
-   two states read as one consistent visual system instead of two competing
-   ones. Matched *substrings* get their own, separate treatment below
-   (`.json-tree-highlight`) since a row can hold a match without being the
-   current one. */
-.json-tree-row-current-match {
-  outline: 2px solid var(--color-accent-signature);
-  outline-offset: -2px;
-}
-
+/* Two-tier highlight, not a whole-row outline (an earlier pass tried
+   outlining the current-match row — developer feedback: the signal should
+   live on the matched text itself, distinguishing "one of the matches"
+   from "the one you're on", the way a real find bar does). Both tiers stay
+   in the same signature hue for restraint (DESIGN.md reserves orange as a
+   single accent, not a rainbow) — `-current` is just the fuller-strength
+   version of the same tint. */
 .json-tree-highlight {
-  background: var(--color-accent-signature-tint);
+  background: color-mix(in srgb, var(--color-accent-signature) 18%, transparent);
   color: inherit;
   border-radius: 2px;
+}
+
+.json-tree-highlight-current {
+  background: var(--color-accent-signature);
+  color: #ffffff;
+  font-weight: 600;
 }
 
 /* Fixed-width regardless of expandability, so every row's key/value starts
