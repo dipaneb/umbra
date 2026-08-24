@@ -73,6 +73,13 @@ function twoMatchFixture(): JsonTreeValue {
   };
 }
 
+function multiOccurrenceFixture(): JsonTreeValue {
+  return {
+    kind: "Object",
+    data: [["phrase", str("banana banana banana")]],
+  };
+}
+
 function treeItems(w: VueWrapper) {
   return w.findAll('[role="treeitem"]');
 }
@@ -390,6 +397,44 @@ describe("JsonTree", () => {
     expect(
       rowByKey(wrapper, "second")?.find(".json-tree-highlight").classes(),
     ).toContain("json-tree-highlight-current");
+  });
+
+  it("counts multiple occurrences on a single row as separate matches, not one", async () => {
+    wrapper = await mountTree(multiOccurrenceFixture());
+
+    await searchInput(wrapper).setValue("banana");
+    await waitForSearchDebounce();
+
+    // Three "banana"s on one row must be three navigable matches, not one —
+    // this is the exact bug report: multiple hits on one line collapsing
+    // into a single step.
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 3");
+    expect(rowByKey(wrapper, "phrase")?.findAll(".json-tree-highlight")).toHaveLength(3);
+  });
+
+  it("marks only the current occurrence within a multi-occurrence row, never all of them at once", async () => {
+    const w = await mountTree(multiOccurrenceFixture());
+    wrapper = w;
+
+    await searchInput(w).setValue("banana");
+    await waitForSearchDebounce();
+
+    const currentCount = () => rowByKey(w, "phrase")?.findAll(".json-tree-highlight-current").length ?? 0;
+    const marks = () => rowByKey(w, "phrase")?.findAll(".json-tree-highlight") ?? [];
+
+    expect(currentCount()).toBe(1);
+    expect(marks()[0]?.classes()).toContain("json-tree-highlight-current");
+
+    await wrapper.find('button[aria-label="Next match"]').trigger("click");
+    await nextTick();
+    expect(currentCount()).toBe(1); // still exactly one, never more
+    expect(marks()[1]?.classes()).toContain("json-tree-highlight-current");
+    expect(marks()[0]?.classes()).not.toContain("json-tree-highlight-current");
+
+    await wrapper.find('button[aria-label="Next match"]').trigger("click");
+    await nextTick();
+    expect(currentCount()).toBe(1);
+    expect(marks()[2]?.classes()).toContain("json-tree-highlight-current");
   });
 
   it("shows 'No matches' without hiding the tree when nothing matches", async () => {

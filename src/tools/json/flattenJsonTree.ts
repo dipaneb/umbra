@@ -131,56 +131,16 @@ function leafTextMatches(value: JsonTreeValue, query: string): boolean {
   }
 }
 
-export interface JsonTreeMatch {
-  path: string;
-  // Root-to-parent order, one entry per ancestor — what the caller needs to
-  // expand for this match to actually become visible before scrolling to it.
-  ancestorPaths: string[];
-}
-
-// A standard "find" — not a filter (Story 8.1 Task 2, AC7, revised after the
-// first pass filtered the tree down to matches, which read as a DevTools
-// object-preview filter, not the find-in-page/find-in-explorer behavior a
-// search bar is expected to have). Walks the *entire* tree regardless of
-// current expand state, in document order, so `matches[i+1]` is always the
-// next hit top-to-bottom — the order Next/Previous navigation and Enter/
-// Shift+Enter cycle through. The tree's own visible shape (the caller's
-// `expanded` set) is untouched by this walk; navigating to a match is what
-// expands its ancestors, not searching for one.
-export function findMatches(root: JsonTreeValue, query: string): JsonTreeMatch[] {
-  const q = query.trim().toLowerCase();
-  const matches: JsonTreeMatch[] = [];
-
-  function visit(value: JsonTreeValue, segments: Array<string | number>, ancestorPaths: string[]) {
-    const path = JSON.stringify(segments);
-    const keyLabel = segments.length > 0 ? String(segments[segments.length - 1]) : null;
-    const selfMatches = (keyLabel !== null && keyLabel.toLowerCase().includes(q)) || leafTextMatches(value, q);
-    if (selfMatches) matches.push({ path, ancestorPaths });
-
-    const childAncestors = [...ancestorPaths, path];
-    for (const [childKey, childValue] of containerEntries(value)) {
-      visit(childValue, [...segments, childKey], childAncestors);
-    }
-  }
-
-  visit(root, [], []);
-  return matches;
-}
-
 export interface HighlightSegment {
   text: string;
   matched: boolean;
 }
 
 // Splits `text` into alternating matched/unmatched runs for rendering a
-// `<mark>` around each hit — a display-layer concern, deliberately decoupled
-// from `findMatches`'s own (raw-value) matching: a row's *preview* text can
-// be a truncated or `JSON.stringify`-escaped rendering of the real value
-// `findMatches` compared against, so highlighting re-scans whatever text is
-// actually on screen rather than trying to map raw-value offsets onto it.
-// The practical effect is that a match hiding entirely inside a truncated
-// tail simply shows no highlight span on that row — its row is still a real,
-// navigable match, there just isn't a visible substring left to mark.
+// `<mark>` around each hit. `findMatches` below reuses this same function to
+// *count* occurrences (not just render them) — one function, one splitting
+// rule, so the number of navigable occurrences a row reports can never drift
+// from the number of `<mark>`s it actually renders.
 export function highlightSegments(text: string, query: string): HighlightSegment[] {
   const q = query.trim();
   if (q === "") return [{ text, matched: false }];
@@ -200,4 +160,84 @@ export function highlightSegments(text: string, query: string): HighlightSegment
     i = idx + q.length;
   }
   return segments;
+}
+
+function countOccurrences(text: string, query: string): number {
+  return highlightSegments(text, query).filter((s) => s.matched).length;
+}
+
+export interface JsonTreeMatch {
+  path: string;
+  // Root-to-parent order, one entry per ancestor — what the caller needs to
+  // expand for this match to actually become visible before scrolling to it.
+  ancestorPaths: string[];
+  // Which part of the row this occurrence lives in, and its 0-based index
+  // among the occurrences within that part — together with `path`, this is
+  // what lets the view mark exactly *one* `<mark>` as "current" instead of
+  // every occurrence on a row that happens to hold more than one hit.
+  field: "key" | "value";
+  occurrenceIndex: number;
+}
+
+// A standard "find" — not a filter (Story 8.1 Task 2, AC7, revised after the
+// first pass filtered the tree down to matches, which read as a DevTools
+// object-preview filter, not the find-in-page/find-in-explorer behavior a
+// search bar is expected to have). Walks the *entire* tree regardless of
+// current expand state, in document order, so `matches[i+1]` is always the
+// next hit top-to-bottom — the order Next/Previous navigation and Enter/
+// Shift+Enter cycle through. The tree's own visible shape (the caller's
+// `expanded` set) is untouched by this walk; navigating to a match is what
+// expands its ancestors, not searching for one.
+//
+// One entry per *occurrence*, not per row — a row containing "apple apple"
+// contributes two matches, not one, matching the two `<mark>`s it actually
+// renders. Without this, Next/Previous and the "X of Y" count silently
+// collapsed every occurrence on a line into a single step, which is the
+// exact bug this was revised to fix.
+export function findMatches(root: JsonTreeValue, query: string): JsonTreeMatch[] {
+  const q = query.trim().toLowerCase();
+  if (q === "") return [];
+  const matches: JsonTreeMatch[] = [];
+
+  function visit(value: JsonTreeValue, segments: Array<string | number>, ancestorPaths: string[]) {
+    const path = JSON.stringify(segments);
+    const keyLabel = segments.length > 0 ? String(segments[segments.length - 1]) : null;
+
+    if (keyLabel !== null) {
+      const keyOccurrences = countOccurrences(keyLabel, query);
+      for (let i = 0; i < keyOccurrences; i++) {
+        matches.push({ path, ancestorPaths, field: "key", occurrenceIndex: i });
+      }
+    }
+
+    const entries = containerEntries(value);
+    // Only leaves get "value" matches (`leafTextMatches` already returns
+    // `false` for Object/Array) — a container's own preview text is
+    // metadata ("{2 keys}"), not real content, same rule `leafTextMatches`
+    // has always enforced.
+    if (entries.length === 0 && leafTextMatches(value, q)) {
+      // Counted against the *displayed* text (post-truncation), not the raw
+      // value: that's what `highlightSegments` will actually render, so
+      // counting against anything else could report more occurrences than
+      // there are visible marks to land on. The one exception is a match
+      // hiding entirely inside a truncated tail — `leafTextMatches` (raw
+      // text) still says yes, but the truncated preview shows zero; that
+      // case falls back to exactly one synthetic occurrence so the row
+      // stays a real, navigable match instead of silently vanishing.
+      const displayText = previewFor(value, 0);
+      const visibleOccurrences = countOccurrences(displayText, query);
+      const count = visibleOccurrences > 0 ? visibleOccurrences : 1;
+      for (let i = 0; i < count; i++) {
+        matches.push({ path, ancestorPaths, field: "value", occurrenceIndex: i });
+      }
+    }
+
+    const childAncestors = [...ancestorPaths, path];
+    for (const [childKey, childValue] of entries) {
+      visit(childValue, [...segments, childKey], childAncestors);
+    }
+  }
+
+  visit(root, [], []);
+  return matches;
 }

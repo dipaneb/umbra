@@ -5,7 +5,13 @@ import { useVirtualizer } from "@tanstack/vue-virtual";
 import { PhCaretDown, PhCaretRight, PhCaretUp, PhCopySimple, PhLink } from "@phosphor-icons/vue";
 import { writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
-import { findMatches, flattenJsonTree, highlightSegments, type JsonTreeRow } from "./flattenJsonTree";
+import {
+  findMatches,
+  flattenJsonTree,
+  highlightSegments,
+  type HighlightSegment,
+  type JsonTreeRow,
+} from "./flattenJsonTree";
 import { jsonTreeValueToText } from "./jsonTreeValue";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
@@ -219,7 +225,24 @@ const matches = computed(() => {
 });
 
 const currentMatchIndex = ref(0);
-const currentMatchPath = computed(() => matches.value[currentMatchIndex.value]?.path ?? null);
+const currentMatch = computed(() => matches.value[currentMatchIndex.value] ?? null);
+
+// A row can hold more than one occurrence (in its key, its value, or both)
+// — this must identify exactly *one* highlighted span as "current", not
+// every occurrence on the row, or navigating stops being distinguishable
+// from just "this row has a match" (the bug this was revised to fix).
+function isCurrentOccurrence(path: string, field: "key" | "value", occurrenceIndex: number): boolean {
+  const cm = currentMatch.value;
+  return cm !== null && cm.path === path && cm.field === field && cm.occurrenceIndex === occurrenceIndex;
+}
+
+// Pairs each highlighted segment with its 0-based index among *matched*
+// segments only — unmatched segments get -1 (unused, but keeps the array
+// shape uniform for the template's v-for).
+function withOccurrenceIndex(segments: HighlightSegment[]): Array<HighlightSegment & { occurrenceIndex: number }> {
+  let next = 0;
+  return segments.map((seg) => ({ ...seg, occurrenceIndex: seg.matched ? next++ : -1 }));
+}
 
 // Jumps to match `index` (wrapping around at either end, matching standard
 // find-bar Next/Previous behavior), expanding whichever of its ancestors
@@ -392,23 +415,23 @@ function onSearchKeydown(event: KeyboardEvent) {
             v-if="row.keyLabel !== null"
             class="json-tree-key"
           ><template
-            v-for="(seg, i) in highlightSegments(row.keyLabel, debouncedQuery)"
+            v-for="(seg, i) in withOccurrenceIndex(highlightSegments(row.keyLabel, debouncedQuery))"
             :key="i"
           ><mark
             v-if="seg.matched"
             class="json-tree-highlight"
-            :class="{ 'json-tree-highlight-current': row.path === currentMatchPath }"
+            :class="{ 'json-tree-highlight-current': isCurrentOccurrence(row.path, 'key', seg.occurrenceIndex) }"
           >{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template>:</span>
           <span
             class="json-tree-preview"
             :class="{ 'json-tree-summary': row.expandable }"
           ><template
-            v-for="(seg, i) in highlightSegments(row.preview, debouncedQuery)"
+            v-for="(seg, i) in withOccurrenceIndex(highlightSegments(row.preview, debouncedQuery))"
             :key="i"
           ><mark
             v-if="seg.matched"
             class="json-tree-highlight"
-            :class="{ 'json-tree-highlight-current': row.path === currentMatchPath }"
+            :class="{ 'json-tree-highlight-current': isCurrentOccurrence(row.path, 'value', seg.occurrenceIndex) }"
           >{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template></span>
           <span class="json-tree-row-actions">
             <button

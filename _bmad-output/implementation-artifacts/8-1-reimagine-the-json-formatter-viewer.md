@@ -350,6 +350,26 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   each move the match count and current-match highlight exactly like the buttons do.
   Re-verified: `pnpm lint`, `pnpm test` (515/515 — 3 new tests: cycling, no-op on zero
   matches, and non-interference with tree row focus), `vue-tsc --noEmit`, `pnpm build`.
+- 2026-08-24: Real bug, developer-found: multiple occurrences of the query on a single
+  row (e.g. a value like `"banana banana banana"`) were treated as *one* match — the
+  count never advanced past it, and the whole-row "current" highlight lit up every
+  occurrence on the row at once, not just the one being navigated to. Root cause:
+  `findMatches` recorded one `JsonTreeMatch` per matching *row*, while `highlightSegments`
+  rendered one `<mark>` per *occurrence* — two different granularities that were never
+  reconciled. `JsonTreeMatch` gained `field: "key" | "value"` and a 0-based
+  `occurrenceIndex`; `findMatches` now pushes one entry per real occurrence, counted via
+  the exact same `highlightSegments` call that renders the marks (so the count reported
+  and the marks rendered can never drift apart again). Value occurrences are counted
+  against the *displayed* (possibly truncated) text, with a one-occurrence fallback
+  preserved for a match hiding entirely inside a truncated tail — the same edge case the
+  original highlighting design already accounted for. The view now tracks the current
+  match's exact `field`+`occurrenceIndex`, not just its row `path`, so only the one
+  targeted `<mark>` gets the "current" treatment even when several sit on the same line.
+  Verified live: three `"banana"`s on one row now read "1 of 3", and Next moves the solid
+  highlight from the first occurrence to the second without affecting the third.
+  Re-verified: `pnpm lint`, `pnpm test` (521/521 — 7 new tests across both files covering
+  multi-occurrence counting in keys, values, and both on one row, plus the
+  truncated-match fallback), `vue-tsc --noEmit`, `pnpm build`.
 
 ### File List
 

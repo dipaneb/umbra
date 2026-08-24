@@ -135,7 +135,9 @@ describe("findMatches", () => {
 
     const matches = findMatches(root, "hidden");
 
-    expect(matches).toEqual([{ path: '["a","deep"]', ancestorPaths: ["[]", '["a"]'] }]);
+    expect(matches).toEqual([
+      { path: '["a","deep"]', ancestorPaths: ["[]", '["a"]'], field: "value", occurrenceIndex: 0 },
+    ]);
   });
 
   it("matches a key even when its value doesn't match", () => {
@@ -165,6 +167,51 @@ describe("findMatches", () => {
     const root = obj([["a", str("x")]]);
 
     expect(findMatches(root, "nonexistent-zzz")).toEqual([]);
+  });
+
+  it("counts multiple occurrences within a single value as separate matches, not one", () => {
+    const root = obj([["phrase", str("banana banana banana")]]);
+
+    const matches = findMatches(root, "banana");
+
+    expect(matches).toEqual([
+      { path: '["phrase"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 0 },
+      { path: '["phrase"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 1 },
+      { path: '["phrase"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 2 },
+    ]);
+  });
+
+  it("counts multiple occurrences within a single key as separate matches", () => {
+    const root = obj([["aa", str("x")]]);
+
+    const matches = findMatches(root, "a");
+
+    expect(matches.filter((m) => m.field === "key")).toEqual([
+      { path: '["aa"]', ancestorPaths: ["[]"], field: "key", occurrenceIndex: 0 },
+      { path: '["aa"]', ancestorPaths: ["[]"], field: "key", occurrenceIndex: 1 },
+    ]);
+  });
+
+  it("counts a key occurrence and a value occurrence on the same row as two separate matches", () => {
+    const root = obj([["apple", str("apple")]]);
+
+    const matches = findMatches(root, "apple");
+
+    expect(matches).toEqual([
+      { path: '["apple"]', ancestorPaths: ["[]"], field: "key", occurrenceIndex: 0 },
+      { path: '["apple"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 0 },
+    ]);
+  });
+
+  it("falls back to exactly one occurrence when a match is hidden entirely inside a truncated preview", () => {
+    // Preview truncates at 80 chars — put the only match well past that so
+    // the raw value matches but the rendered (truncated) preview does not.
+    const longValue = `${"x".repeat(90)}needle`;
+    const root = obj([["a", str(longValue)]]);
+
+    const matches = findMatches(root, "needle");
+
+    expect(matches).toEqual([{ path: '["a"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 0 }]);
   });
 });
 
