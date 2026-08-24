@@ -166,12 +166,32 @@ would produce a query syntax Explorer's copied paths can't paste into).
         also gained the same `max-width: 70em` as the input textarea, so its far-right
         actions don't drift away from the row's text on a wide screen.
   - [x] Explorer, first slice (AC7, partial) — click-a-node-to-copy: `JsonTree.vue` gained
-        per-row "Value"/"Path" actions (new `jsonPathFromSegments` in
+        per-row copy-value/copy-path icon buttons (new `jsonPathFromSegments` in
         `jsonPath.ts`, RFC 9535 dot/bracket notation matching the Query tab's own future
         expression language; new `jsonTreeValueToText` in `jsonTreeValue.ts` for
         compact-JSON value copy). `flattenJsonTree.ts`'s `JsonTreeRow` now carries `value`
-        and `jsonPath` per row. **Still open, next Explorer slice:** inline editing
-        (add/remove/move/duplicate) and tree search/filter by key or value.
+        and `jsonPath` per row. Icon size fixed at 24px button/16px icon (independent of
+        the tree's small 13px code font, which made the original em-relative sizing
+        illegible) and both buttons carry a native `title` tooltip alongside `aria-label`
+        — same pattern `AppSidebar.vue`'s nav items already use, no Tauri-specific API
+        needed for a hover tooltip, it's plain HTML.
+  - [x] Explorer, second slice (AC7) — search/filter by key or value. New
+        `findMatchingPaths` in `flattenJsonTree.ts` walks the full tree (not just
+        currently-flattened rows) and returns every path that's a direct match (key or
+        leaf value, case-insensitive substring) or an ancestor of one; `flattenJsonTree`
+        itself gained an optional `visiblePaths` restriction that both skips non-matching
+        subtrees entirely and force-expands every kept ancestor, so a real match is never
+        hidden behind a parent the user never happened to expand — the user's own manual
+        `expanded` set is untouched underneath, so clearing the search returns the tree to
+        however they'd left it. Query input is debounced (150ms) before it drives the
+        walk, same class of debounce `JsonView.vue` already uses for live re-parsing.
+        Escape clears the query; a "No matches" message replaces the tree when filtering
+        yields nothing. **Deliberately out of scope this slice:** highlighting the
+        matched substring within a row — the existing preview truncation means a match
+        can be truncated away before a highlight could even show it, and filtering alone
+        (fewer rows = the matches) already carries most of the practical value; flagged
+        here as a possible future polish, not forgotten. **Still open, next Explorer
+        slice:** inline editing (add/remove/move/duplicate fields).
   - [ ] Add `serde_json_path` to `crates/umbra-core/Cargo.toml`; verify it against the
         RFC 9535 conformance suite it tracks before wiring it into a new query function
         (per this project's standing dependency-verification discipline — Task 2 owns this
@@ -272,6 +292,12 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   Re-verified: `pnpm lint`, `pnpm test` (49/49 for the JSON tool suite), `vue-tsc
   --noEmit`, visual confirmation (icon legibility, `title`/`aria-label` DOM attributes,
   guide-line alignment) against the mocked-IPC dev server tab.
+- 2026-08-24: Explorer's second slice — search/filter by key or value (AC7). New
+  `findMatchingPaths` walks the full tree for matches + ancestors; `flattenJsonTree`
+  gained an optional `visiblePaths` restriction that both prunes non-matching subtrees and
+  force-expands kept ancestors. Verified visually against the mocked-IPC dev server tab:
+  filtering to a nested match, the no-matches state, and Escape restoring the full tree.
+  Re-verified: `pnpm lint`, `pnpm test` (503/503), `vue-tsc --noEmit`, `pnpm build`.
 
 ### File List
 

@@ -98,6 +98,9 @@
       "treeItemsCountOther": "[{count} items]",
       "copyValueAriaLabel": "Copy value",
       "copyPathAriaLabel": "Copy JSONPath",
+      "explorerSearchLabel": "Search keys and values",
+      "explorerSearchPlaceholder": "Search…",
+      "explorerNoMatches": "No matches for \"{query}\".",
       "comingSoon": "Coming soon.",
       "tab": {
         "explorer": "Explorer",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flattenJsonTree } from "./flattenJsonTree";
+import { findMatchingPaths, flattenJsonTree } from "./flattenJsonTree";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 function obj(data: Array<[string, JsonTreeValue]>): JsonTreeValue {
@@ -114,5 +114,65 @@ describe("flattenJsonTree", () => {
     const rowY = rows.find((r) => r.keyLabel === "1");
     expect(rowY?.value).toEqual(str("y"));
     expect(rowY?.jsonPath).toBe("$.a[1]");
+  });
+
+  it("passing visiblePaths restricts the walk and force-expands every kept ancestor", () => {
+    const root = obj([
+      ["a", obj([["deep", str("hidden")]])],
+      ["b", str("shallow")],
+    ]);
+    // Simulates a search for "hidden": only the root, "a", and "a.deep"
+    // survive — "b" is excluded even though expandedPaths (empty here)
+    // would ordinarily leave everything collapsed.
+    const visible = new Set(["[]", '["a"]', '["a","deep"]']);
+
+    const rows = flattenJsonTree(root, new Set(), visible);
+
+    expect(rows.map((r) => r.keyLabel)).toEqual([null, "a", "deep"]);
+    expect(rows.find((r) => r.keyLabel === "a")?.expanded).toBe(true);
+  });
+});
+
+describe("findMatchingPaths", () => {
+  it("keeps a leaf value match and every ancestor, excluding unrelated siblings", () => {
+    const root = obj([
+      ["a", obj([["deep", str("hidden")]])],
+      ["b", str("shallow")],
+    ]);
+
+    const visible = findMatchingPaths(root, "hidden");
+
+    expect(visible).toEqual(new Set(["[]", '["a"]', '["a","deep"]']));
+  });
+
+  it("matches a key even when its value doesn't match", () => {
+    const root = obj([["needle", str("unrelated")]]);
+
+    const visible = findMatchingPaths(root, "needle");
+
+    expect(visible.has('["needle"]')).toBe(true);
+  });
+
+  it("is case-insensitive and matches substrings, not just whole values", () => {
+    const root = obj([["name", str("Ada Lovelace")]]);
+
+    expect(findMatchingPaths(root, "ada").has('["name"]')).toBe(true);
+    expect(findMatchingPaths(root, "LOVELACE").has('["name"]')).toBe(true);
+  });
+
+  it("never matches a container's own collapsed-summary text — only real content", () => {
+    const root = obj([["items", arr([str("x"), str("y")])]]);
+
+    // "items" has 2 entries, so its preview text would read "[2 items]" —
+    // searching the word that preview is built from must not count as a
+    // spurious match against the container's own metadata.
+    expect(findMatchingPaths(root, "items").has('["items"]')).toBe(true); // matches via the key "items" itself
+    expect(findMatchingPaths(root, "2 items").size).toBe(0); // not via the summary text
+  });
+
+  it("returns an empty set when nothing matches", () => {
+    const root = obj([["a", str("x")]]);
+
+    expect(findMatchingPaths(root, "nonexistent-zzz").size).toBe(0);
   });
 });

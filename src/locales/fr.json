@@ -98,6 +98,9 @@
       "treeItemsCountOther": "[{count} éléments]",
       "copyValueAriaLabel": "Copier la valeur",
       "copyPathAriaLabel": "Copier le JSONPath",
+      "explorerSearchLabel": "Rechercher dans les clés et valeurs",
+      "explorerSearchPlaceholder": "Rechercher…",
+      "explorerNoMatches": "Aucun résultat pour « {query} ».",
       "comingSoon": "Bientôt disponible.",
       "tab": {
         "explorer": "Explorateur",

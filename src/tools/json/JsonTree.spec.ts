@@ -67,16 +67,30 @@ function treeItems(w: VueWrapper) {
   return w.findAll('[role="treeitem"]');
 }
 
-// `row.text()` now also includes the "Value"/"Path" copy-action button
-// labels, both of which happen to contain the letter "a" — matching a row by
-// `.text().includes("a")` would silently pick the wrong row (or the root) as
-// soon as those buttons exist. Match on the `.json-tree-key` span itself
-// instead, which only ever holds the exact `"<key>:"` label.
+// Matching a row by `row.text().includes("a")` risks picking the wrong row
+// (or the root) the moment any descendant text happens to contain that
+// substring — the copy-action buttons did exactly this back when they still
+// carried visible "Value"/"Path" labels. Match on the `.json-tree-key` span
+// itself instead, which only ever holds the exact `"<key>:"` label.
 function rowByKey(w: VueWrapper, key: string) {
   return treeItems(w).find((row) => {
     const keyEl = row.find(".json-tree-key");
     return keyEl.exists() && keyEl.text() === `${key}:`;
   });
+}
+
+function searchInput(w: VueWrapper) {
+  return w.find("#json-tree-search-input");
+}
+
+// The search query is debounced (200ms-class, matching JsonView.vue's own
+// live-parse debounce) so a keystroke on a large document doesn't force a
+// full re-walk per character — real timers, not `vi.useFakeTimers()`, since
+// the virtualizer's own settle ticks elsewhere in this file already lean on
+// real `nextTick()`/ResizeObserver timing that fake timers could disturb.
+async function waitForSearchDebounce() {
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  await nextTick();
 }
 
 // The virtualizer only learns the scroll container's real size once Vue
@@ -224,5 +238,50 @@ describe("JsonTree", () => {
 
     const emitted = wrapper.emitted("copy-error");
     expect(emitted?.[0]?.[0]).toBeInstanceOf(Error);
+  });
+
+  it("filters to a matching leaf value and its ancestors, hiding unrelated siblings", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    await searchInput(wrapper).setValue("hidden");
+    await waitForSearchDebounce();
+
+    expect(rowByKey(wrapper, "a")).toBeTruthy();
+    expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(true);
+    expect(rowByKey(wrapper, "b")).toBeFalsy();
+  });
+
+  it("matches by key as well as by leaf value", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    await searchInput(wrapper).setValue("b");
+    await waitForSearchDebounce();
+
+    expect(rowByKey(wrapper, "b")).toBeTruthy();
+    expect(rowByKey(wrapper, "a")).toBeFalsy();
+  });
+
+  it("shows a no-matches message, and no tree rows, when nothing matches", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    await searchInput(wrapper).setValue("nonexistent-zzz");
+    await waitForSearchDebounce();
+
+    expect(treeItems(wrapper)).toHaveLength(0);
+    expect(wrapper.text()).toContain('No matches for "nonexistent-zzz"');
+  });
+
+  it("clears the search on Escape, restoring the full tree", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    await searchInput(wrapper).setValue("hidden");
+    await waitForSearchDebounce();
+    expect(rowByKey(wrapper, "b")).toBeFalsy();
+
+    await searchInput(wrapper).trigger("keydown", { key: "Escape" });
+    await waitForSearchDebounce();
+
+    expect((searchInput(wrapper).element as HTMLInputElement).value).toBe("");
+    expect(rowByKey(wrapper, "b")).toBeTruthy();
   });
 });

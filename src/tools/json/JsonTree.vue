@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { PhCaretDown, PhCaretRight, PhCopySimple, PhLink } from "@phosphor-icons/vue";
 import { writeClipboardText } from "../../shell/clipboard";
-import { flattenJsonTree, type JsonTreeRow } from "./flattenJsonTree";
+import { debounce } from "../../shell/debounce";
+import { findMatchingPaths, flattenJsonTree, type JsonTreeRow } from "./flattenJsonTree";
 import { jsonTreeValueToText } from "./jsonTreeValue";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
@@ -39,9 +40,35 @@ const expanded = ref<Set<string>>(new Set(["[]"]));
 const focusedPath = ref<string>("[]");
 const scrollParentRef = ref<HTMLElement | null>(null);
 
+// Search/filter by key or value (Story 8.1 Task 2, AC7). `searchQuery` is
+// what the input actually shows (instant); `debouncedQuery` is what drives
+// the tree walk — the same 200ms-class debounce `JsonView.vue` already uses
+// for live re-parsing, so a keystroke on a large document doesn't force a
+// full re-walk on every character.
+const searchQuery = ref("");
+const debouncedQuery = ref("");
+const debouncedSetQuery = debounce((value: string) => {
+  debouncedQuery.value = value;
+}, 150);
+watch(searchQuery, (value) => debouncedSetQuery(value), { immediate: true });
+onUnmounted(() => debouncedSetQuery.cancel());
+
+function clearSearch() {
+  searchQuery.value = "";
+}
+
+const isFiltering = computed(() => debouncedQuery.value.trim() !== "");
+
+const visiblePaths = computed(() => {
+  if (props.value === null || !isFiltering.value) return null;
+  return findMatchingPaths(props.value, debouncedQuery.value);
+});
+
 const rows = computed(() =>
-  props.value === null ? [] : flattenJsonTree(props.value, expanded.value),
+  props.value === null ? [] : flattenJsonTree(props.value, expanded.value, visiblePaths.value),
 );
+
+const hasNoMatches = computed(() => isFiltering.value && rows.value.length === 0);
 
 const focusedIndex = computed(() => {
   const byPath = rows.value.findIndex((r) => r.path === focusedPath.value);
@@ -200,80 +227,124 @@ async function onKeydown(event: KeyboardEvent, index: number) {
   >
     {{ t('tools.json.treeUnavailable') }}
   </p>
-  <div
-    v-else
-    ref="scrollParentRef"
-    role="tree"
-    class="json-tree-scroll"
-  >
+  <template v-else>
+    <div class="json-tree-search">
+      <label for="json-tree-search-input">{{ t('tools.json.explorerSearchLabel') }}</label>
+      <input
+        id="json-tree-search-input"
+        v-model="searchQuery"
+        type="text"
+        :placeholder="t('tools.json.explorerSearchPlaceholder')"
+        @keydown.escape="clearSearch"
+      >
+    </div>
+    <p
+      v-if="hasNoMatches"
+      role="status"
+      class="json-tree-no-matches"
+    >
+      {{ t('tools.json.explorerNoMatches', { query: searchQuery.trim() }) }}
+    </p>
     <div
-      class="json-tree-spacer"
-      :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }"
+      v-else
+      ref="scrollParentRef"
+      role="tree"
+      class="json-tree-scroll"
     >
       <div
-        v-for="{ virtualRow, row } in renderRows"
-        :key="String(virtualRow.key)"
-        role="treeitem"
-        class="json-tree-row"
-        :data-index="virtualRow.index"
-        :tabindex="virtualRow.index === focusedIndex ? 0 : -1"
-        :aria-level="row.depth + 1"
-        :aria-expanded="row.expandable ? (row.expanded ? 'true' : 'false') : undefined"
-        :style="{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: `${ROW_HEIGHT_PX}px`,
-          transform: `translateY(${virtualRow.start}px)`,
-          paddingLeft: `${row.depth * INDENT_EM}em`,
-          ...indentGuideStyle(row.depth),
-        }"
-        @click="toggle(virtualRow.index)"
-        @keydown="onKeydown($event, virtualRow.index)"
-        @focus="focusedPath = row.path"
+        class="json-tree-spacer"
+        :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }"
       >
-        <span class="json-tree-chevron">
-          <component
-            :is="row.expanded ? PhCaretDown : PhCaretRight"
-            v-if="row.expandable"
-            aria-hidden="true"
-          />
-        </span>
-        <span
-          v-if="row.keyLabel !== null"
-          class="json-tree-key"
-        >{{ row.keyLabel }}:</span>
-        <span
-          class="json-tree-preview"
-          :class="{ 'json-tree-summary': row.expandable }"
-        >{{ row.preview }}</span>
-        <span class="json-tree-row-actions">
-          <button
-            type="button"
-            class="json-tree-copy-button"
-            :aria-label="t('tools.json.copyValueAriaLabel')"
-            :title="t('tools.json.copyValueAriaLabel')"
-            @click.stop="copyValue(row)"
-          >
-            <PhCopySimple aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            class="json-tree-copy-button"
-            :aria-label="t('tools.json.copyPathAriaLabel')"
-            :title="t('tools.json.copyPathAriaLabel')"
-            @click.stop="copyPath(row)"
-          >
-            <PhLink aria-hidden="true" />
-          </button>
-        </span>
+        <div
+          v-for="{ virtualRow, row } in renderRows"
+          :key="String(virtualRow.key)"
+          role="treeitem"
+          class="json-tree-row"
+          :data-index="virtualRow.index"
+          :tabindex="virtualRow.index === focusedIndex ? 0 : -1"
+          :aria-level="row.depth + 1"
+          :aria-expanded="row.expandable ? (row.expanded ? 'true' : 'false') : undefined"
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: `${ROW_HEIGHT_PX}px`,
+            transform: `translateY(${virtualRow.start}px)`,
+            paddingLeft: `${row.depth * INDENT_EM}em`,
+            ...indentGuideStyle(row.depth),
+          }"
+          @click="toggle(virtualRow.index)"
+          @keydown="onKeydown($event, virtualRow.index)"
+          @focus="focusedPath = row.path"
+        >
+          <span class="json-tree-chevron">
+            <component
+              :is="row.expanded ? PhCaretDown : PhCaretRight"
+              v-if="row.expandable"
+              aria-hidden="true"
+            />
+          </span>
+          <span
+            v-if="row.keyLabel !== null"
+            class="json-tree-key"
+          >{{ row.keyLabel }}:</span>
+          <span
+            class="json-tree-preview"
+            :class="{ 'json-tree-summary': row.expandable }"
+          >{{ row.preview }}</span>
+          <span class="json-tree-row-actions">
+            <button
+              type="button"
+              class="json-tree-copy-button"
+              :aria-label="t('tools.json.copyValueAriaLabel')"
+              :title="t('tools.json.copyValueAriaLabel')"
+              @click.stop="copyValue(row)"
+            >
+              <PhCopySimple aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="json-tree-copy-button"
+              :aria-label="t('tools.json.copyPathAriaLabel')"
+              :title="t('tools.json.copyPathAriaLabel')"
+              @click.stop="copyPath(row)"
+            >
+              <PhLink aria-hidden="true" />
+            </button>
+          </span>
+        </div>
       </div>
     </div>
-  </div>
+  </template>
 </template>
 
 <style scoped>
+.json-tree-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-bottom: var(--spacing-2);
+}
+
+.json-tree-search label {
+  font-family: var(--font-label-family);
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  color: var(--color-text-secondary);
+}
+
+.json-tree-search input {
+  flex: 1;
+  max-width: 24em;
+  font-family: var(--font-code-family);
+  font-size: var(--font-code-size);
+}
+
+.json-tree-no-matches {
+  color: var(--color-text-secondary);
+}
+
 .json-tree-scroll {
   height: 100%;
   overflow-y: auto;
