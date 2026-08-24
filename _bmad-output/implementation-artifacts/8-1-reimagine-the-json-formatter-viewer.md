@@ -105,9 +105,9 @@ would produce a query syntax Explorer's copied paths can't paste into).
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0: Branch setup (AC: all)**
-  - [ ] Confirm `baseline_commit` (`b357aff`) is `origin/main`'s real tip: `git fetch origin && git log --oneline -1 origin/main`. Bumped 2026-08-24 from this story's original `0690f83` after PR #104 landed mid-discovery (tokenized `JsonTree.vue`'s focus ring, added `src/styles/base.css` — see Dev Notes); re-confirm at implementation start in case `main` has moved again since.
-  - [ ] `git checkout -b feat/story-8-1-reimagine-the-json-formatter-viewer origin/main`.
+- [x] **Task 0: Branch setup (AC: all)** — complete 2026-08-24.
+  - [x] Confirmed `baseline_commit` (`b357aff`) is still `origin/main`'s real tip.
+  - [x] `git checkout -b feat/story-8-1-reimagine-the-json-formatter-viewer origin/main` — this is the branch every subsequent commit has landed on.
 
 - [x] **Task 1: Discovery — produce the decision record (AC1–4)** — complete 2026-08-24, see `8-1-json-decision-record.md`.
   - [x] Run `bmad-party-mode` (recommended default — a full multi-persona roundtable matches the weight of "reconsider this tool's scope from first principles"; fall back to the narrower `bmad-forge-idea` only if a lighter pressure-test is preferred at execution time) framed explicitly as: *open scope discovery for the JSON Formatter/Viewer — the existing implementation is reference only, not a scope to preserve.*
@@ -208,9 +208,11 @@ would produce a query syntax Explorer's copied paths can't paste into).
         `serde_json_path`), `diff` (structural, over `JsonTreeValue`), and `to_typescript`
         pure functions per the decision record's AD-1 split — each with its own regression
         tests, sanity-checked against the 10 MB / Story 1.9 performance floor (AC14).
-  - [ ] Explorer, next slice: inline editing (add/remove/move/duplicate fields) and
-        search/filter by key or value — extends `JsonTree.vue`, keeps its existing
-        path-based focus tracking and ARIA tree roles.
+  - [ ] Explorer, next (and last) slice: inline editing (add/remove/move/duplicate
+        fields) — extends `JsonTree.vue`, keeps its existing path-based focus tracking
+        and ARIA tree roles. (Search/filter — the other item this line originally
+        listed — is done, see the "second slice" entry above; this is the one thing
+        left before Explorer fully satisfies AC7.)
   - [ ] Rewrite Validate's error messages, register new `json-*` codes in
         `TRANSLATABLE_CODES` (`src/shell/toolError.ts`), add the "Try Repair" cross-link.
   - [ ] Build Repair's preview-then-confirm UI (per-change description, explicit apply step
