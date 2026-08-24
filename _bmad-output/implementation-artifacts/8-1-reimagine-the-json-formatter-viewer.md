@@ -175,23 +175,28 @@ would produce a query syntax Explorer's copied paths can't paste into).
         illegible) and both buttons carry a native `title` tooltip alongside `aria-label`
         — same pattern `AppSidebar.vue`'s nav items already use, no Tauri-specific API
         needed for a hover tooltip, it's plain HTML.
-  - [x] Explorer, second slice (AC7) — search/filter by key or value. New
-        `findMatchingPaths` in `flattenJsonTree.ts` walks the full tree (not just
-        currently-flattened rows) and returns every path that's a direct match (key or
-        leaf value, case-insensitive substring) or an ancestor of one; `flattenJsonTree`
-        itself gained an optional `visiblePaths` restriction that both skips non-matching
-        subtrees entirely and force-expands every kept ancestor, so a real match is never
-        hidden behind a parent the user never happened to expand — the user's own manual
-        `expanded` set is untouched underneath, so clearing the search returns the tree to
-        however they'd left it. Query input is debounced (150ms) before it drives the
-        walk, same class of debounce `JsonView.vue` already uses for live re-parsing.
-        Escape clears the query; a "No matches" message replaces the tree when filtering
-        yields nothing. **Deliberately out of scope this slice:** highlighting the
-        matched substring within a row — the existing preview truncation means a match
-        can be truncated away before a highlight could even show it, and filtering alone
-        (fewer rows = the matches) already carries most of the practical value; flagged
-        here as a possible future polish, not forgotten. **Still open, next Explorer
-        slice:** inline editing (add/remove/move/duplicate fields).
+  - [x] Explorer, second slice (AC7) — search by key or value. **First pass filtered the
+        tree down to matches plus their ancestors** (hiding everything else) — developer
+        feedback: that reads as a DevTools object-preview filter, not the find-in-page /
+        find-in-explorer behavior a search bar is actually expected to have. Rebuilt as a
+        real find: new `findMatches` in `flattenJsonTree.ts` walks the *entire* tree in
+        document order (regardless of current collapse state) and returns every match with
+        its ancestor chain; the tree's own visible shape is never touched by searching, only
+        by navigating to a match — `goToMatch` expands whatever ancestors of the target
+        aren't already open and scrolls to it, leaving every unrelated row exactly as it
+        was. A live "`current` of `total`" count sits next to the input with Previous/Next
+        buttons (`PhCaretUp`/`PhCaretDown`), Enter/Shift+Enter cycle matches without moving
+        focus out of the search box (matching a browser's own Ctrl+F), and every match wraps
+        around at either end. New `highlightSegments` wraps the matched substring in
+        `<mark>` within each row's key/preview text (a display-layer concern, deliberately
+        decoupled from `findMatches`'s raw-value matching — a row's preview can be truncated
+        or JSON-escaped, so highlighting re-scans whatever text is actually on screen rather
+        than mapping raw-value offsets onto it). The current match's row gets the same
+        outline treatment `:focus` already uses; the visible label above the input was
+        dropped too (developer feedback: redundant next to a self-explanatory placeholder) —
+        the input keeps an `aria-label` for a11y. Query input stays debounced (150ms),
+        same class of debounce `JsonView.vue` already uses for live re-parsing. **Still
+        open, next Explorer slice:** inline editing (add/remove/move/duplicate fields).
   - [ ] Add `serde_json_path` to `crates/umbra-core/Cargo.toml`; verify it against the
         RFC 9535 conformance suite it tracks before wiring it into a new query function
         (per this project's standing dependency-verification discipline — Task 2 owns this
@@ -292,12 +297,24 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   Re-verified: `pnpm lint`, `pnpm test` (49/49 for the JSON tool suite), `vue-tsc
   --noEmit`, visual confirmation (icon legibility, `title`/`aria-label` DOM attributes,
   guide-line alignment) against the mocked-IPC dev server tab.
-- 2026-08-24: Explorer's second slice — search/filter by key or value (AC7). New
-  `findMatchingPaths` walks the full tree for matches + ancestors; `flattenJsonTree`
-  gained an optional `visiblePaths` restriction that both prunes non-matching subtrees and
-  force-expands kept ancestors. Verified visually against the mocked-IPC dev server tab:
-  filtering to a nested match, the no-matches state, and Escape restoring the full tree.
-  Re-verified: `pnpm lint`, `pnpm test` (503/503), `vue-tsc --noEmit`, `pnpm build`.
+- 2026-08-24: Explorer's second slice — search by key or value (AC7), first pass: a
+  filter (hides non-matching rows). New `findMatchingPaths`/`visiblePaths` restriction on
+  `flattenJsonTree`. Re-verified: `pnpm lint`, `pnpm test` (503/503), `vue-tsc --noEmit`,
+  `pnpm build`.
+- 2026-08-24: Same slice, rebuilt after developer feedback that the filter mechanism was
+  wrong — expected a standard find bar (highlight in place, Next/Previous, a count), not a
+  DevTools-style filter. `findMatchingPaths`/`visiblePaths` removed; replaced with
+  `findMatches` (ordered, full-tree, carries each match's ancestor chain) and
+  `highlightSegments` (display-layer `<mark>` splitting). `flattenJsonTree` reverted to its
+  original two-argument, never-hides-rows signature — searching no longer touches the
+  tree's shape, only navigating to a match does. Added a live match-position count,
+  Previous/Next buttons, Enter/Shift+Enter cycling with focus staying in the search input,
+  and a current-match row outline. Dropped the visible search label per developer feedback
+  (redundant next to the placeholder) — kept as `aria-label` only. Verified visually
+  against the mocked-IPC dev server tab: multi-match count/navigation, substring
+  highlighting, current-match outline moving on Next, unrelated siblings staying visible
+  throughout. Re-verified: `pnpm lint`, `pnpm test` (512/512), `vue-tsc --noEmit`, `pnpm
+  build`.
 
 ### File List
 

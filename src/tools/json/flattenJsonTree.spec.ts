@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findMatchingPaths, flattenJsonTree } from "./flattenJsonTree";
+import { findMatches, flattenJsonTree, highlightSegments } from "./flattenJsonTree";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 function obj(data: Array<[string, JsonTreeValue]>): JsonTreeValue {
@@ -116,48 +116,39 @@ describe("flattenJsonTree", () => {
     expect(rowY?.jsonPath).toBe("$.a[1]");
   });
 
-  it("passing visiblePaths restricts the walk and force-expands every kept ancestor", () => {
-    const root = obj([
-      ["a", obj([["deep", str("hidden")]])],
-      ["b", str("shallow")],
-    ]);
-    // Simulates a search for "hidden": only the root, "a", and "a.deep"
-    // survive — "b" is excluded even though expandedPaths (empty here)
-    // would ordinarily leave everything collapsed.
-    const visible = new Set(["[]", '["a"]', '["a","deep"]']);
-
-    const rows = flattenJsonTree(root, new Set(), visible);
-
-    expect(rows.map((r) => r.keyLabel)).toEqual([null, "a", "deep"]);
-    expect(rows.find((r) => r.keyLabel === "a")?.expanded).toBe(true);
-  });
 });
 
-describe("findMatchingPaths", () => {
-  it("keeps a leaf value match and every ancestor, excluding unrelated siblings", () => {
+describe("findMatches", () => {
+  it("walks the whole tree regardless of collapse state, in document order", () => {
     const root = obj([
       ["a", obj([["deep", str("hidden")]])],
-      ["b", str("shallow")],
+      ["b", str("hidden too")],
     ]);
 
-    const visible = findMatchingPaths(root, "hidden");
+    const matches = findMatches(root, "hidden");
 
-    expect(visible).toEqual(new Set(["[]", '["a"]', '["a","deep"]']));
+    expect(matches.map((m) => m.path)).toEqual(['["a","deep"]', '["b"]']);
+  });
+
+  it("records every ancestor path a match needs expanded to become visible", () => {
+    const root = obj([["a", obj([["deep", str("hidden")]])]]);
+
+    const matches = findMatches(root, "hidden");
+
+    expect(matches).toEqual([{ path: '["a","deep"]', ancestorPaths: ["[]", '["a"]'] }]);
   });
 
   it("matches a key even when its value doesn't match", () => {
     const root = obj([["needle", str("unrelated")]]);
 
-    const visible = findMatchingPaths(root, "needle");
-
-    expect(visible.has('["needle"]')).toBe(true);
+    expect(findMatches(root, "needle").map((m) => m.path)).toEqual(['["needle"]']);
   });
 
   it("is case-insensitive and matches substrings, not just whole values", () => {
     const root = obj([["name", str("Ada Lovelace")]]);
 
-    expect(findMatchingPaths(root, "ada").has('["name"]')).toBe(true);
-    expect(findMatchingPaths(root, "LOVELACE").has('["name"]')).toBe(true);
+    expect(findMatches(root, "ada").map((m) => m.path)).toEqual(['["name"]']);
+    expect(findMatches(root, "LOVELACE").map((m) => m.path)).toEqual(['["name"]']);
   });
 
   it("never matches a container's own collapsed-summary text — only real content", () => {
@@ -166,13 +157,46 @@ describe("findMatchingPaths", () => {
     // "items" has 2 entries, so its preview text would read "[2 items]" —
     // searching the word that preview is built from must not count as a
     // spurious match against the container's own metadata.
-    expect(findMatchingPaths(root, "items").has('["items"]')).toBe(true); // matches via the key "items" itself
-    expect(findMatchingPaths(root, "2 items").size).toBe(0); // not via the summary text
+    expect(findMatches(root, "items").map((m) => m.path)).toEqual(['["items"]']); // via the key itself
+    expect(findMatches(root, "2 items")).toEqual([]); // not via the summary text
   });
 
-  it("returns an empty set when nothing matches", () => {
+  it("returns an empty array when nothing matches", () => {
     const root = obj([["a", str("x")]]);
 
-    expect(findMatchingPaths(root, "nonexistent-zzz").size).toBe(0);
+    expect(findMatches(root, "nonexistent-zzz")).toEqual([]);
+  });
+});
+
+describe("highlightSegments", () => {
+  it("returns the whole text unmatched when the query is empty", () => {
+    expect(highlightSegments("hello", "")).toEqual([{ text: "hello", matched: false }]);
+  });
+
+  it("splits text into unmatched/matched/unmatched around a substring", () => {
+    expect(highlightSegments("Ada Lovelace", "Love")).toEqual([
+      { text: "Ada ", matched: false },
+      { text: "Love", matched: true },
+      { text: "lace", matched: false },
+    ]);
+  });
+
+  it("matches case-insensitively while preserving the source text's original casing", () => {
+    expect(highlightSegments("Ada Lovelace", "ADA")).toEqual([
+      { text: "Ada", matched: true },
+      { text: " Lovelace", matched: false },
+    ]);
+  });
+
+  it("highlights every occurrence, not just the first", () => {
+    expect(highlightSegments("ababab", "ab")).toEqual([
+      { text: "ab", matched: true },
+      { text: "ab", matched: true },
+      { text: "ab", matched: true },
+    ]);
+  });
+
+  it("returns the whole text unmatched when the query doesn't occur", () => {
+    expect(highlightSegments("hello", "zzz")).toEqual([{ text: "hello", matched: false }]);
   });
 });

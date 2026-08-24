@@ -63,6 +63,16 @@ function nestedFixture(): JsonTreeValue {
   };
 }
 
+function twoMatchFixture(): JsonTreeValue {
+  return {
+    kind: "Object",
+    data: [
+      ["first", str("apple")],
+      ["second", str("apple pie")],
+    ],
+  };
+}
+
 function treeItems(w: VueWrapper) {
   return w.findAll('[role="treeitem"]');
 }
@@ -240,15 +250,15 @@ describe("JsonTree", () => {
     expect(emitted?.[0]?.[0]).toBeInstanceOf(Error);
   });
 
-  it("filters to a matching leaf value and its ancestors, hiding unrelated siblings", async () => {
+  it("auto-expands ancestors of a match without hiding unrelated siblings", async () => {
     wrapper = await mountTree(nestedFixture());
 
     await searchInput(wrapper).setValue("hidden");
     await waitForSearchDebounce();
 
     expect(rowByKey(wrapper, "a")).toBeTruthy();
-    expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(true);
-    expect(rowByKey(wrapper, "b")).toBeFalsy();
+    expect(rowByKey(wrapper, "b")).toBeTruthy(); // unrelated sibling stays visible — this is find, not filter
+    expect(treeItems(wrapper).some((row) => row.text().includes("deep"))).toBe(true); // ancestor auto-expanded
   });
 
   it("matches by key as well as by leaf value", async () => {
@@ -257,31 +267,90 @@ describe("JsonTree", () => {
     await searchInput(wrapper).setValue("b");
     await waitForSearchDebounce();
 
-    expect(rowByKey(wrapper, "b")).toBeTruthy();
-    expect(rowByKey(wrapper, "a")).toBeFalsy();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 1");
   });
 
-  it("shows a no-matches message, and no tree rows, when nothing matches", async () => {
+  it("highlights the matched substring within a row", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    await searchInput(wrapper).setValue("hidden");
+    await waitForSearchDebounce();
+
+    const marks = wrapper.findAll(".json-tree-highlight");
+    expect(marks.some((m) => m.text() === "hidden")).toBe(true);
+  });
+
+  it("shows a live match count and cycles Next/Previous with wraparound", async () => {
+    wrapper = await mountTree(twoMatchFixture());
+
+    await searchInput(wrapper).setValue("apple");
+    await waitForSearchDebounce();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 2");
+
+    await wrapper.find('button[aria-label="Next match"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("2 of 2");
+
+    await wrapper.find('button[aria-label="Next match"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 2"); // wraps forward
+
+    await wrapper.find('button[aria-label="Previous match"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("2 of 2"); // wraps backward
+  });
+
+  it("cycles matches with Enter/Shift+Enter in the search input, keeping focus in the input", async () => {
+    wrapper = await mountTree(twoMatchFixture());
+
+    await searchInput(wrapper).setValue("apple");
+    await waitForSearchDebounce();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 2");
+
+    await searchInput(wrapper).trigger("keydown", { key: "Enter" });
+    await nextTick();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("2 of 2");
+
+    await searchInput(wrapper).trigger("keydown", { key: "Enter", shiftKey: true });
+    await nextTick();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 2");
+  });
+
+  it("marks the current match row distinctly from other matches", async () => {
+    wrapper = await mountTree(twoMatchFixture());
+
+    await searchInput(wrapper).setValue("apple");
+    await waitForSearchDebounce();
+    expect(rowByKey(wrapper, "first")?.classes()).toContain("json-tree-row-current-match");
+    expect(rowByKey(wrapper, "second")?.classes()).not.toContain("json-tree-row-current-match");
+
+    await wrapper.find('button[aria-label="Next match"]').trigger("click");
+    await nextTick();
+    expect(rowByKey(wrapper, "first")?.classes()).not.toContain("json-tree-row-current-match");
+    expect(rowByKey(wrapper, "second")?.classes()).toContain("json-tree-row-current-match");
+  });
+
+  it("shows 'No matches' without hiding the tree when nothing matches", async () => {
     wrapper = await mountTree(nestedFixture());
 
     await searchInput(wrapper).setValue("nonexistent-zzz");
     await waitForSearchDebounce();
 
-    expect(treeItems(wrapper)).toHaveLength(0);
-    expect(wrapper.text()).toContain('No matches for "nonexistent-zzz"');
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("No matches");
+    expect(rowByKey(wrapper, "a")).toBeTruthy();
+    expect(rowByKey(wrapper, "b")).toBeTruthy();
   });
 
-  it("clears the search on Escape, restoring the full tree", async () => {
+  it("clears the search on Escape", async () => {
     wrapper = await mountTree(nestedFixture());
 
     await searchInput(wrapper).setValue("hidden");
     await waitForSearchDebounce();
-    expect(rowByKey(wrapper, "b")).toBeFalsy();
 
     await searchInput(wrapper).trigger("keydown", { key: "Escape" });
     await waitForSearchDebounce();
 
     expect((searchInput(wrapper).element as HTMLInputElement).value).toBe("");
-    expect(rowByKey(wrapper, "b")).toBeTruthy();
+    expect(wrapper.find(".json-tree-match-count").exists()).toBe(false);
   });
 });

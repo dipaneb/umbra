@@ -99,8 +99,11 @@
       "copyValueAriaLabel": "Copier la valeur",
       "copyPathAriaLabel": "Copier le JSONPath",
       "explorerSearchLabel": "Rechercher dans les clés et valeurs",
-      "explorerSearchPlaceholder": "Rechercher…",
-      "explorerNoMatches": "Aucun résultat pour « {query} ».",
+      "explorerSearchPlaceholder": "Rechercher dans les clés et valeurs…",
+      "explorerNoMatches": "Aucun résultat",
+      "explorerMatchPosition": "{current} sur {total}",
+      "explorerPreviousMatch": "Résultat précédent",
+      "explorerNextMatch": "Résultat suivant",
       "comingSoon": "Bientôt disponible.",
       "tab": {
         "explorer": "Explorateur",

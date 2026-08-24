@@ -2,10 +2,10 @@
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useVirtualizer } from "@tanstack/vue-virtual";
-import { PhCaretDown, PhCaretRight, PhCopySimple, PhLink } from "@phosphor-icons/vue";
+import { PhCaretDown, PhCaretRight, PhCaretUp, PhCopySimple, PhLink } from "@phosphor-icons/vue";
 import { writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
-import { findMatchingPaths, flattenJsonTree, type JsonTreeRow } from "./flattenJsonTree";
+import { findMatches, flattenJsonTree, highlightSegments, type JsonTreeRow } from "./flattenJsonTree";
 import { jsonTreeValueToText } from "./jsonTreeValue";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
@@ -40,35 +40,7 @@ const expanded = ref<Set<string>>(new Set(["[]"]));
 const focusedPath = ref<string>("[]");
 const scrollParentRef = ref<HTMLElement | null>(null);
 
-// Search/filter by key or value (Story 8.1 Task 2, AC7). `searchQuery` is
-// what the input actually shows (instant); `debouncedQuery` is what drives
-// the tree walk — the same 200ms-class debounce `JsonView.vue` already uses
-// for live re-parsing, so a keystroke on a large document doesn't force a
-// full re-walk on every character.
-const searchQuery = ref("");
-const debouncedQuery = ref("");
-const debouncedSetQuery = debounce((value: string) => {
-  debouncedQuery.value = value;
-}, 150);
-watch(searchQuery, (value) => debouncedSetQuery(value), { immediate: true });
-onUnmounted(() => debouncedSetQuery.cancel());
-
-function clearSearch() {
-  searchQuery.value = "";
-}
-
-const isFiltering = computed(() => debouncedQuery.value.trim() !== "");
-
-const visiblePaths = computed(() => {
-  if (props.value === null || !isFiltering.value) return null;
-  return findMatchingPaths(props.value, debouncedQuery.value);
-});
-
-const rows = computed(() =>
-  props.value === null ? [] : flattenJsonTree(props.value, expanded.value, visiblePaths.value),
-);
-
-const hasNoMatches = computed(() => isFiltering.value && rows.value.length === 0);
+const rows = computed(() => (props.value === null ? [] : flattenJsonTree(props.value, expanded.value)));
 
 const focusedIndex = computed(() => {
   const byPath = rows.value.findIndex((r) => r.path === focusedPath.value);
@@ -218,6 +190,86 @@ async function onKeydown(event: KeyboardEvent, index: number) {
       break;
   }
 }
+
+// Find, not filter (Story 8.1 Task 2, AC7 — revised after a first pass that
+// hid non-matching rows read as a DevTools object-preview filter rather than
+// the find-in-page/find-in-explorer behavior a search bar is expected to
+// have). The tree's own shape is never touched by searching, only by
+// navigating to a match. `searchQuery` is what the input actually shows
+// (instant); `debouncedQuery` is what drives the tree walk — the same
+// 200ms-class debounce `JsonView.vue` already uses for live re-parsing, so a
+// keystroke on a large document doesn't force a full re-walk per character.
+const searchQuery = ref("");
+const debouncedQuery = ref("");
+const debouncedSetQuery = debounce((value: string) => {
+  debouncedQuery.value = value;
+}, 150);
+watch(searchQuery, (value) => debouncedSetQuery(value), { immediate: true });
+onUnmounted(() => debouncedSetQuery.cancel());
+
+function clearSearch() {
+  searchQuery.value = "";
+}
+
+const isSearching = computed(() => debouncedQuery.value.trim() !== "");
+
+const matches = computed(() => {
+  if (props.value === null || !isSearching.value) return [];
+  return findMatches(props.value, debouncedQuery.value);
+});
+
+const currentMatchIndex = ref(0);
+const currentMatchPath = computed(() => matches.value[currentMatchIndex.value]?.path ?? null);
+
+// Jumps to match `index` (wrapping around at either end, matching standard
+// find-bar Next/Previous behavior), expanding whichever of its ancestors
+// aren't already open and scrolling it into view. Deliberately does *not*
+// move keyboard focus into the tree — focus stays in the search input the
+// same way a browser's own Ctrl+F bar keeps focus put, so repeated
+// Enter/Shift+Enter keeps cycling matches without the user needing to click
+// back into the search box each time.
+async function goToMatch(index: number) {
+  const total = matches.value.length;
+  if (total === 0) return;
+  const wrapped = ((index % total) + total) % total;
+  currentMatchIndex.value = wrapped;
+
+  const match = matches.value[wrapped];
+  if (!match) return;
+
+  let needsExpand = false;
+  const next = new Set(expanded.value);
+  for (const ancestorPath of match.ancestorPaths) {
+    if (!next.has(ancestorPath)) {
+      next.add(ancestorPath);
+      needsExpand = true;
+    }
+  }
+  if (needsExpand) {
+    expanded.value = next;
+    await nextTick(); // let `rows`/the virtualizer recompute before scrolling
+  }
+
+  const rowIndex = rows.value.findIndex((r) => r.path === match.path);
+  if (rowIndex !== -1) virtualizer.value.scrollToIndex(rowIndex, { align: "center" });
+}
+
+// A fresh query (or the query being cleared) always re-anchors to the first
+// match rather than leaving `currentMatchIndex` pointing at a now-unrelated
+// position in the new match list.
+watch(matches, (newMatches) => {
+  if (newMatches.length > 0) {
+    void goToMatch(0);
+  } else {
+    currentMatchIndex.value = 0;
+  }
+});
+
+function onSearchKeydown(event: KeyboardEvent) {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  void goToMatch(currentMatchIndex.value + (event.shiftKey ? -1 : 1));
+}
 </script>
 
 <template>
@@ -229,24 +281,47 @@ async function onKeydown(event: KeyboardEvent, index: number) {
   </p>
   <template v-else>
     <div class="json-tree-search">
-      <label for="json-tree-search-input">{{ t('tools.json.explorerSearchLabel') }}</label>
       <input
         id="json-tree-search-input"
         v-model="searchQuery"
         type="text"
+        :aria-label="t('tools.json.explorerSearchLabel')"
         :placeholder="t('tools.json.explorerSearchPlaceholder')"
         @keydown.escape="clearSearch"
+        @keydown="onSearchKeydown"
       >
+      <template v-if="isSearching">
+        <span
+          role="status"
+          class="json-tree-match-count"
+        >{{
+          matches.length === 0
+            ? t('tools.json.explorerNoMatches')
+            : t('tools.json.explorerMatchPosition', { current: currentMatchIndex + 1, total: matches.length })
+        }}</span>
+        <button
+          type="button"
+          class="json-tree-nav-button"
+          :disabled="matches.length === 0"
+          :aria-label="t('tools.json.explorerPreviousMatch')"
+          :title="t('tools.json.explorerPreviousMatch')"
+          @click="goToMatch(currentMatchIndex - 1)"
+        >
+          <PhCaretUp aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="json-tree-nav-button"
+          :disabled="matches.length === 0"
+          :aria-label="t('tools.json.explorerNextMatch')"
+          :title="t('tools.json.explorerNextMatch')"
+          @click="goToMatch(currentMatchIndex + 1)"
+        >
+          <PhCaretDown aria-hidden="true" />
+        </button>
+      </template>
     </div>
-    <p
-      v-if="hasNoMatches"
-      role="status"
-      class="json-tree-no-matches"
-    >
-      {{ t('tools.json.explorerNoMatches', { query: searchQuery.trim() }) }}
-    </p>
     <div
-      v-else
       ref="scrollParentRef"
       role="tree"
       class="json-tree-scroll"
@@ -260,6 +335,7 @@ async function onKeydown(event: KeyboardEvent, index: number) {
           :key="String(virtualRow.key)"
           role="treeitem"
           class="json-tree-row"
+          :class="{ 'json-tree-row-current-match': row.path === currentMatchPath }"
           :data-index="virtualRow.index"
           :tabindex="virtualRow.index === focusedIndex ? 0 : -1"
           :aria-level="row.depth + 1"
@@ -288,11 +364,23 @@ async function onKeydown(event: KeyboardEvent, index: number) {
           <span
             v-if="row.keyLabel !== null"
             class="json-tree-key"
-          >{{ row.keyLabel }}:</span>
+          ><template
+            v-for="(seg, i) in highlightSegments(row.keyLabel, debouncedQuery)"
+            :key="i"
+          ><mark
+            v-if="seg.matched"
+            class="json-tree-highlight"
+          >{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template>:</span>
           <span
             class="json-tree-preview"
             :class="{ 'json-tree-summary': row.expandable }"
-          >{{ row.preview }}</span>
+          ><template
+            v-for="(seg, i) in highlightSegments(row.preview, debouncedQuery)"
+            :key="i"
+          ><mark
+            v-if="seg.matched"
+            class="json-tree-highlight"
+          >{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template></span>
           <span class="json-tree-row-actions">
             <button
               type="button"
@@ -323,15 +411,8 @@ async function onKeydown(event: KeyboardEvent, index: number) {
 .json-tree-search {
   display: flex;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.3em;
   margin-bottom: var(--spacing-2);
-}
-
-.json-tree-search label {
-  font-family: var(--font-label-family);
-  font-size: var(--font-label-size);
-  font-weight: var(--font-label-weight);
-  color: var(--color-text-secondary);
 }
 
 .json-tree-search input {
@@ -341,8 +422,44 @@ async function onKeydown(event: KeyboardEvent, index: number) {
   font-size: var(--font-code-size);
 }
 
-.json-tree-no-matches {
+.json-tree-match-count {
+  font-family: var(--font-caption-family);
+  font-size: var(--font-caption-size);
   color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.json-tree-nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.json-tree-nav-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.json-tree-nav-button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-bg-base);
+}
+
+.json-tree-nav-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.json-tree-nav-button:focus-visible {
+  outline: 2px solid var(--color-accent-signature);
+  outline-offset: 1px;
 }
 
 .json-tree-scroll {
@@ -366,6 +483,23 @@ async function onKeydown(event: KeyboardEvent, index: number) {
 .json-tree-row:focus {
   outline: 2px solid var(--color-accent-signature);
   outline-offset: -2px;
+}
+
+/* The row currently targeted by search navigation — same outline language
+   `:focus` above already uses ("this is where your attention is"), so the
+   two states read as one consistent visual system instead of two competing
+   ones. Matched *substrings* get their own, separate treatment below
+   (`.json-tree-highlight`) since a row can hold a match without being the
+   current one. */
+.json-tree-row-current-match {
+  outline: 2px solid var(--color-accent-signature);
+  outline-offset: -2px;
+}
+
+.json-tree-highlight {
+  background: var(--color-accent-signature-tint);
+  color: inherit;
+  border-radius: 2px;
 }
 
 /* Fixed-width regardless of expandability, so every row's key/value starts
