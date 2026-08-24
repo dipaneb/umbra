@@ -214,9 +214,11 @@ and visual identity (Phase 3) are both settled.
 
 > `umbra-web` (the landing page) is deliberately **out of scope** for this roadmap —
 > copywriting, page inventory, and SEO are their own project with their own discovery
-> process. See `landing-page-followup-prompt.md` in this same folder: a standalone prompt
-> to hand to an AI once Phases 1-5 here are done, so the landing page inherits the
-> finished brand/product instead of getting redesigned twice.
+> process. `landing-page-followup-prompt.md` in this same folder was the standalone prompt
+> handed to an AI once Phases 1-5 here were done, so the landing page would inherit the
+> finished brand/product instead of getting redesigned twice. **That follow-up ran
+> 2026-08-17/18 and produced [`landing-page/README.md`](landing-page/README.md)** — the
+> landing-page rebuild's own phased roadmap, same convention as this file.
 
 ---
 
@@ -257,4 +259,6 @@ and visual identity (Phase 3) are both settled.
 - [x] 4.3 App key-screen mocks (Claude Design)
 - [x] 5.1 Correct-course reconciliation with shipped epics — Epics 7 & 8 added, see `sprint-change-proposal-2026-08-16.md`
 
-> Landing page (`umbra-web`) is handled separately — see `landing-page-followup-prompt.md`.
+> Landing page (`umbra-web`) is handled separately — see
+> [`landing-page/README.md`](landing-page/README.md) (produced 2026-08-17/18 via
+> `landing-page-followup-prompt.md`).
