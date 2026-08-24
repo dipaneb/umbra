@@ -103,7 +103,9 @@
       "explorerNoMatches": "Aucun résultat",
       "explorerMatchPosition": "{current} sur {total}",
       "explorerPreviousMatch": "Résultat précédent",
+      "explorerPreviousMatchTitle": "Résultat précédent (↑)",
       "explorerNextMatch": "Résultat suivant",
+      "explorerNextMatchTitle": "Résultat suivant (↓)",
       "comingSoon": "Bientôt disponible.",
       "tab": {
         "explorer": "Explorateur",

@@ -185,9 +185,10 @@ would produce a query syntax Explorer's copied paths can't paste into).
         by navigating to a match — `goToMatch` expands whatever ancestors of the target
         aren't already open and scrolls to it, leaving every unrelated row exactly as it
         was. A live "`current` of `total`" count sits next to the input with Previous/Next
-        buttons (`PhCaretUp`/`PhCaretDown`), Enter/Shift+Enter cycle matches without moving
-        focus out of the search box (matching a browser's own Ctrl+F), and every match wraps
-        around at either end. New `highlightSegments` wraps the matched substring in
+        buttons (`PhCaretUp`/`PhCaretDown`), Enter/Shift+Enter *and* ArrowUp/ArrowDown all
+        cycle matches without moving focus out of the search box (matching a browser's own
+        Ctrl+F), and every match wraps around at either end. New `highlightSegments` wraps
+        the matched substring in
         `<mark>` within each row's key/preview text (a display-layer concern, deliberately
         decoupled from `findMatches`'s raw-value matching — a row's preview can be truncated
         or JSON-escaped, so highlighting re-scans whatever text is actually on screen rather
@@ -330,6 +331,25 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   test` (512/512), `vue-tsc --noEmit`, `pnpm build`, visual confirmation (ring clearance
   while focused; current vs. other match colors side by side) against the mocked-IPC dev
   server tab.
+- 2026-08-24: ArrowUp/ArrowDown added as a second way to cycle matches from the search
+  input, alongside Enter/Shift+Enter and the Previous/Next buttons — same direction
+  mapping (Down = next, Up = previous). Edge cases worked through explicitly per the
+  developer's own ask: a single-line text input has no native behavior bound to either
+  arrow key (unlike ArrowLeft/Right, which move the caret), so claiming them is safe; the
+  handler is scoped to the search input's own `@keydown`, which is a different DOM element
+  from the tree rows' own separate ArrowUp/Down handler for row-to-row focus, so the two
+  keyboard systems can't contend for the same keystroke (verified with a dedicated test);
+  `goToMatch` already no-ops on zero matches, same guard Enter relies on; held-key
+  auto-repeat can't race the async `nextTick()` inside `goToMatch` since browser repeat
+  intervals are far slower than a microtask flush; and `autocomplete="off"` was added to
+  the input defensively, so a native suggestion dropdown can never intercept the arrow
+  keys, even though nothing about this field (no `name`, no prior submissions) was likely
+  to trigger one anyway. Nav button tooltips gained a `(↑)`/`(↓)` hint (new
+  `explorerPreviousMatchTitle`/`explorerNextMatchTitle` keys, separate from the
+  `aria-label` text so screen readers aren't read a glyph). Verified live: ArrowDown/Up
+  each move the match count and current-match highlight exactly like the buttons do.
+  Re-verified: `pnpm lint`, `pnpm test` (515/515 — 3 new tests: cycling, no-op on zero
+  matches, and non-interference with tree row focus), `vue-tsc --noEmit`, `pnpm build`.
 
 ### File List
 

@@ -265,10 +265,34 @@ watch(matches, (newMatches) => {
   }
 });
 
+// ArrowUp/Down as a second way to cycle matches, alongside Enter/Shift+Enter
+// and the Previous/Next buttons — same direction mapping as those buttons
+// (Down = next, Up = previous). Safe to claim unconditionally: a single-line
+// text input has no native behavior bound to either key (unlike
+// ArrowLeft/Right, which move the caret), and this handler is scoped to the
+// search input's own `@keydown` — the tree's *rows* have their own, entirely
+// separate ArrowUp/Down handler for row-to-row focus, bound to each
+// treeitem, not the input, so the two never contend for the same keystroke.
+// `goToMatch` already no-ops on zero matches (same guard Enter relies on),
+// and its only await point resolves on the next microtask flush, which
+// always completes well before a real held-key repeat's next event even at
+// the OS's fastest repeat rate — so rapid repeats stay correctly sequential
+// without any extra debouncing here.
 function onSearchKeydown(event: KeyboardEvent) {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  void goToMatch(currentMatchIndex.value + (event.shiftKey ? -1 : 1));
+  switch (event.key) {
+    case "Enter":
+      event.preventDefault();
+      void goToMatch(currentMatchIndex.value + (event.shiftKey ? -1 : 1));
+      break;
+    case "ArrowDown":
+      event.preventDefault();
+      void goToMatch(currentMatchIndex.value + 1);
+      break;
+    case "ArrowUp":
+      event.preventDefault();
+      void goToMatch(currentMatchIndex.value - 1);
+      break;
+  }
 }
 </script>
 
@@ -285,6 +309,7 @@ function onSearchKeydown(event: KeyboardEvent) {
         id="json-tree-search-input"
         v-model="searchQuery"
         type="text"
+        autocomplete="off"
         :aria-label="t('tools.json.explorerSearchLabel')"
         :placeholder="t('tools.json.explorerSearchPlaceholder')"
         @keydown.escape="clearSearch"
@@ -307,7 +332,7 @@ function onSearchKeydown(event: KeyboardEvent) {
           class="json-tree-nav-button"
           :disabled="matches.length === 0"
           :aria-label="t('tools.json.explorerPreviousMatch')"
-          :title="t('tools.json.explorerPreviousMatch')"
+          :title="t('tools.json.explorerPreviousMatchTitle')"
           @click="goToMatch(currentMatchIndex - 1)"
         >
           <PhCaretUp aria-hidden="true" />
@@ -317,7 +342,7 @@ function onSearchKeydown(event: KeyboardEvent) {
           class="json-tree-nav-button"
           :disabled="matches.length === 0"
           :aria-label="t('tools.json.explorerNextMatch')"
-          :title="t('tools.json.explorerNextMatch')"
+          :title="t('tools.json.explorerNextMatchTitle')"
           @click="goToMatch(currentMatchIndex + 1)"
         >
           <PhCaretDown aria-hidden="true" />

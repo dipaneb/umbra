@@ -316,6 +316,60 @@ describe("JsonTree", () => {
     expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 2");
   });
 
+  it("cycles matches with ArrowDown/ArrowUp in the search input, wrapping at either end", async () => {
+    wrapper = await mountTree(twoMatchFixture());
+
+    await searchInput(wrapper).setValue("apple");
+    await waitForSearchDebounce();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 2");
+
+    await searchInput(wrapper).trigger("keydown", { key: "ArrowDown" });
+    await nextTick();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("2 of 2");
+
+    await searchInput(wrapper).trigger("keydown", { key: "ArrowDown" });
+    await nextTick();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("1 of 2"); // wraps forward
+
+    await searchInput(wrapper).trigger("keydown", { key: "ArrowUp" });
+    await nextTick();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("2 of 2"); // wraps backward
+  });
+
+  it("does nothing (no crash, no state change) on ArrowDown/ArrowUp when there are no matches", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    await searchInput(wrapper).setValue("nonexistent-zzz");
+    await waitForSearchDebounce();
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("No matches");
+
+    await searchInput(wrapper).trigger("keydown", { key: "ArrowDown" });
+    await nextTick();
+    await searchInput(wrapper).trigger("keydown", { key: "ArrowUp" });
+    await nextTick();
+
+    expect(wrapper.find(".json-tree-match-count").text()).toBe("No matches");
+  });
+
+  it("does not let ArrowDown/ArrowUp on the search input move the tree's own roving row focus", async () => {
+    wrapper = await mountTree(twoMatchFixture());
+
+    await searchInput(wrapper).setValue("apple");
+    await waitForSearchDebounce();
+
+    const rowsBefore = treeItems(wrapper);
+    const rowIndexBefore = rowsBefore.findIndex((r) => r.attributes("tabindex") === "0");
+
+    await searchInput(wrapper).trigger("keydown", { key: "ArrowDown" });
+    await nextTick();
+
+    // The tree's own row-to-row keyboard navigation (a separate handler bound
+    // to each treeitem, not the search input) must be untouched by this —
+    // the roving tabindex should still point at the same row it did before.
+    const rowIndexAfter = treeItems(wrapper).findIndex((r) => r.attributes("tabindex") === "0");
+    expect(rowIndexAfter).toBe(rowIndexBefore);
+  });
+
   it("marks the current match's highlighted text distinctly from other matches", async () => {
     wrapper = await mountTree(twoMatchFixture());
 

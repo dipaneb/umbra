@@ -103,7 +103,9 @@
       "explorerNoMatches": "No matches",
       "explorerMatchPosition": "{current} of {total}",
       "explorerPreviousMatch": "Previous match",
+      "explorerPreviousMatchTitle": "Previous match (↑)",
       "explorerNextMatch": "Next match",
+      "explorerNextMatchTitle": "Next match (↓)",
       "comingSoon": "Coming soon.",
       "tab": {
         "explorer": "Explorer",
