@@ -213,7 +213,7 @@ would produce a query syntax Explorer's copied paths can't paste into).
         and ARIA tree roles. (Search/filter — the other item this line originally
         listed — is done, see the "second slice" entry above; this is the one thing
         left before Explorer fully satisfies AC7.)
-  - [ ] Rewrite Validate's error messages, register new `json-*` codes in
+  - [x] Rewrite Validate's error messages, register new `json-*` codes in
         `TRANSLATABLE_CODES` (`src/shell/toolError.ts`), add the "Try Repair" cross-link.
   - [ ] Build Repair's preview-then-confirm UI (per-change description, explicit apply step
         — never silent auto-apply).
@@ -393,6 +393,38 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   than silently no-op'ing on repeat. Re-verified: `pnpm lint`, `pnpm test` (525/525 — 4
   new tests: correct-chevron-only pulsing, keyboard parity, Enter exclusion, and the
   remount-on-repeat guarantee), `vue-tsc --noEmit`, `pnpm build`.
+- 2026-08-25: Validate tab (AC8). `crates/umbra-core/src/json.rs`'s
+  `map_parse_error` no longer passes `serde_json`'s generic error text through
+  unchanged — a new `classify_syntax_error` matches its `Display` output
+  (verified directly against the vendored 1.0.151 source, since `ErrorCode` is
+  `pub(crate)` and not otherwise inspectable) into 17 specific `json-*` codes
+  (`json-trailing-comma`, `json-unclosed-array`, `json-expected-colon`, etc.),
+  each with a rewritten English message that no longer duplicates the
+  structured `position` field's "at line X column Y" — a display bug that
+  existed before this slice, now fixed as a side effect. Every reachable
+  `ErrorCode` variant (confirmed reachable by reading `de.rs`; variants only
+  reachable when deserializing into a typed struct or numeric-keyed map are
+  excluded, since `parse`/`format`/`minify` only ever target `Value`) has its
+  own regression test. All 17 codes are registered in
+  `src/shell/toolError.ts`'s `TRANSLATABLE_CODES` with new `errors.json-*`
+  entries in both locales — closing the "zero `json-*` coverage" gap the
+  decision record flagged. `JsonView.vue` gained a real Validate tab panel: it
+  reuses the existing live-parse debounce (no new command or runner — this
+  isn't new computation, just a second view over the same parse result, per
+  AD-16's "genuinely independent state group" test) to show a neutral prompt
+  on empty input, "Valid JSON." on success, or the rewritten error plus a "Try
+  Repair" button that switches to the Repair tab (input is one shared ref, so
+  "carrying it over" is just switching which tab reads it). Caught one design
+  issue via the mocked-IPC dev server tab before calling this done: the Try
+  Repair `AppButton` inherited `.tab-panel`'s flex-column `align-items:
+  stretch` and rendered full-width instead of sized-to-content like
+  Format/Minify — fixed with a scoped `align-self: flex-start`. Verified in
+  both light and dark mode. Re-verified: `pnpm lint`, `pnpm test` (530/530 —
+  5 new tests plus 2 new `toolErrorMessage` unit tests), `vue-tsc --noEmit`,
+  `pnpm build`, `cargo fmt --check --all`, `cargo test --workspace` (158/158,
+  including the two existing `src-tauri/src/commands/json.rs` malformed-input
+  assertions updated from the old generic `json-syntax` code to the new
+  specific one).
 
 ### File List
 
@@ -410,3 +442,7 @@ Claude Sonnet 5 (`claude-sonnet-5`)
 - `src/tools/json/jsonTreeValue.ts` (modified)
 - `src/locales/en.json` (modified)
 - `src/locales/fr.json` (modified)
+- `crates/umbra-core/src/json.rs` (modified)
+- `src-tauri/src/commands/json.rs` (modified)
+- `src/shell/toolError.ts` (modified)
+- `src/shell/toolError.spec.ts` (modified)
