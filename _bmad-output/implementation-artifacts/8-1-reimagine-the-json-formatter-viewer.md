@@ -215,7 +215,7 @@ would produce a query syntax Explorer's copied paths can't paste into).
         left before Explorer fully satisfies AC7.)
   - [x] Rewrite Validate's error messages, register new `json-*` codes in
         `TRANSLATABLE_CODES` (`src/shell/toolError.ts`), add the "Try Repair" cross-link.
-  - [ ] Build Repair's preview-then-confirm UI (per-change description, explicit apply step
+  - [x] Build Repair's preview-then-confirm UI (per-change description, explicit apply step
         — never silent auto-apply).
   - [ ] Build Query's expression input + result view over the new `query` command.
   - [ ] Build Diff's two-document input + tree-mode highlighted result over the new `diff`
@@ -425,6 +425,61 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   including the two existing `src-tauri/src/commands/json.rs` malformed-input
   assertions updated from the old generic `json-syntax` code to the new
   specific one).
+- 2026-08-25: Repair tab (AC9). New `repair` pure function in
+  `crates/umbra-core/src/json.rs` (AD-1) — a single-pass char-by-char
+  heuristic scanner (`RepairScanner`) covering exactly AC9's five named
+  categories (trailing/missing commas, single quotes, unquoted keys,
+  JS-style comments, unclosed brackets), returning a `RepairResult`
+  (`repaired`, `changes: Vec<RepairChange>`, `still_invalid`) that only ever
+  *proposes* a fix — nothing mutates the caller's input, keeping the
+  preview-then-confirm contract honest at the core level (AD-9), not just
+  the view. `still_invalid` (re-parses `repaired` internally) is the honest
+  signal for input the heuristics can't fully fix — verified with a
+  dedicated regression test (a bare `1, 2` at the top level, outside all
+  five categories) rather than assumed. 20 new Rust unit tests, one per
+  reachable heuristic path plus a combined-categories case, a no-op-on-
+  already-valid case, and the size cap. Two real bugs the tests caught
+  before I trusted the algorithm: missing-comma insertion was leaving the
+  original whitespace in front of the inserted comma (`"1 ,2"` instead of
+  `"1,2"`) since whitespace is passed through by the scanner's main loop
+  before the comma-insertion branch ever runs — fixed by trimming trailing
+  whitespace off the output buffer first; and an unterminated-string test's
+  own expected literal was wrong (missed that the outer object was *also*
+  still open, since the malformed input's only `}` got consumed as string
+  content, not a structural token, so it needs its own closing brace too).
+  New `json_repair` Tauri command (`src-tauri/src/commands/json.rs`,
+  registered in `lib.rs`) dispatches via its own `spawn_blocking` call
+  (AD-4) — measured at 197ms on the 10MB fixture in a release build, well
+  inside Story 1.9's ~440–540ms baseline (AC14). `JsonView.vue` gained a
+  Repair tab panel with its own `createLatestWinsRunner()` scope (AD-16,
+  not shared with Format/Minify/Paste or live tree-parsing) — computed only
+  while Repair is the active tab (a `watch([activeTab, input])`, not an
+  always-on background watcher like Explorer/Validate, since nothing else
+  on screen reads this state) with a 200ms debounce matching the rest of
+  the tool. States: a neutral prompt on empty input; "already valid,
+  nothing to repair" when heuristics find no changes and the input already
+  parses; "no automatic fixes available" when heuristics find nothing to
+  change but the input still doesn't parse; and, when there are changes, a
+  bulleted per-change description list, a read-only "Repaired preview"
+  textarea (`--font-code-*` tokens, dimmed via `--color-text-secondary` so
+  it doesn't visually compete with the shared input above it), an honest
+  still-invalid note when repair fixed something but couldn't fully
+  validate it, and an "Apply repair" button — the only place `repaired`
+  ever replaces the shared input, and only on this explicit click. Reused
+  the `.tab-action-button` class (renamed from Validate's
+  `.try-repair-button`) for the same flex-column full-width-stretch fix.
+  New `src/tools/json/jsonRepair.ts` mirrors `RepairChange`/`RepairResult`
+  by hand (snake_case field names, matching this codebase's existing IPC-type
+  convention, e.g. `ScheduleParseResult.next_runs`) — no i18n coverage for
+  per-change `description` text yet (English only; AC9 doesn't require it,
+  unlike AC8's explicit `TRANSLATABLE_CODES` ask for Validate — a deliberate
+  scope boundary, not an oversight). Verified visually against the
+  mocked-IPC dev server tab (change list, read-only preview, Apply
+  replacing the input and the tab immediately re-showing "nothing to
+  repair", the still-invalid note) in both light and dark mode. Re-verified:
+  `pnpm lint`, `pnpm test` (535/535 — 6 new tests), `vue-tsc --noEmit`,
+  `pnpm build`, `cargo fmt --check --all`, `cargo test --workspace`
+  (255/255: 177 umbra-core + 77 umbra/src-tauri + 1 integration test).
 
 ### File List
 
@@ -446,3 +501,4 @@ Claude Sonnet 5 (`claude-sonnet-5`)
 - `src-tauri/src/commands/json.rs` (modified)
 - `src/shell/toolError.ts` (modified)
 - `src/shell/toolError.spec.ts` (modified)
+- `src/tools/json/jsonRepair.ts` (new)
