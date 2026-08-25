@@ -1,5 +1,5 @@
 use umbra_core::ToolError;
-use umbra_core::json::{JsonIndent, JsonTreeValue, format, minify, parse};
+use umbra_core::json::{JsonIndent, JsonTreeValue, RepairResult, format, minify, parse, repair};
 
 #[tauri::command]
 pub async fn json_format(input: String, indent: JsonIndent) -> Result<String, ToolError> {
@@ -18,6 +18,16 @@ pub async fn json_minify(input: String) -> Result<String, ToolError> {
 #[tauri::command]
 pub async fn json_parse(input: String) -> Result<JsonTreeValue, ToolError> {
     tauri::async_runtime::spawn_blocking(move || parse(&input).map(Into::into))
+        .await
+        .map_err(map_join_error)?
+}
+
+// Story 8.1 AC9/AC14: Repair is genuinely new computation (a char-by-char
+// heuristic scan), so it gets its own `spawn_blocking` dispatch here — not
+// piggybacked on `json_parse`'s.
+#[tauri::command]
+pub async fn json_repair(input: String) -> Result<RepairResult, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || repair(&input))
         .await
         .map_err(map_join_error)?
 }
@@ -88,6 +98,20 @@ mod tests {
         assert_eq!(err.code, "json-expected-value");
     }
 
+    #[tokio::test]
+    async fn json_repair_command_fixes_a_trailing_comma() {
+        let result = json_repair("[1,2,]".to_string()).await.unwrap();
+        assert_eq!(result.repaired, "[1,2]");
+        assert_eq!(result.changes.len(), 1);
+        assert!(!result.still_invalid);
+    }
+
+    #[tokio::test]
+    async fn json_repair_command_reports_still_invalid_for_unfixable_input() {
+        let result = json_repair("1, 2".to_string()).await.unwrap();
+        assert!(result.still_invalid);
+    }
+
     // Wide, flat array of many small same-shaped objects — same shape/rationale as
     // umbra-core's fixture (see crates/umbra-core/src/json.rs); duplicated locally
     // per this story's Dev Notes rather than sharing a test-util crate for two ~15
@@ -153,6 +177,20 @@ mod tests {
         assert!(
             elapsed.as_secs() < 20,
             "json_parse took {elapsed:?} on a 10MB document"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_repair_command_handles_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let start = std::time::Instant::now();
+        let result = json_repair(input).await;
+        let elapsed = start.elapsed();
+        eprintln!("json_repair_command_handles_10mb_document: {elapsed:?}");
+        assert!(result.is_ok());
+        assert!(
+            elapsed.as_secs() < 20,
+            "json_repair took {elapsed:?} on a 10MB document"
         );
     }
 

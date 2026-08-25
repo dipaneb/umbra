@@ -110,6 +110,12 @@
       "validateEmpty": "Collez du JSON ci-dessus pour le valider.",
       "validateValid": "JSON valide.",
       "tryRepair": "Essayer la réparation",
+      "repairEmpty": "Collez du JSON malformé ci-dessus pour voir des suggestions de réparation.",
+      "repairNoChangesNeeded": "Ce JSON est déjà valide — rien à réparer.",
+      "repairNoFixesAvailable": "Aucune correction automatique disponible pour cette entrée.",
+      "repairStillInvalid": "Ces corrections ne suffisent pas à rendre ce JSON valide — il faudra peut-être corriger le reste à la main.",
+      "repairPreviewLabel": "Aperçu réparé",
+      "applyRepair": "Appliquer la réparation",
       "tab": {
         "explorer": "Explorateur",
         "validate": "Validation",

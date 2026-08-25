@@ -298,6 +298,95 @@ describe("JsonView", () => {
     expect(inputValue(wrapper)).toBe('{"a":}');
   });
 
+  // Every Repair test below routes `json_parse` (the always-on live-tree
+  // watcher, unrelated to Repair but fired by the same `input` change) to a
+  // harmless empty tree, and asserts only against `json_repair`'s result —
+  // keeps each test's mock focused on what it's actually exercising.
+  function mockRepair(result: unknown) {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_repair") return Promise.resolve(result);
+      if (cmd === "json_parse") return Promise.resolve(null);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+  }
+
+  it("shows a neutral prompt on the Repair tab when input is empty (AC9)", async () => {
+    wrapper = mount(JsonView);
+    await wrapper.find("#tab-repair").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-repair").text()).toBe("Paste malformed JSON above to see repair suggestions.");
+  });
+
+  it("shows a no-changes-needed status on the Repair tab for already-valid input (AC9)", async () => {
+    mockRepair({ repaired: '{"a":1}', changes: [], still_invalid: false });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-repair").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-repair").text()).toBe("This input is already valid JSON — nothing to repair.");
+  });
+
+  it("shows a no-fixes-available status when heuristics find nothing to change but input stays invalid (AC9)", async () => {
+    mockRepair({ repaired: "1, 2", changes: [], still_invalid: true });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue("1, 2");
+    await wrapper.find("#tab-repair").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-repair").text()).toBe("No automatic fixes available for this input.");
+  });
+
+  it("shows per-change descriptions, a preview, and applies the repair only on explicit confirm (AC9)", async () => {
+    mockRepair({
+      repaired: "[1,2]",
+      changes: [{ code: "trailing-comma", description: "Removed a trailing comma before a closing bracket", position: null }],
+      still_invalid: false,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue("[1,2,]");
+    await wrapper.find("#tab-repair").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const panel = wrapper.find("#tabpanel-repair");
+    expect(panel.text()).toContain("Removed a trailing comma before a closing bracket");
+    expect((wrapper.find("#repair-preview").element as HTMLTextAreaElement).value).toBe("[1,2]");
+    // Preview-then-confirm (AD-9): the original input is untouched until Apply is clicked.
+    expect(inputValue(wrapper)).toBe("[1,2,]");
+
+    mockRepair({ repaired: "[1,2]", changes: [], still_invalid: false });
+    await clickButton(wrapper, "Apply repair");
+    await flushPromises();
+
+    expect(inputValue(wrapper)).toBe("[1,2]");
+  });
+
+  it("shows an honest still-invalid note when repair fixes something but can't fully validate it (AC9)", async () => {
+    mockRepair({
+      repaired: '{"a": 1,',
+      changes: [{ code: "single-quoted-string", description: "Converted a single-quoted string to double-quoted", position: null }],
+      still_invalid: true,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue("{'a': 1,");
+    await wrapper.find("#tab-repair").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-repair").text()).toContain(
+      "These fixes aren't enough to make this valid JSON — you may need to fix the rest by hand.",
+    );
+  });
+
   it("ends up with a null tree, not a stale value, when input is cleared before a slow parse resolves", async () => {
     const slow = deferred<JsonTreeValue>();
     invokeMock.mockReturnValueOnce(slow.promise);
@@ -372,12 +461,12 @@ describe("JsonView", () => {
   it("shows an honest placeholder, not the tree, for a not-yet-built tab (AC6)", async () => {
     wrapper = mount(JsonView);
 
-    // Validate now has real content (AC8) — Repair is still an honest
-    // placeholder, so it's the one that exercises this AC6 behavior.
-    await wrapper.find("#tab-repair").trigger("click");
+    // Validate and Repair now have real content (AC8/AC9) — Query is still
+    // an honest placeholder, so it's the one that exercises this AC6 behavior.
+    await wrapper.find("#tab-query").trigger("click");
 
     expect(wrapper.findComponent(JsonTree).exists()).toBe(false);
-    expect(wrapper.find("#tabpanel-repair").text()).toBe("Coming soon.");
+    expect(wrapper.find("#tabpanel-query").text()).toBe("Coming soon.");
   });
 
   it("surfaces a tree copy failure through the same error alert as Format/Minify", async () => {

@@ -110,6 +110,12 @@
       "validateEmpty": "Paste JSON above to validate it.",
       "validateValid": "Valid JSON.",
       "tryRepair": "Try Repair",
+      "repairEmpty": "Paste malformed JSON above to see repair suggestions.",
+      "repairNoChangesNeeded": "This input is already valid JSON — nothing to repair.",
+      "repairNoFixesAvailable": "No automatic fixes available for this input.",
+      "repairStillInvalid": "These fixes aren't enough to make this valid JSON — you may need to fix the rest by hand.",
+      "repairPreviewLabel": "Repaired preview",
+      "applyRepair": "Apply repair",
       "tab": {
         "explorer": "Explorer",
         "validate": "Validate",

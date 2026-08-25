@@ -9,6 +9,7 @@ import { createLatestWinsRunner } from "../../shell/invoke";
 import { isToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import JsonTree from "./JsonTree.vue";
 import type { JsonIndent } from "./jsonIndent";
+import type { RepairResult } from "./jsonRepair";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 const { t } = useI18n();
@@ -23,6 +24,12 @@ const treeValue = ref<JsonTreeValue | null>(null);
 // independent state group" test actually calls for, since this isn't new
 // computation, just a second view over the same one.
 const validateError = ref<ToolError | null>(null);
+
+// Repair (AC9): unlike Validate, this is genuinely new computation (a
+// char-by-char heuristic scan, not a re-read of the existing parse), so it
+// gets its own preview state and its own runner scope below (AD-16/AC14).
+const repairResult = ref<RepairResult | null>(null);
+const repairError = ref<ToolError | null>(null);
 
 // Story 8.1 Task 2 (AC6): six tabs replace the old single flat panel; every
 // tab reads this one shared `input`. Only Explorer is wired up so far — the
@@ -68,10 +75,49 @@ const debouncedParse = debounce((value: string) => {
 
 watch(input, (value) => debouncedParse(value), { immediate: true });
 
+// Own runner scope (AD-16): repair is a separate independent state group
+// from Format/Minify/Paste and from live tree-parsing — none of those three
+// should have their in-flight request treated as superseded by a repair
+// preview firing on the same keystroke, or vice versa.
+const runRepair = createLatestWinsRunner();
+
+const debouncedRepair = debounce((value: string) => {
+  void (async () => {
+    try {
+      const result = await runRepair(() =>
+        value.trim() === "" ? Promise.resolve(null) : invoke<RepairResult>("json_repair", { input: value }),
+      );
+      if (!result.superseded) {
+        repairResult.value = result.value;
+        repairError.value = null;
+      }
+    } catch (err) {
+      repairResult.value = null;
+      repairError.value = toToolError(err);
+    }
+  })();
+}, 200);
+
+// Only computed while Repair is the active tab — unlike Explorer/Validate,
+// nothing else on screen reads this, so there's no reason to run it in the
+// background for a tab the user isn't looking at. Watching `[activeTab,
+// input]` together (rather than a separate watcher per source) means typing
+// while already on Repair re-previews too, not just the initial tab switch.
+watch(
+  [activeTab, input],
+  ([tab, value]) => {
+    if (tab === "repair") debouncedRepair(value);
+  },
+  { immediate: true },
+);
+
 // Otherwise a pending timer fires into this component's refs after the user
 // has navigated away to a different tool, wasting a debounce cycle and an
 // IPC round-trip that nothing will ever read.
-onUnmounted(() => debouncedParse.cancel());
+onUnmounted(() => {
+  debouncedParse.cancel();
+  debouncedRepair.cancel();
+});
 
 function positionText(position: ToolError["position"]): string | null {
   if (position?.kind === "LineCol") {
@@ -85,6 +131,7 @@ function positionText(position: ToolError["position"]): string | null {
 
 const errorLocation = computed(() => positionText(error.value?.position ?? null));
 const validateErrorLocation = computed(() => positionText(validateError.value?.position ?? null));
+const repairErrorLocation = computed(() => positionText(repairError.value?.position ?? null));
 const isInputEmpty = computed(() => input.value.trim() === "");
 
 function toToolError(err: unknown): ToolError {
@@ -125,6 +172,13 @@ async function onMinify() {
 
 function onTreeCopyError(err: unknown) {
   error.value = toToolError(err);
+}
+
+// Story 8.1 AC9: the only place `repaired` ever replaces the shared input —
+// never automatic, only on this explicit click (AD-9 preview-then-confirm).
+function onApplyRepair() {
+  if (!repairResult.value) return;
+  input.value = repairResult.value.repaired;
 }
 </script>
 
@@ -220,7 +274,7 @@ function onTreeCopyError(err: unknown) {
           </template>
         </p>
         <AppButton
-          class="try-repair-button"
+          class="tab-action-button"
           @click="onTryRepair"
         >
           {{ t('tools.json.tryRepair') }}
@@ -232,6 +286,74 @@ function onTreeCopyError(err: unknown) {
       >
         {{ t('tools.json.validateValid') }}
       </p>
+    </div>
+    <div
+      v-else-if="activeTab === 'repair'"
+      id="tabpanel-repair"
+      role="tabpanel"
+      aria-labelledby="tab-repair"
+      class="tab-panel"
+    >
+      <p
+        v-if="isInputEmpty"
+        role="status"
+      >
+        {{ t('tools.json.repairEmpty') }}
+      </p>
+      <p
+        v-else-if="repairError"
+        role="alert"
+      >
+        {{ toolErrorMessage(repairError, t) }}<template v-if="repairErrorLocation">
+          {{ repairErrorLocation }}
+        </template>
+      </p>
+      <template v-else-if="repairResult">
+        <p
+          v-if="repairResult.changes.length === 0 && !repairResult.still_invalid"
+          role="status"
+        >
+          {{ t('tools.json.repairNoChangesNeeded') }}
+        </p>
+        <p
+          v-else-if="repairResult.changes.length === 0"
+          role="status"
+        >
+          {{ t('tools.json.repairNoFixesAvailable') }}
+        </p>
+        <template v-else>
+          <ul class="repair-changes">
+            <li
+              v-for="(change, index) in repairResult.changes"
+              :key="index"
+            >
+              {{ change.description }}
+            </li>
+          </ul>
+          <p
+            v-if="repairResult.still_invalid"
+            role="status"
+          >
+            {{ t('tools.json.repairStillInvalid') }}
+          </p>
+          <div class="field">
+            <label for="repair-preview">{{ t('tools.json.repairPreviewLabel') }}</label>
+            <textarea
+              id="repair-preview"
+              :value="repairResult.repaired"
+              rows="10"
+              readonly
+              spellcheck="false"
+            />
+          </div>
+          <AppButton
+            class="tab-action-button"
+            @click="onApplyRepair"
+          >
+            {{ t('tools.json.applyRepair') }}
+          </AppButton>
+        </template>
+      </template>
     </div>
     <div
       v-else
@@ -323,8 +445,9 @@ p[role="alert"] {
 
 /* .tab-panel's flex-column default (align-items: stretch) would otherwise
    stretch this to the panel's full width, unlike Format/Minify's row of
-   naturally-sized buttons above. */
-.try-repair-button {
+   naturally-sized buttons above. Shared by Validate's "Try Repair" and
+   Repair's own "Apply repair" — same constraint, same fix. */
+.tab-action-button {
   align-self: flex-start;
 }
 
@@ -336,6 +459,26 @@ p[role="alert"] {
   max-width: 70em;
   border: 1px solid var(--color-border-hairline);
   border-radius: var(--radius-default);
+}
+
+.repair-changes {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.repair-changes li {
+  padding: 0.15em 0;
+}
+
+#repair-preview {
+  font-family: var(--font-code-family);
+  font-size: var(--font-code-size);
+  min-width: 20em;
+  max-width: 70em;
+  width: 100%;
+  /* Read-only preview, not a second editable document — dimmed so it doesn't
+     compete visually with the shared input above it. */
+  color: var(--color-text-secondary);
 }
 
 .coming-soon {
