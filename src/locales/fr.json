@@ -98,6 +98,8 @@
       "treeItemsCountOther": "[{count} éléments]",
       "copyValueAriaLabel": "Copier la valeur",
       "copyPathAriaLabel": "Copier le JSONPath",
+      "copiedValueAriaLabel": "Valeur copiée",
+      "copiedPathAriaLabel": "JSONPath copié",
       "explorerSearchLabel": "Rechercher dans les clés et valeurs",
       "explorerSearchPlaceholder": "Rechercher dans les clés et valeurs…",
       "explorerNoMatches": "Aucun résultat",

@@ -2,7 +2,7 @@
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useVirtualizer } from "@tanstack/vue-virtual";
-import { PhCaretDown, PhCaretRight, PhCaretUp, PhCopySimple, PhLink } from "@phosphor-icons/vue";
+import { PhCaretDown, PhCaretRight, PhCaretUp, PhCheck, PhCopySimple, PhLink } from "@phosphor-icons/vue";
 import { writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
 import {
@@ -14,15 +14,27 @@ import {
 } from "./flattenJsonTree";
 import { jsonTreeValueToText } from "./jsonTreeValue";
 import type { JsonTreeValue } from "./jsonTreeValue";
+import { useCopyFeedback } from "./useCopyFeedback";
 
 const { t } = useI18n();
 
 const props = defineProps<{ value: JsonTreeValue | null }>();
 const emit = defineEmits<{ (e: "copy-error", error: unknown): void }>();
 
+const { isCopied, markCopied, cancel: cancelCopyFeedback } = useCopyFeedback();
+
+function valueCopyKey(row: JsonTreeRow): string {
+  return `${row.path}:value`;
+}
+
+function pathCopyKey(row: JsonTreeRow): string {
+  return `${row.path}:path`;
+}
+
 async function copyValue(row: JsonTreeRow) {
   try {
     await writeClipboardText(jsonTreeValueToText(row.value));
+    markCopied(valueCopyKey(row));
   } catch (err) {
     emit("copy-error", err);
   }
@@ -31,6 +43,7 @@ async function copyValue(row: JsonTreeRow) {
 async function copyPath(row: JsonTreeRow) {
   try {
     await writeClipboardText(row.jsonPath);
+    markCopied(pathCopyKey(row));
   } catch (err) {
     emit("copy-error", err);
   }
@@ -211,7 +224,10 @@ const debouncedSetQuery = debounce((value: string) => {
   debouncedQuery.value = value;
 }, 150);
 watch(searchQuery, (value) => debouncedSetQuery(value), { immediate: true });
-onUnmounted(() => debouncedSetQuery.cancel());
+onUnmounted(() => {
+  debouncedSetQuery.cancel();
+  cancelCopyFeedback();
+});
 
 function clearSearch() {
   searchQuery.value = "";
@@ -467,24 +483,43 @@ function onSearchKeydown(event: KeyboardEvent) {
             class="json-tree-highlight"
             :class="{ 'json-tree-highlight-current': isCurrentOccurrence(row.path, 'value', seg.occurrenceIndex) }"
           >{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template></span>
-          <span class="json-tree-row-actions">
+          <span
+            class="json-tree-row-actions"
+            :class="{ 'json-tree-row-actions-visible': isCopied(valueCopyKey(row)) || isCopied(pathCopyKey(row)) }"
+          >
             <button
               type="button"
               class="json-tree-copy-button"
-              :aria-label="t('tools.json.copyValueAriaLabel')"
-              :title="t('tools.json.copyValueAriaLabel')"
+              :aria-label="isCopied(valueCopyKey(row)) ? t('tools.json.copiedValueAriaLabel') : t('tools.json.copyValueAriaLabel')"
+              :title="isCopied(valueCopyKey(row)) ? t('tools.json.copiedValueAriaLabel') : t('tools.json.copyValueAriaLabel')"
               @click.stop="copyValue(row)"
             >
-              <PhCopySimple aria-hidden="true" />
+              <PhCheck
+                v-if="isCopied(valueCopyKey(row))"
+                aria-hidden="true"
+                class="json-tree-copy-success"
+              />
+              <PhCopySimple
+                v-else
+                aria-hidden="true"
+              />
             </button>
             <button
               type="button"
               class="json-tree-copy-button"
-              :aria-label="t('tools.json.copyPathAriaLabel')"
-              :title="t('tools.json.copyPathAriaLabel')"
+              :aria-label="isCopied(pathCopyKey(row)) ? t('tools.json.copiedPathAriaLabel') : t('tools.json.copyPathAriaLabel')"
+              :title="isCopied(pathCopyKey(row)) ? t('tools.json.copiedPathAriaLabel') : t('tools.json.copyPathAriaLabel')"
               @click.stop="copyPath(row)"
             >
-              <PhLink aria-hidden="true" />
+              <PhCheck
+                v-if="isCopied(pathCopyKey(row))"
+                aria-hidden="true"
+                class="json-tree-copy-success"
+              />
+              <PhLink
+                v-else
+                aria-hidden="true"
+              />
             </button>
           </span>
         </div>
@@ -678,6 +713,15 @@ function onSearchKeydown(event: KeyboardEvent) {
   opacity: 1;
 }
 
+/* The hover-reveal above would otherwise hide the "copied" checkmark the
+   instant the mouse leaves the row after a click — a real risk, since
+   clicking a button is exactly the kind of action that moves the cursor
+   away from the row. Forces visibility for the confirmation's full
+   duration regardless of hover/focus state. */
+.json-tree-row-actions-visible {
+  opacity: 1;
+}
+
 /* Fixed px, not em: the row's own font-size is `--font-code-size` (13px) —
    sizing the icon relative to that made both the hit target and the glyph
    too small to read at a glance. A copy icon's legibility floor doesn't
@@ -709,5 +753,14 @@ function onSearchKeydown(event: KeyboardEvent) {
   outline: 2px solid var(--color-accent-signature);
   outline-offset: 1px;
   opacity: 1;
+}
+
+/* Reuses the signature accent as the "this happened" color, same as
+   `.json-tree-highlight-current`/the nav-pulse chevrons already do — this
+   app's palette has no separate green/success hue (DESIGN.md reserves
+   orange as the one accent, not a rainbow), so success reuses it rather
+   than introducing a new semantic color. */
+.json-tree-copy-success {
+  color: var(--color-accent-signature);
 }
 </style>

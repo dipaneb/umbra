@@ -255,6 +255,46 @@ describe("JsonTree", () => {
 
     const emitted = wrapper.emitted("copy-error");
     expect(emitted?.[0]?.[0]).toBeInstanceOf(Error);
+    // A failed write must not also flash a false "copied" confirmation.
+    expect(rowB?.find('button[aria-label="Value copied"]').exists()).toBe(false);
+  });
+
+  it("briefly confirms Copy value with a changed label and checkmark, independent of Copy path", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    const rowB = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+    await rowB?.find('button[aria-label="Copy value"]').trigger("click");
+    await nextTick();
+
+    expect(rowB?.find('button[aria-label="Value copied"]').exists()).toBe(true);
+    expect(rowB?.find('button[aria-label="Value copied"] svg').exists()).toBe(true);
+    // Only the clicked button's own confirmation shows — the sibling Copy
+    // path button on the same row is unaffected.
+    expect(rowB?.find('button[aria-label="Copy JSONPath"]').exists()).toBe(true);
+    expect(rowB?.find('button[aria-label="JSONPath copied"]').exists()).toBe(false);
+  });
+
+  // The feedback window (1500ms, useCopyFeedback.ts) is exercised with real
+  // timers, not `vi.useFakeTimers()` — this file already relies on real
+  // `nextTick()`/ResizeObserver timing for the virtualizer elsewhere, and
+  // mixing fake timers in for just this one test would risk disturbing that.
+  async function waitForCopyFeedbackToExpire() {
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+    await nextTick();
+  }
+
+  it("reverts the copy confirmation back to its normal label after the feedback window elapses", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    const rowB = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+    await rowB?.find('button[aria-label="Copy value"]').trigger("click");
+    await nextTick();
+    expect(rowB?.find('button[aria-label="Value copied"]').exists()).toBe(true);
+
+    await waitForCopyFeedbackToExpire();
+
+    expect(rowB?.find('button[aria-label="Value copied"]').exists()).toBe(false);
+    expect(rowB?.find('button[aria-label="Copy value"]').exists()).toBe(true);
   });
 
   it("auto-expands ancestors of a match without hiding unrelated siblings", async () => {

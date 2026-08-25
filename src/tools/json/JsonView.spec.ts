@@ -564,6 +564,53 @@ describe("JsonView", () => {
     expect(writeTextMock).toHaveBeenCalledWith("$['a']");
   });
 
+  it("briefly confirms a query match copy with a changed label and checkmark, then reverts (AC10)", async () => {
+    mockQuery({ matches: [{ path: "$['a']", value: { kind: "Number", data: "1" } }], total: 1, truncated: false });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-query").trigger("click");
+    await wrapper.find("#json-query-expression").setValue("$.a");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const [valueButton, pathButton] = wrapper.find("li.query-match").findAll("button");
+    await valueButton.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('button[aria-label="Value copied"]').exists()).toBe(true);
+    expect(wrapper.find('button[aria-label="Value copied"] svg').exists()).toBe(true);
+    // Only the clicked (value) button's confirmation shows — the sibling
+    // copy-path button on the same match is unaffected.
+    expect(pathButton.attributes("aria-label")).toBe("Copy JSONPath");
+
+    await vi.advanceTimersByTimeAsync(1500);
+    await flushPromises();
+
+    expect(wrapper.find('button[aria-label="Value copied"]').exists()).toBe(false);
+    expect(wrapper.find('button[aria-label="Copy value"]').exists()).toBe(true);
+  });
+
+  it("does not show a false copied confirmation when a query match copy fails (AC10)", async () => {
+    mockQuery({ matches: [{ path: "$['a']", value: { kind: "Number", data: "1" } }], total: 1, truncated: false });
+    writeTextMock.mockRejectedValueOnce(new Error("clipboard write failed"));
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-query").trigger("click");
+    await wrapper.find("#json-query-expression").setValue("$.a");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const [valueButton] = wrapper.find("li.query-match").findAll("button");
+    await valueButton.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('button[aria-label="Value copied"]').exists()).toBe(false);
+    // Same shared error-alert path Explorer's own copy failures already use.
+    expect(wrapper.find("[role='alert']").text()).toContain("clipboard write failed");
+  });
+
   it("surfaces an invalid-expression error on the Query tab without a document-caret jump link (AC10)", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "json_query") {

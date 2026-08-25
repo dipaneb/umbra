@@ -2,7 +2,7 @@
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
-import { PhCopySimple, PhLink } from "@phosphor-icons/vue";
+import { PhCheck, PhCopySimple, PhLink } from "@phosphor-icons/vue";
 import AppButton from "../../components/AppButton.vue";
 import AppTabs, { type AppTab } from "../../components/AppTabs.vue";
 import { writeClipboardText } from "../../shell/clipboard";
@@ -15,6 +15,7 @@ import type { QueryMatch, QueryResult } from "./jsonQuery";
 import type { RepairResult } from "./jsonRepair";
 import { jsonTreeValueToText } from "./jsonTreeValue";
 import type { JsonTreeValue } from "./jsonTreeValue";
+import { useCopyFeedback } from "./useCopyFeedback";
 
 const { t } = useI18n();
 
@@ -169,6 +170,7 @@ onUnmounted(() => {
   debouncedParse.cancel();
   debouncedRepair.cancel();
   debouncedQueryRun.cancel();
+  cancelQueryCopyFeedback();
 });
 
 function positionText(position: ToolError["position"]): string | null {
@@ -257,9 +259,21 @@ function onApplyRepair() {
 // `copy-error` emit, caught by `onTreeCopyError` above) — reused directly
 // rather than inventing a second error-surfacing path for the same kind of
 // failure.
+const { isCopied: isQueryMatchCopied, markCopied: markQueryMatchCopied, cancel: cancelQueryCopyFeedback } =
+  useCopyFeedback();
+
+function queryMatchValueCopyKey(match: QueryMatch): string {
+  return `${match.path}:value`;
+}
+
+function queryMatchPathCopyKey(match: QueryMatch): string {
+  return `${match.path}:path`;
+}
+
 async function copyQueryMatchValue(match: QueryMatch) {
   try {
     await writeClipboardText(jsonTreeValueToText(match.value));
+    markQueryMatchCopied(queryMatchValueCopyKey(match));
   } catch (err) {
     error.value = toToolError(err);
   }
@@ -268,6 +282,7 @@ async function copyQueryMatchValue(match: QueryMatch) {
 async function copyQueryMatchPath(match: QueryMatch) {
   try {
     await writeClipboardText(match.path);
+    markQueryMatchCopied(queryMatchPathCopyKey(match));
   } catch (err) {
     error.value = toToolError(err);
   }
@@ -544,20 +559,36 @@ async function copyQueryMatchPath(match: QueryMatch) {
                 <button
                   type="button"
                   class="query-copy-button"
-                  :aria-label="t('tools.json.copyValueAriaLabel')"
-                  :title="t('tools.json.copyValueAriaLabel')"
+                  :aria-label="isQueryMatchCopied(queryMatchValueCopyKey(match)) ? t('tools.json.copiedValueAriaLabel') : t('tools.json.copyValueAriaLabel')"
+                  :title="isQueryMatchCopied(queryMatchValueCopyKey(match)) ? t('tools.json.copiedValueAriaLabel') : t('tools.json.copyValueAriaLabel')"
                   @click="copyQueryMatchValue(match)"
                 >
-                  <PhCopySimple aria-hidden="true" />
+                  <PhCheck
+                    v-if="isQueryMatchCopied(queryMatchValueCopyKey(match))"
+                    aria-hidden="true"
+                    class="query-copy-success"
+                  />
+                  <PhCopySimple
+                    v-else
+                    aria-hidden="true"
+                  />
                 </button>
                 <button
                   type="button"
                   class="query-copy-button"
-                  :aria-label="t('tools.json.copyPathAriaLabel')"
-                  :title="t('tools.json.copyPathAriaLabel')"
+                  :aria-label="isQueryMatchCopied(queryMatchPathCopyKey(match)) ? t('tools.json.copiedPathAriaLabel') : t('tools.json.copyPathAriaLabel')"
+                  :title="isQueryMatchCopied(queryMatchPathCopyKey(match)) ? t('tools.json.copiedPathAriaLabel') : t('tools.json.copyPathAriaLabel')"
                   @click="copyQueryMatchPath(match)"
                 >
-                  <PhLink aria-hidden="true" />
+                  <PhCheck
+                    v-if="isQueryMatchCopied(queryMatchPathCopyKey(match))"
+                    aria-hidden="true"
+                    class="query-copy-success"
+                  />
+                  <PhLink
+                    v-else
+                    aria-hidden="true"
+                  />
                 </button>
               </span>
             </li>
@@ -814,5 +845,12 @@ p[role="alert"] {
 .query-copy-button:focus-visible {
   outline: 2px solid var(--color-accent-signature);
   outline-offset: 1px;
+}
+
+/* Same reasoning as JsonTree.vue's `.json-tree-copy-success` — reuses the
+   signature accent as the "this happened" color rather than a separate
+   green/success hue this app's palette doesn't have. */
+.query-copy-success {
+  color: var(--color-accent-signature);
 }
 </style>
