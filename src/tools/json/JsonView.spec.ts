@@ -138,6 +138,75 @@ describe("JsonView", () => {
     expect(alert.text()).toContain("(line 3, column 5)");
   });
 
+  // Regression: the message and position used to be two adjacent text
+  // nodes with only incidental template whitespace between them, which Vue
+  // silently collapsed to nothing ("...inputend of input(line 3, column
+  // 5)"). The position is now its own element (spaced via CSS margin, not a
+  // text-node space), so this asserts real DOM separation rather than mere
+  // substring containment — `.toContain` alone wouldn't have caught the
+  // original bug, since both strings are still "contained" even glued
+  // together with no space.
+  it("keeps the error message and its position as separate elements, not run together (regression)", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "json-expected-value",
+      message: "expected a value here",
+      position: { kind: "LineCol", line: 1, column: 6 },
+      context: null,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":}');
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+
+    const alert = wrapper.find("[role='alert']");
+    const positionLink = alert.find(".position-link");
+    expect(positionLink.exists()).toBe(true);
+    expect(positionLink.text()).toBe("(line 1, column 6)");
+    expect(alert.text()).not.toContain("here(line");
+  });
+
+  it("moves the textarea's caret to the reported position when it's clicked (AC8 follow-up)", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "json-expected-value",
+      message: "expected a value here",
+      position: { kind: "LineCol", line: 1, column: 6 },
+      context: null,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":}');
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+    await wrapper.find(".position-link").trigger("click");
+
+    // Column 6 (1-indexed) on the single line '{"a":}' is offset 5 — right
+    // before the '}' where a value was expected.
+    const textarea = inputTextarea(wrapper).element as HTMLTextAreaElement;
+    expect(textarea.selectionStart).toBe(5);
+    expect(textarea.selectionEnd).toBe(5);
+  });
+
+  it("moves the caret past earlier lines when the reported position is on a later line", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "json-expected-object-separator",
+      message: "expected , or }",
+      position: { kind: "LineCol", line: 3, column: 3 },
+      context: null,
+    });
+    wrapper = mount(JsonView);
+
+    const value = '{\n  "a": 1\n  "b": 2\n}';
+    await inputTextarea(wrapper).setValue(value);
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+    await wrapper.find(".position-link").trigger("click");
+
+    const textarea = inputTextarea(wrapper).element as HTMLTextAreaElement;
+    const expectedOffset = value.split("\n").slice(0, 2).join("\n").length + 1 + 2; // start of line 3 + column 3
+    expect(textarea.selectionStart).toBe(expectedOffset);
+  });
+
   it("does not render a Paste or Copy button — cut in the Story 8.1 Task 2 design pass", () => {
     wrapper = mount(JsonView);
 

@@ -177,13 +177,16 @@ impl RepairScanner {
 
     fn maybe_insert_missing_comma(&mut self) {
         if self.after_value && matches!(self.stack.last(), Some('{') | Some('[')) {
-            // Whitespace between the two values was already passed straight
-            // through to `out` by `run`'s whitespace branch before this ever
-            // gets a chance to fire — trim it back off first so the fix
-            // reads as a clean `,`, not a stray space sitting in front of it.
-            let trimmed_len = self.out.trim_end().len();
-            self.out.truncate(trimmed_len);
-            self.out.push(',');
+            // Whitespace between the two values (including a real newline +
+            // indentation, for a multi-line document) was already passed
+            // straight through to `out` by `run`'s whitespace branch before
+            // this ever gets a chance to fire. `insert` (not truncate-then-
+            // push) splices the comma in right after the real content
+            // without touching any of that trailing whitespace — preserving
+            // the document's original line breaks/indentation instead of
+            // collapsing everything after the fix onto one line.
+            let insert_at = self.out.trim_end().len();
+            self.out.insert(insert_at, ',');
             self.push_change(
                 "missing-comma",
                 "Inserted a missing comma between items".to_string(),
@@ -276,12 +279,14 @@ impl RepairScanner {
     }
 
     fn strip_trailing_comma(&mut self) {
-        let new_len = {
-            let trimmed = self.out.trim_end();
-            trimmed.ends_with(',').then(|| trimmed.len() - 1)
-        };
-        if let Some(new_len) = new_len {
-            self.out.truncate(new_len);
+        let trimmed_len = self.out.trim_end().len();
+        // `,` is ASCII (one byte), so checking the raw byte immediately
+        // before `trimmed_len` is a safe, valid char-boundary check.
+        if trimmed_len > 0 && self.out.as_bytes()[trimmed_len - 1] == b',' {
+            // `remove` (not truncate) deletes only the comma itself, leaving
+            // any whitespace/newline that followed it — up to the closing
+            // bracket — exactly as the original document had it.
+            self.out.remove(trimmed_len - 1);
             self.push_change(
                 "trailing-comma",
                 "Removed a trailing comma before a closing bracket".to_string(),
@@ -1045,8 +1050,11 @@ mod tests {
 
     #[test]
     fn repair_inserts_missing_comma_between_array_items() {
+        // The original separating space is kept (comma spliced in right
+        // after "1", not swapped for it) — preserves whatever spacing the
+        // document already had instead of tightening it.
         let result = repair("[1 2 3]").unwrap();
-        assert_eq!(result.repaired, "[1,2,3]");
+        assert_eq!(result.repaired, "[1, 2, 3]");
         assert_eq!(
             change_codes(&result),
             vec!["missing-comma", "missing-comma"]
@@ -1057,8 +1065,35 @@ mod tests {
     #[test]
     fn repair_inserts_missing_comma_between_object_entries() {
         let result = repair(r#"{"a":1 "b":2}"#).unwrap();
-        assert_eq!(result.repaired, r#"{"a":1,"b":2}"#);
+        assert_eq!(result.repaired, r#"{"a":1, "b":2}"#);
         assert_eq!(change_codes(&result), vec!["missing-comma"]);
+    }
+
+    // User-reported (Story 8.1 AC9 follow-up): a missing comma across a real
+    // line break used to collapse the whole document onto one line — the
+    // fix used to blindly trim *all* trailing whitespace (including the
+    // newline + next line's indentation) before inserting the comma. It now
+    // splices the comma in right after the real content and leaves
+    // everything after it untouched, so the line break survives.
+    #[test]
+    fn repair_inserts_missing_comma_across_a_line_break_without_collapsing_it() {
+        let input = "{\n  \"theme\": \"dark\"\n  \"notifications\": true\n}";
+        let result = repair(input).unwrap();
+        assert_eq!(
+            result.repaired,
+            "{\n  \"theme\": \"dark\",\n  \"notifications\": true\n}"
+        );
+        assert_eq!(change_codes(&result), vec!["missing-comma"]);
+        assert!(!result.still_invalid);
+    }
+
+    #[test]
+    fn repair_removes_trailing_comma_across_a_line_break_without_collapsing_it() {
+        let input = "[\n  1,\n  2,\n]";
+        let result = repair(input).unwrap();
+        assert_eq!(result.repaired, "[\n  1,\n  2\n]");
+        assert_eq!(change_codes(&result), vec!["trailing-comma"]);
+        assert!(!result.still_invalid);
     }
 
     #[test]

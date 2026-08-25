@@ -14,6 +14,7 @@ import type { JsonTreeValue } from "./jsonTreeValue";
 
 const { t } = useI18n();
 
+const jsonInput = ref<HTMLTextAreaElement | null>(null);
 const input = ref("");
 const indent = ref<JsonIndent>("two_spaces");
 const error = ref<ToolError | null>(null);
@@ -134,6 +135,23 @@ const validateErrorLocation = computed(() => positionText(validateError.value?.p
 const repairErrorLocation = computed(() => positionText(repairError.value?.position ?? null));
 const isInputEmpty = computed(() => input.value.trim() === "");
 
+// Moves the caret to a reported line/column so the position text isn't just
+// a number the user has to count out by hand against a plain, line-number-
+// less textarea — an explicit click, not automatic on every live-validate
+// tick, since auto-jumping the caret while the user is still typing would
+// fight their own cursor position.
+function jumpToPosition(position: ToolError["position"]) {
+  if (position?.kind !== "LineCol" || !jsonInput.value) return;
+  const lines = input.value.split("\n");
+  let offset = 0;
+  for (let i = 0; i < position.line - 1 && i < lines.length; i++) {
+    offset += lines[i].length + 1; // +1 for the newline consumed between lines
+  }
+  offset = Math.min(offset + Math.max(0, position.column - 1), input.value.length);
+  jsonInput.value.focus();
+  jsonInput.value.setSelectionRange(offset, offset);
+}
+
 function toToolError(err: unknown): ToolError {
   return isToolError(err) ? err : { code: "unknown", message: String(err), position: null, context: null };
 }
@@ -190,6 +208,7 @@ function onApplyRepair() {
       <label for="json-input">{{ t('tools.json.inputLabel') }}</label>
       <textarea
         id="json-input"
+        ref="jsonInput"
         v-model="input"
         rows="10"
         spellcheck="false"
@@ -231,9 +250,14 @@ function onApplyRepair() {
       v-if="error"
       role="alert"
     >
-      {{ toolErrorMessage(error, t) }}<template v-if="errorLocation">
+      {{ toolErrorMessage(error, t) }}<button
+        v-if="errorLocation"
+        type="button"
+        class="position-link"
+        @click="jumpToPosition(error.position)"
+      >
         {{ errorLocation }}
-      </template>
+      </button>
     </p>
 
     <AppTabs
@@ -269,9 +293,14 @@ function onApplyRepair() {
       </p>
       <template v-else-if="validateError">
         <p role="alert">
-          {{ toolErrorMessage(validateError, t) }}<template v-if="validateErrorLocation">
+          {{ toolErrorMessage(validateError, t) }}<button
+            v-if="validateErrorLocation"
+            type="button"
+            class="position-link"
+            @click="jumpToPosition(validateError.position)"
+          >
             {{ validateErrorLocation }}
-          </template>
+          </button>
         </p>
         <AppButton
           class="tab-action-button"
@@ -304,9 +333,14 @@ function onApplyRepair() {
         v-else-if="repairError"
         role="alert"
       >
-        {{ toolErrorMessage(repairError, t) }}<template v-if="repairErrorLocation">
+        {{ toolErrorMessage(repairError, t) }}<button
+          v-if="repairErrorLocation"
+          type="button"
+          class="position-link"
+          @click="jumpToPosition(repairError.position)"
+        >
           {{ repairErrorLocation }}
-        </template>
+        </button>
       </p>
       <template v-else-if="repairResult">
         <p
@@ -430,6 +464,28 @@ textarea {
 
 p[role="alert"] {
   color: var(--color-accent-destructive);
+}
+
+/* A real UI element (spacing via margin), not a text-node space relying on
+   template whitespace between {{ message }} and this button — that space
+   was getting silently collapsed to nothing by Vue's whitespace handling.
+   Underline is the only affordance (inherits the alert's color) since this
+   is a plain-text-styled action, not a candidate for the signature accent
+   DESIGN.md reserves for one true action per screen. */
+.position-link {
+  margin-left: 0.4em;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.position-link:hover,
+.position-link:focus-visible {
+  text-decoration-thickness: 2px;
 }
 
 .tab-panel {
