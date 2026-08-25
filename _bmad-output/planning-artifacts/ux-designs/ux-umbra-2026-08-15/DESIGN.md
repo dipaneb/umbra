@@ -31,6 +31,13 @@ colors:
   accent-destructive-dark: '#F2665C'
   accent-neutral-chip: '#E4E5E7'
   accent-neutral-chip-dark: '#2C2C2F'
+  # Story 8.1, 2026-08-26 — the system's first third hue, scoped narrowly to
+  # the JSON tool's Diff tab row states (added rows, a changed row's new
+  # value). See Do's and Don'ts for the deliberate-exception writeup. Not a
+  # general "success" color — do not reuse elsewhere without that same
+  # conversation.
+  diff-added: '#15803D'
+  diff-added-dark: '#34D399'
 typography:
   display:
     fontFamily: Geist Sans
@@ -192,5 +199,5 @@ Visual specs for the elements already exercised through this session's renders (
 - **Do** use a border (`{colors.border-hairline}`) for persistent surfaces and a shadow (`{components.floating-surface.shadow}`) for floating ones — never the reverse, and never both on the same element.
 - **Do** build dark-mode elevation by layering *lighter* surfaces upward (`{colors.bg-base-dark}` → `{colors.bg-surface-dark}` → `{colors.bg-surface-raised-dark}`) — never by going darker toward black for "elevated" content.
 - **Don't** use red for a delete/remove affordance by default — it's reserved for actions that are both high-consequence and hard to reverse. **One narrow, deliberate exception** (Step 4.3): the Update-signal's security-urgent dot also uses `{colors.accent-destructive}` — not because installing is destructive, but to reuse red's existing "needs serious attention" weight rather than inventing a third hue, matching the Chrome/Firefox security-vs-feature-update color precedent already named in Inspiration & Anti-patterns. Don't extend red to any other non-destructive "pay attention" use beyond this one.
-- **Don't** introduce a second chromatic accent color. This was tested (a muted slate-blue) and explicitly not adopted — Umbra is a two-hue system (orange + true neutral), not a multi-color brand.
+- **Don't** introduce a second chromatic accent color. This was tested (a muted slate-blue) and explicitly not adopted — Umbra is a two-hue system (orange + true neutral), not a multi-color brand. **One narrow, deliberate exception** (Story 8.1, Diff tab, 2026-08-26): the JSON tool's Diff tab compares two documents and renders row-level added/removed/changed state. Three color schemes were mocked up side by side (value-only red, icon-only with no new color, full-row red+green) and the developer explicitly chose full-row color over the no-new-color default, because it reads instantly at a glance — the whole point of a diff view. This both extends `{colors.accent-destructive}` (red) beyond the Update-signal's own prior one exception (full removed *rows*, not just the value) and introduces the system's first third hue: a new muted green, `{colors.diff-added}` (`#15803d` light / `#34d399` dark — not a generic "success" token, scoped to this one feature), used for added rows and a changed row's new value. Icons (`+`/`-`/pencil) and strikethrough still carry the same signal independently of color, so the state doesn't rely on hue alone. **Scoped narrowly to Diff's row states** — don't reach for green, or extend red further, anywhere else in the app without a similarly deliberate, mocked-up, developer-approved conversation.
 - **Don't** apply a drop-shadow to a persistent card. It was tested, looked fine in isolation, and was rejected specifically because it doesn't survive the dark-mode requirement.

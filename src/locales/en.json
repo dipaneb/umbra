@@ -126,6 +126,12 @@
       "queryMatchCountOne": "1 match",
       "queryMatchCountOther": "{count} matches",
       "queryMatchCountTruncated": "Showing the first {shown} of {total} matches — refine your expression to see the rest.",
+      "diffDocumentBIntro": "Comparing the input above against:",
+      "diffInputEmpty": "Paste JSON above, then a second document below, to compare them.",
+      "diffSecondDocumentEmpty": "Paste a second JSON document below to compare against it.",
+      "diffErrorInInputAbove": "In the input above: ",
+      "diffErrorInSecondDocument": "In the second document: ",
+      "diffNoDifferences": "No differences.",
       "tab": {
         "explorer": "Explorer",
         "validate": "Validate",

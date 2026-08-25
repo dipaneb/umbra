@@ -36,7 +36,10 @@ function truncate(text: string): string {
 // uses. This picks an explicit "…CountOne"/"…CountOther" key per value
 // rather than relying on vue-i18n's `|`-pipe plural syntax; see i18n.ts's
 // comment on why.
-function previewFor(value: JsonTreeValue, childCount: number): string {
+// Exported for flattenDiffTree.ts's reuse on a Changed row's `old_value`
+// (also a plain `JsonTreeValue`, per DiffNode's own shape) — same collapsed-
+// summary/truncation rules apply there, no reason to duplicate them.
+export function previewFor(value: JsonTreeValue, childCount: number): string {
   const t = i18n.global.t;
   switch (value.kind) {
     case "Object":

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import JsonView from "./JsonView.vue";
+import DiffTree from "./DiffTree.vue";
 import JsonTree from "./JsonTree.vue";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
@@ -671,6 +672,153 @@ describe("JsonView", () => {
     expect(panel.find(".position-link").exists()).toBe(true);
   });
 
+  // Every Diff test below routes `json_parse` (the always-on live-tree
+  // watcher) to a harmless empty tree, same convention as `mockRepair`/
+  // `mockQuery` above.
+  function mockDiff(result: unknown) {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_diff") return Promise.resolve(result);
+      if (cmd === "json_parse") return Promise.resolve(null);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+  }
+
+  function diffInputBTextarea(w: VueWrapper) {
+    return w.find("#diff-input-b");
+  }
+
+  it("shows a neutral prompt on the Diff tab when the shared input is empty (AC11)", async () => {
+    wrapper = mount(JsonView);
+    await wrapper.find("#tab-diff").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-diff").text()).toContain(
+      "Paste JSON above, then a second document below, to compare them.",
+    );
+  });
+
+  it("shows a neutral prompt on the Diff tab when the second document is empty (AC11)", async () => {
+    wrapper = mount(JsonView);
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-diff").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-diff").text()).toContain(
+      "Paste a second JSON document below to compare against it.",
+    );
+  });
+
+  it("shows a no-differences status on the Diff tab when the documents are identical (AC11)", async () => {
+    mockDiff({ status: "unchanged", value: { kind: "Object", data: [] }, old_value: null });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-diff").trigger("click");
+    await diffInputBTextarea(wrapper).setValue('{"a":1}');
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-diff").text()).toContain("No differences.");
+  });
+
+  it("renders the diff tree when the documents differ (AC11)", async () => {
+    mockDiff({
+      status: "changed",
+      old_value: null,
+      value: {
+        kind: "Object",
+        data: [["a", { status: "added", value: { kind: "Number", data: "1" }, old_value: null }]],
+      },
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue("{}");
+    await wrapper.find("#tab-diff").trigger("click");
+    await diffInputBTextarea(wrapper).setValue('{"a":1}');
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    // Matches this file's own established convention for Explorer/JsonTree
+    // (see "shows the tree as unavailable..." above): asserts on the props
+    // passed down, not on rendered treeitem rows — actually rendering rows
+    // needs the ResizeObserver/offsetWidth stubs DiffTree.spec.ts sets up
+    // for exactly this reason, which this file doesn't duplicate.
+    expect(wrapper.findComponent(DiffTree).props("root")).toEqual({
+      status: "changed",
+      old_value: null,
+      value: {
+        kind: "Object",
+        data: [["a", { status: "added", value: { kind: "Number", data: "1" }, old_value: null }]],
+      },
+    });
+  });
+
+  it("surfaces a document-a error on the Diff tab with a caret jump into the shared input (AC11)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_diff") {
+        return Promise.reject({
+          code: "json-expected-value",
+          message: "expected a value here",
+          position: { kind: "LineCol", line: 1, column: 6 },
+          context: "document-a",
+        });
+      }
+      if (cmd === "json_parse") return Promise.resolve(null);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":}');
+    await wrapper.find("#tab-diff").trigger("click");
+    await diffInputBTextarea(wrapper).setValue('{"a":1}');
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const panel = wrapper.find("#tabpanel-diff");
+    expect(panel.text()).toContain("In the input above:");
+    expect(panel.text()).toContain("Expected a value here");
+
+    await panel.find(".position-link").trigger("click");
+    const textarea = inputTextarea(wrapper).element as HTMLTextAreaElement;
+    expect(textarea.selectionStart).toBe(5);
+  });
+
+  it("surfaces a document-b error on the Diff tab with a caret jump into its own textarea, not the shared one (AC11)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_diff") {
+        return Promise.reject({
+          code: "json-expected-value",
+          message: "expected a value here",
+          position: { kind: "LineCol", line: 1, column: 6 },
+          context: "document-b",
+        });
+      }
+      if (cmd === "json_parse") return Promise.resolve(null);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-diff").trigger("click");
+    await diffInputBTextarea(wrapper).setValue('{"a":}');
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const panel = wrapper.find("#tabpanel-diff");
+    expect(panel.text()).toContain("In the second document:");
+
+    await panel.find(".position-link").trigger("click");
+    const textareaB = diffInputBTextarea(wrapper).element as HTMLTextAreaElement;
+    const textareaA = inputTextarea(wrapper).element as HTMLTextAreaElement;
+    expect(textareaB.selectionStart).toBe(5);
+    // The shared input's own caret must be untouched — this is the whole
+    // point of routing by `context` instead of always jumping the shared
+    // textarea.
+    expect(textareaA.selectionStart).not.toBe(5);
+  });
+
   it("ends up with a null tree, not a stale value, when input is cleared before a slow parse resolves", async () => {
     const slow = deferred<JsonTreeValue>();
     invokeMock.mockReturnValueOnce(slow.promise);
@@ -745,13 +893,13 @@ describe("JsonView", () => {
   it("shows an honest placeholder, not the tree, for a not-yet-built tab (AC6)", async () => {
     wrapper = mount(JsonView);
 
-    // Validate, Repair, and Query now have real content (AC8/AC9/AC10) — Diff
-    // is still an honest placeholder, so it's the one that exercises this
-    // AC6 behavior.
-    await wrapper.find("#tab-diff").trigger("click");
+    // Validate, Repair, Query, and Diff now have real content
+    // (AC8/AC9/AC10/AC11) — Transform is still an honest placeholder, so
+    // it's the one that exercises this AC6 behavior.
+    await wrapper.find("#tab-transform").trigger("click");
 
     expect(wrapper.findComponent(JsonTree).exists()).toBe(false);
-    expect(wrapper.find("#tabpanel-diff").text()).toBe("Coming soon.");
+    expect(wrapper.find("#tabpanel-transform").text()).toBe("Coming soon.");
   });
 
   it("surfaces a tree copy failure through the same error alert as Format/Minify", async () => {

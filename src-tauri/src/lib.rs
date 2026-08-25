@@ -11,7 +11,7 @@ use commands::bucket::{bucket_extract_text, bucket_extract_text_from_clipboard};
 use commands::cron::{cron_explain, cron_parse_schedule};
 use commands::hash::{hash_compute, hash_compute_file};
 use commands::image::{bucket_convert_image, bucket_estimate_image_size};
-use commands::json::{json_format, json_minify, json_parse, json_query, json_repair};
+use commands::json::{json_diff, json_format, json_minify, json_parse, json_query, json_repair};
 use commands::jwt::jwt_decode;
 use commands::pdf::{bucket_extract_pdf_pages, bucket_extract_pdf_text, bucket_merge_pdfs};
 use commands::uuid::uuid_generate;
@@ -45,6 +45,7 @@ pub fn run() {
             json_parse,
             json_repair,
             json_query,
+            json_diff,
             base64_encode,
             base64_decode,
             base64_encode_file,

@@ -210,10 +210,12 @@ would produce a query syntax Explorer's copied paths can't paste into).
         the decision record's AD-1 split, with its own regression tests, sanity-checked
         against the 10 MB / Story 1.9 performance floor (AC14). `repair` was already done
         (see the 2026-08-25 entry above).
-  - [ ] `crates/umbra-core/src/json.rs`: add `diff` (structural, over `JsonTreeValue`) and
-        `to_typescript` pure functions per the decision record's AD-1 split — each with its
-        own regression tests, sanity-checked against the 10 MB / Story 1.9 performance floor
-        (AC14).
+  - [x] `crates/umbra-core/src/json.rs`: add `diff` (structural, over `JsonTreeValue`) per
+        the decision record's AD-1 split, with its own regression tests, sanity-checked
+        against the 10 MB / Story 1.9 performance floor (AC14).
+  - [ ] `crates/umbra-core/src/json.rs`: add `to_typescript` pure function per the decision
+        record's AD-1 split — its own regression tests, sanity-checked against the 10 MB /
+        Story 1.9 performance floor (AC14).
   - [ ] Explorer, next (and last) slice: inline editing (add/remove/move/duplicate
         fields) — extends `JsonTree.vue`, keeps its existing path-based focus tracking
         and ARIA tree roles. (Search/filter — the other item this line originally
@@ -224,7 +226,7 @@ would produce a query syntax Explorer's copied paths can't paste into).
   - [x] Build Repair's preview-then-confirm UI (per-change description, explicit apply step
         — never silent auto-apply).
   - [x] Build Query's expression input + result view over the new `query` command.
-  - [ ] Build Diff's two-document input + tree-mode highlighted result over the new `diff`
+  - [x] Build Diff's two-document input + tree-mode highlighted result over the new `diff`
         command.
   - [ ] Build Transform's TypeScript-interface output over the new `to_typescript` command.
   - [ ] Give each new async command its own `createLatestWinsRunner()` scope (AD-16) and
@@ -626,6 +628,105 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   extension reported not connected) — no live visual pass was possible; the
   developer should confirm in their running app before this is treated as
   fully done, same caveat as the previous entry.
+- 2026-08-26: Copy-confirmation feedback on Explorer's and Query's
+  copy-value/copy-path buttons (developer-reported: no indication a click
+  did anything). New `useCopyFeedback.ts` composable — a caller-chosen
+  string key (e.g. `${row.path}:value`) so several copy buttons on screen
+  at once each confirm independently, marked only after the clipboard
+  write actually succeeds. Both `JsonTree.vue` and `JsonView.vue`'s Query
+  match rows swap the icon to `PhCheck` and the tooltip/aria-label to a
+  "copied" variant for 1.5s. One real bug caught before shipping:
+  Explorer's copy buttons only reveal on row hover/focus-within
+  (`opacity: 0` otherwise) — clicking naturally moves the cursor off the
+  row, which would hide the checkmark the instant it appeared; fixed with
+  a `.json-tree-row-actions-visible` class driven by the same `isCopied`
+  state, forcing visibility for the confirmation's full duration
+  regardless of hover. Re-verified: `pnpm lint`, `pnpm test` (551/551 — 4
+  new tests), `vue-tsc --noEmit`, `pnpm build`.
+- 2026-08-26: Diff tab (AC11). Design decided first via `/design` (Claude
+  Design canvas), not assumed: research surfaced the real convention for a
+  single-tree structural diff (jsondiffpatch, Postman — whole-row
+  tint + inline old→new for a changed leaf) but that convention needs a
+  third (green) hue, which collides directly with DESIGN.md's own
+  "two-hue system, not a multi-color brand" rule — tested and explicitly
+  rejected once already for a different color. Published three color
+  propositions (value-only red, icon-only/no new color, full-row
+  red+green) as a live side-by-side comparison canvas; the developer
+  explicitly chose full-row red+green over the two-hue-compliant default,
+  because it reads instantly at a glance. Recorded as a new, narrowly-
+  scoped deliberate exception in `DESIGN.md`'s Do's and Don'ts (matching
+  its own existing precedent for the Update-signal's red dot) — a new
+  `{colors.diff-added}` token (`#15803D` light / `#34D399` dark) added to
+  DESIGN.md's frontmatter token table and mirrored into
+  `src/styles/tokens.css`, explicitly scoped to Diff's row states, not a
+  general "success" color.
+  New `diff` pure function in `crates/umbra-core/src/json.rs` (AD-1) —
+  objects compared by key (reordering keys alone is never a change, only
+  value differences are), arrays by index (deliberately not LCS-style
+  reorder-aware diffing — an honestly-scoped simpler behavior, not
+  claimed as more than it is). `DiffNode`/`DiffValue` mirror
+  `JsonTreeValue`'s own shape (so the view never needs a second lookup
+  structure), with a key design point: a container's `Changed` status
+  means "something inside changed" (no `old_value`) while a leaf's
+  `Changed` status means an actual value replacement (`old_value: Some`)
+  — a type mismatch (e.g. a string replaced by an object) is treated as a
+  full replacement via the same "mark every descendant" helper `Added`/
+  `Removed` already use, not a doomed field-by-field recursion into
+  incompatible shapes. No output-size cap the way `query`'s
+  `MAX_QUERY_MATCHES` has: a diff's output is inherently bounded by
+  roughly the combined size of the two (already `MAX_INPUT_BYTES`-capped)
+  inputs, the same order of magnitude as the single document Explorer's
+  tree already holds in full — virtualized rendering, not a cap, is what
+  makes that tractable, same as it always has been. Each side is parsed
+  independently via the existing `parse`, so a malformed document A or B
+  surfaces the exact same rewritten `json-*` error Validate/Query already
+  show; `ToolError.context` is stamped `"document-a"`/`"document-b"` (the
+  same disambiguation job it already does for JWT's per-segment errors)
+  since position alone can't say which textarea a `(line 1, column 6)`
+  belongs to. 14 new Rust unit tests. New `json_diff` Tauri command
+  (`rename_all = "snake_case"`, matching `base64.rs`'s own precedent for a
+  multi-word param name so this isn't the one `json_*` command whose IPC
+  arg names don't match their Rust names) dispatches via its own
+  `spawn_blocking`; a two-10MB-document timing test confirmed it stays
+  well inside Story 1.9's baseline.
+  Frontend: new `flattenDiffTree.ts` (mirrors `flattenJsonTree.ts`'s row-
+  flattening exactly, plus `defaultExpandedDiffPaths` — unlike Explorer's
+  root-only default, a diff view's whole point is showing what's
+  different, so every ancestor chain of a real change starts expanded,
+  leaving fully-unchanged sibling subtrees collapsed) and a new
+  `DiffTree.vue` component — deliberately NOT unified with `JsonTree.vue`
+  despite reusing its virtualizer/chevron/indent-guide machinery nearly
+  verbatim, since `DiffNode`'s recursive, status-carrying shape is
+  different enough from `JsonTreeValue` that a shared component would
+  need a confusing dual-mode prop surface for little real gain; no
+  search/copy actions on this first cut (not required by AC11, keeps
+  scope tight). Diff-state icons (`+`/`-`/pencil/arrow) are hand-drawn
+  inline SVGs, not `@phosphor-icons/vue` imports — Phosphor doesn't ship
+  this exact foursome, and these reproduce the exact stroke width/viewBox
+  the developer already approved in the design canvas mockup rather than
+  re-deriving the look from a library glyph. `JsonView.vue` gained a Diff
+  tab panel with its own second, tab-local textarea (`diffInputB`, per
+  AC6's own already-decided two-document layout) and its own
+  `createLatestWinsRunner()` scope (AD-16); `jumpToPosition` was
+  generalized to `jumpToPositionIn(position, textarea, text)` so a
+  document-b error can jump its own textarea's caret instead of always
+  the shared input's — a real bug avoided by design, not caught after the
+  fact, since a naive reuse of the existing single-textarea jump function
+  would have moved the wrong field's caret. One real lint catch: an
+  earlier draft mutated `expanded` as a side effect inside `rows`'s own
+  `computed()` (to lazily initialize the default-expanded set) — flagged
+  by `vue/no-side-effects-in-computed-properties`; fixed by moving that
+  reset into a proper `watch(() => props.root, ..., {immediate: true})`
+  instead. 9 new `flattenDiffTree` tests, 7 new `DiffTree.vue` component
+  tests, 7 new `JsonView.vue` integration tests (including one fixing the
+  now-outdated AC6 placeholder-tab test, which moves to Transform — the
+  last remaining "coming soon" tab). Re-verified: `pnpm lint`, `pnpm test`
+  (573/573), `vue-tsc --noEmit`, `pnpm build`, `cargo fmt --check --all`,
+  `cargo test --workspace` (289/289: 203 umbra-core + 85 umbra/src-tauri +
+  1 integration test). Browser tooling was unavailable again this round
+  (Chrome extension not connected) — no live visual pass was possible;
+  the developer should confirm in their running app, in both light and
+  dark mode, before this is treated as fully done.
 
 ### File List
 
@@ -651,3 +752,11 @@ Claude Sonnet 5 (`claude-sonnet-5`)
 - `crates/umbra-core/Cargo.toml` (modified)
 - `src-tauri/src/lib.rs` (modified)
 - `src/tools/json/jsonQuery.ts` (new)
+- `src/tools/json/useCopyFeedback.ts` (new)
+- `src/tools/json/jsonDiff.ts` (new)
+- `src/tools/json/flattenDiffTree.ts` (new)
+- `src/tools/json/flattenDiffTree.spec.ts` (new)
+- `src/tools/json/DiffTree.vue` (new)
+- `src/tools/json/DiffTree.spec.ts` (new)
+- `src/styles/tokens.css` (modified)
+- `_bmad-output/planning-artifacts/ux-designs/ux-umbra-2026-08-15/DESIGN.md` (modified)

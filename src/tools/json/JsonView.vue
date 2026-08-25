@@ -9,8 +9,10 @@ import { writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { isToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
+import DiffTree from "./DiffTree.vue";
 import JsonTree from "./JsonTree.vue";
 import type { JsonIndent } from "./jsonIndent";
+import type { DiffNode } from "./jsonDiff";
 import type { QueryMatch, QueryResult } from "./jsonQuery";
 import type { RepairResult } from "./jsonRepair";
 import { jsonTreeValueToText } from "./jsonTreeValue";
@@ -43,6 +45,15 @@ const repairError = ref<ToolError | null>(null);
 const queryExpression = ref("");
 const queryResult = ref<QueryResult | null>(null);
 const queryError = ref<ToolError | null>(null);
+
+// Diff (AC11): the one tab that doesn't read only the shared `input` —
+// AC6 gives it its own second, tab-local document (`diffInputB`) for the
+// comparison side. Genuinely new computation, so it gets its own preview
+// state and runner scope, same as Repair/Query.
+const diffInputBEl = ref<HTMLTextAreaElement | null>(null);
+const diffInputB = ref("");
+const diffResult = ref<DiffNode | null>(null);
+const diffError = ref<ToolError | null>(null);
 
 // Story 8.1 Task 2 (AC6): six tabs replace the old single flat panel; every
 // tab reads this one shared `input`. Only Explorer is wired up so far — the
@@ -163,6 +174,45 @@ watch(
   { immediate: true },
 );
 
+// Own runner scope (AD-16): Diff is a separate independent state group from
+// every other runner in this file, same reasoning as Repair's/Query's own.
+const runDiff = createLatestWinsRunner();
+
+// Deliberately does not pre-validate either document on the client before
+// calling: `diff`'s Rust implementation parses both sides itself and tags
+// whichever one fails via `ToolError.context` ("document-a"/"document-b"),
+// so a malformed document surfaces the exact same rewritten `json-*` error
+// Validate/Query already show — reused here instead of duplicating an
+// "is this valid JSON?" check twice on the client.
+const debouncedDiffRun = debounce((valueA: string, valueB: string) => {
+  void (async () => {
+    try {
+      const result = await runDiff(() =>
+        valueA.trim() === "" || valueB.trim() === ""
+          ? Promise.resolve(null)
+          : invoke<DiffNode>("json_diff", { input_a: valueA, input_b: valueB }),
+      );
+      if (!result.superseded) {
+        diffResult.value = result.value;
+        diffError.value = null;
+      }
+    } catch (err) {
+      diffResult.value = null;
+      diffError.value = toToolError(err);
+    }
+  })();
+}, 200);
+
+// Only computed while Diff is the active tab, same reasoning as Repair's/
+// Query's own watchers.
+watch(
+  [activeTab, input, diffInputB],
+  ([tab, valueA, valueB]) => {
+    if (tab === "diff") debouncedDiffRun(valueA, valueB);
+  },
+  { immediate: true },
+);
+
 // Otherwise a pending timer fires into this component's refs after the user
 // has navigated away to a different tool, wasting a debounce cycle and an
 // IPC round-trip that nothing will ever read.
@@ -170,6 +220,7 @@ onUnmounted(() => {
   debouncedParse.cancel();
   debouncedRepair.cancel();
   debouncedQueryRun.cancel();
+  debouncedDiffRun.cancel();
   cancelQueryCopyFeedback();
 });
 
@@ -187,24 +238,33 @@ const errorLocation = computed(() => positionText(error.value?.position ?? null)
 const validateErrorLocation = computed(() => positionText(validateError.value?.position ?? null));
 const repairErrorLocation = computed(() => positionText(repairError.value?.position ?? null));
 const queryErrorLocation = computed(() => positionText(queryError.value?.position ?? null));
+const diffErrorLocation = computed(() => positionText(diffError.value?.position ?? null));
 const isInputEmpty = computed(() => input.value.trim() === "");
 const isQueryExpressionEmpty = computed(() => queryExpression.value.trim() === "");
+const isDiffInputBEmpty = computed(() => diffInputB.value.trim() === "");
 
 // Moves the caret to a reported line/column so the position text isn't just
 // a number the user has to count out by hand against a plain, line-number-
 // less textarea — an explicit click, not automatic on every live-validate
 // tick, since auto-jumping the caret while the user is still typing would
-// fight their own cursor position.
-function jumpToPosition(position: ToolError["position"]) {
-  if (position?.kind !== "LineCol" || !jsonInput.value) return;
-  const lines = input.value.split("\n");
+// fight their own cursor position. Takes the target textarea/text
+// explicitly (not always the shared `jsonInput`/`input`) because Diff owns
+// a second, independent textarea (AC6) — an error on that side must jump
+// its own caret, not the shared input's.
+function jumpToPositionIn(position: ToolError["position"], textarea: HTMLTextAreaElement | null, text: string) {
+  if (position?.kind !== "LineCol" || !textarea) return;
+  const lines = text.split("\n");
   let offset = 0;
   for (let i = 0; i < position.line - 1 && i < lines.length; i++) {
     offset += lines[i].length + 1; // +1 for the newline consumed between lines
   }
-  offset = Math.min(offset + Math.max(0, position.column - 1), input.value.length);
-  jsonInput.value.focus();
-  jsonInput.value.setSelectionRange(offset, offset);
+  offset = Math.min(offset + Math.max(0, position.column - 1), text.length);
+  textarea.focus();
+  textarea.setSelectionRange(offset, offset);
+}
+
+function jumpToPosition(position: ToolError["position"]) {
+  jumpToPositionIn(position, jsonInput.value, input.value);
 }
 
 function toToolError(err: unknown): ToolError {
@@ -252,6 +312,20 @@ function onTreeCopyError(err: unknown) {
 function onApplyRepair() {
   if (!repairResult.value) return;
   input.value = repairResult.value.repaired;
+}
+
+// Story 8.1 AC11: routes the click to whichever textarea the failing
+// document actually is — `diff`'s Rust side tags this via
+// `ToolError.context` (see json.rs's `diff` doc comment) specifically so
+// this doesn't have to guess from the position alone, which means the same
+// thing in both textareas and can't disambiguate on its own.
+function jumpToDiffErrorPosition() {
+  if (!diffError.value) return;
+  if (diffError.value.context === "document-b") {
+    jumpToPositionIn(diffError.value.position, diffInputBEl.value, diffInputB.value);
+  } else {
+    jumpToPositionIn(diffError.value.position, jsonInput.value, input.value);
+  }
 }
 
 // Story 8.1 AC10: same clipboard-failure convention Explorer's own
@@ -597,6 +671,62 @@ async function copyQueryMatchPath(match: QueryMatch) {
       </template>
     </div>
     <div
+      v-else-if="activeTab === 'diff'"
+      id="tabpanel-diff"
+      role="tabpanel"
+      aria-labelledby="tab-diff"
+      class="tab-panel"
+    >
+      <div class="field">
+        <label for="diff-input-b">{{ t('tools.json.diffDocumentBIntro') }}</label>
+        <textarea
+          id="diff-input-b"
+          ref="diffInputBEl"
+          v-model="diffInputB"
+          rows="10"
+          spellcheck="false"
+          autocorrect="off"
+        />
+      </div>
+      <p
+        v-if="isInputEmpty"
+        role="status"
+      >
+        {{ t('tools.json.diffInputEmpty') }}
+      </p>
+      <p
+        v-else-if="isDiffInputBEmpty"
+        role="status"
+      >
+        {{ t('tools.json.diffSecondDocumentEmpty') }}
+      </p>
+      <p
+        v-else-if="diffError"
+        role="alert"
+      >
+        {{ diffError.context === 'document-b' ? t('tools.json.diffErrorInSecondDocument') : t('tools.json.diffErrorInInputAbove') }}{{ toolErrorMessage(diffError, t) }}<button
+          v-if="diffError.position?.kind === 'LineCol'"
+          type="button"
+          class="position-link"
+          @click="jumpToDiffErrorPosition"
+        >
+          {{ diffErrorLocation }}
+        </button>
+      </p>
+      <template v-else-if="diffResult">
+        <p
+          v-if="diffResult.status === 'unchanged'"
+          role="status"
+        >
+          {{ t('tools.json.diffNoDifferences') }}
+        </p>
+        <DiffTree
+          v-else
+          :root="diffResult"
+        />
+      </template>
+    </div>
+    <div
       v-else
       :id="`tabpanel-${activeTab}`"
       role="tabpanel"
@@ -714,7 +844,8 @@ p[role="alert"] {
   align-self: flex-start;
 }
 
-.tab-panel :deep(.json-tree-scroll) {
+.tab-panel :deep(.json-tree-scroll),
+.tab-panel :deep(.diff-tree-scroll) {
   height: 320px;
   /* Matches the input textarea's own max-width: on a wide screen, an
      unbounded tree let each row's copy actions drift far to the right of

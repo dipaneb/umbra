@@ -1,6 +1,7 @@
 use umbra_core::ToolError;
 use umbra_core::json::{
-    JsonIndent, JsonTreeValue, QueryResult, RepairResult, format, minify, parse, query, repair,
+    DiffNode, JsonIndent, JsonTreeValue, QueryResult, RepairResult, diff, format, minify, parse,
+    query, repair,
 };
 
 #[tauri::command]
@@ -44,6 +45,19 @@ pub async fn json_query(input: String, expression: String) -> Result<QueryResult
         .map_err(map_join_error)?
 }
 
+// Story 8.1 AC11/AC14: Diff is genuinely new computation (structural
+// comparison of two parsed documents), so it gets its own `spawn_blocking`
+// dispatch here — not piggybacked on any other command's. `rename_all =
+// "snake_case"` matches `base64.rs`'s own precedent for a multi-word param
+// name — without it, Tauri's default camelCase mapping would make this the
+// only json_* command whose IPC arg names don't match their Rust names.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn json_diff(input_a: String, input_b: String) -> Result<DiffNode, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || diff(&input_a, &input_b))
+        .await
+        .map_err(map_join_error)?
+}
+
 fn map_join_error(err: tauri::Error) -> ToolError {
     ToolError {
         code: "json-internal".to_string(),
@@ -56,6 +70,7 @@ fn map_join_error(err: tauri::Error) -> ToolError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use umbra_core::json::DiffStatus;
 
     #[tokio::test]
     async fn json_format_command_pretty_prints_valid_input() {
@@ -147,6 +162,35 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.code, "json-expected-value");
+    }
+
+    #[tokio::test]
+    async fn json_diff_command_reports_added_removed_and_changed_keys() {
+        let result = json_diff(
+            r#"{"a":1,"b":2}"#.to_string(),
+            r#"{"a":9,"c":3}"#.to_string(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.status, DiffStatus::Changed);
+    }
+
+    #[tokio::test]
+    async fn json_diff_command_returns_tool_error_tagged_document_a_for_malformed_a() {
+        let err = json_diff(r#"{"a":}"#.to_string(), r#"{"a":1}"#.to_string())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+        assert_eq!(err.context, Some("document-a".to_string()));
+    }
+
+    #[tokio::test]
+    async fn json_diff_command_returns_tool_error_tagged_document_b_for_malformed_b() {
+        let err = json_diff(r#"{"a":1}"#.to_string(), r#"{"a":}"#.to_string())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+        assert_eq!(err.context, Some("document-b".to_string()));
     }
 
     // Wide, flat array of many small same-shaped objects — same shape/rationale as
@@ -242,6 +286,22 @@ mod tests {
         assert!(
             elapsed.as_secs() < 20,
             "json_query took {elapsed:?} on a 10MB document"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_diff_command_handles_two_10mb_documents() {
+        let input_a = large_json_fixture(10 * 1024 * 1024);
+        let input_b = input_a.clone();
+        let start = std::time::Instant::now();
+        let result = json_diff(input_a, input_b).await;
+        let elapsed = start.elapsed();
+        eprintln!("json_diff_command_handles_two_10mb_documents: {elapsed:?}");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().status, DiffStatus::Unchanged);
+        assert!(
+            elapsed.as_secs() < 20,
+            "json_diff took {elapsed:?} on two 10MB documents"
         );
     }
 

@@ -537,6 +537,186 @@ fn map_query_parse_error(err: serde_json_path::ParseError) -> ToolError {
     }
 }
 
+// Story 8.1 AC11: per-node diff status. `Changed` on a container node means
+// "something inside changed," not "this container itself was replaced" —
+// see `DiffNode.old_value`'s doc comment for how those two are told apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffStatus {
+    Unchanged,
+    Added,
+    Removed,
+    Changed,
+}
+
+// Mirrors `JsonTreeValue`'s own shape (Story 1.8) exactly — same variant
+// names/tag convention — except `Array`/`Object` hold `DiffNode` children
+// instead of plain values, so the diffed status travels with the tree
+// instead of needing a second parallel structure the view would have to
+// keep in sync by hand.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "kind", content = "data")]
+pub enum DiffValue {
+    Null,
+    Bool(bool),
+    Number(String),
+    String(String),
+    Array(Vec<DiffNode>),
+    Object(Vec<(String, DiffNode)>),
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct DiffNode {
+    pub status: DiffStatus,
+    // The "current" (document B) side — for a container this recursively
+    // carries every child's own `DiffNode` (so the view never needs a
+    // second lookup structure to find "what does this subtree look like
+    // now"), for a leaf it's simply B's value (or, for a `Removed` leaf
+    // with no B side at all, A's value — the only value there is to show).
+    pub value: DiffValue,
+    // Only `Some` for a `Changed` *leaf* — a scalar that changed, or a
+    // node whose A/B shapes don't correspond at all (e.g. a key held a
+    // string in A and an object in B) and is therefore treated as a full
+    // replacement rather than something to recurse into. `None` for a
+    // `Changed` *container* whose own value didn't change shape — there
+    // the individual added/removed/changed children already carry the
+    // detail, so a redundant top-level "old value" would just be a second,
+    // easily-stale copy of information the children already own.
+    pub old_value: Option<JsonTreeValue>,
+}
+
+// Builds a `DiffNode` for `v` where every node in the subtree — `v` itself
+// and every descendant — carries the same fixed `status`. Used directly for
+// a key/index that exists on only one side (the whole subtree is uniformly
+// `Added` or `Removed`, right down to its leaves, so a nested field under a
+// newly-added object shows its own `+` too, not just the object's), and as
+// the building block for an `Unchanged` leaf/subtree (`diff_values`'s
+// `a == b` branch) and for the "new" side of a type-mismatch replacement.
+fn mark_all(v: &serde_json::Value, status: DiffStatus) -> DiffNode {
+    let value = match v {
+        serde_json::Value::Null => DiffValue::Null,
+        serde_json::Value::Bool(b) => DiffValue::Bool(*b),
+        serde_json::Value::Number(n) => DiffValue::Number(n.to_string()),
+        serde_json::Value::String(s) => DiffValue::String(s.clone()),
+        serde_json::Value::Array(items) => {
+            DiffValue::Array(items.iter().map(|item| mark_all(item, status)).collect())
+        }
+        serde_json::Value::Object(map) => DiffValue::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), mark_all(v, status)))
+                .collect(),
+        ),
+    };
+    DiffNode {
+        status,
+        value,
+        old_value: None,
+    }
+}
+
+// Story 8.1 AC11: structural diff of two already-parsed documents. Objects
+// are compared by key (so re-ordering keys alone is never reported as a
+// change — only value differences are semantically meaningful in JSON);
+// arrays are compared by index (the simplest correct behavior, and an
+// honest one — this does not attempt LCS-style reorder-aware array diffing,
+// a substantially bigger feature than this story's scope). No output-size
+// cap the way `query`'s `MAX_QUERY_MATCHES` has: unlike an unbounded
+// wildcard query against a normal document, a diff's output is inherently
+// bounded by roughly the combined size of the two inputs — each already
+// capped by `MAX_INPUT_BYTES` via `parse` — so it's the same order of
+// magnitude as the single document Explorer's tree already holds in full
+// (virtualized rendering, not a data-size cap, is what makes that tractable
+// there too).
+fn diff_values(a: &serde_json::Value, b: &serde_json::Value) -> DiffNode {
+    match (a, b) {
+        (serde_json::Value::Object(a_map), serde_json::Value::Object(b_map)) => {
+            let mut entries = Vec::new();
+            let mut any_change = false;
+            // A's key order first (matches JsonTreeValue's own order-preserving
+            // convention), then any B-only keys appended in B's order.
+            for (k, av) in a_map {
+                let child = match b_map.get(k) {
+                    Some(bv) => diff_values(av, bv),
+                    None => mark_all(av, DiffStatus::Removed),
+                };
+                any_change |= child.status != DiffStatus::Unchanged;
+                entries.push((k.clone(), child));
+            }
+            for (k, bv) in b_map {
+                if !a_map.contains_key(k) {
+                    any_change = true;
+                    entries.push((k.clone(), mark_all(bv, DiffStatus::Added)));
+                }
+            }
+            DiffNode {
+                status: if any_change {
+                    DiffStatus::Changed
+                } else {
+                    DiffStatus::Unchanged
+                },
+                value: DiffValue::Object(entries),
+                old_value: None,
+            }
+        }
+        (serde_json::Value::Array(a_items), serde_json::Value::Array(b_items)) => {
+            let mut items = Vec::new();
+            let mut any_change = false;
+            for i in 0..a_items.len().max(b_items.len()) {
+                let child = match (a_items.get(i), b_items.get(i)) {
+                    (Some(av), Some(bv)) => diff_values(av, bv),
+                    (Some(av), None) => mark_all(av, DiffStatus::Removed),
+                    (None, Some(bv)) => mark_all(bv, DiffStatus::Added),
+                    (None, None) => unreachable!("i stays within the longer side's bounds"),
+                };
+                any_change |= child.status != DiffStatus::Unchanged;
+                items.push(child);
+            }
+            DiffNode {
+                status: if any_change {
+                    DiffStatus::Changed
+                } else {
+                    DiffStatus::Unchanged
+                },
+                value: DiffValue::Array(items),
+                old_value: None,
+            }
+        }
+        _ if a == b => mark_all(b, DiffStatus::Unchanged),
+        // Every other case — differing scalars, or a type mismatch entirely
+        // (a string in A where B now has an object, say) — is a full
+        // replacement, not a recursive comparison: `mark_all(b, Added)`
+        // builds B's real structure (so a newly-substituted object's own
+        // fields still show their own `+`), then this overrides the root
+        // to `Changed` with A's old value attached for the inline
+        // old-\>new display.
+        _ => {
+            let mut node = mark_all(b, DiffStatus::Added);
+            node.status = DiffStatus::Changed;
+            node.old_value = Some(JsonTreeValue::from(a.clone()));
+            node
+        }
+    }
+}
+
+// Story 8.1 AC11/AC14: each side is parsed independently via the existing
+// `parse` (so a malformed document A or B surfaces the exact same rewritten
+// `json-*` classified error Validate/Query already show, no separate
+// failure mode needed) — `context` is stamped with which side failed since
+// `ToolError.position` alone can't say whether a `(line 1, column 6)`
+// belongs to document A's textarea or document B's (the same disambiguation
+// job `context` already does for JWT's per-segment errors).
+pub fn diff(input_a: &str, input_b: &str) -> Result<DiffNode, ToolError> {
+    let a = parse(input_a).map_err(|mut err| {
+        err.context = Some("document-a".to_string());
+        err
+    })?;
+    let b = parse(input_b).map_err(|mut err| {
+        err.context = Some("document-b".to_string());
+        err
+    })?;
+    Ok(diff_values(&a, &b))
+}
+
 // Wire type for the JSON tree (Story 1.8): `serde_json::Value::Object` round-trips
 // through Tauri's IPC as a plain JS object, and the ECMAScript spec always
 // enumerates canonical-integer-string keys ("0", "1", ...) in ascending numeric
@@ -1404,6 +1584,196 @@ mod tests {
         );
         // Sanity-check the fixture itself actually has more than one item,
         // so this test is exercising a real 10 MB array, not a fluke.
+        assert!(expected_len > 1);
+    }
+
+    // Story 8.1 AC11: `diff` — structural comparison of two documents.
+    fn diff_ok(a: &str, b: &str) -> DiffNode {
+        diff(a, b).unwrap()
+    }
+
+    fn object_entry<'a>(node: &'a DiffNode, key: &str) -> &'a DiffNode {
+        match &node.value {
+            DiffValue::Object(entries) => &entries.iter().find(|(k, _)| k == key).unwrap().1,
+            other => panic!("expected an Object DiffValue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn diff_reports_unchanged_for_identical_documents() {
+        let result = diff_ok(r#"{"a":1}"#, r#"{"a":1}"#);
+        assert_eq!(result.status, DiffStatus::Unchanged);
+        let a = object_entry(&result, "a");
+        assert_eq!(a.status, DiffStatus::Unchanged);
+        assert_eq!(a.value, DiffValue::Number("1".to_string()));
+        assert_eq!(a.old_value, None);
+    }
+
+    #[test]
+    fn diff_detects_an_added_key() {
+        let result = diff_ok(r#"{"a":1}"#, r#"{"a":1,"b":2}"#);
+        assert_eq!(result.status, DiffStatus::Changed);
+        let b = object_entry(&result, "b");
+        assert_eq!(b.status, DiffStatus::Added);
+        assert_eq!(b.value, DiffValue::Number("2".to_string()));
+        assert_eq!(b.old_value, None);
+    }
+
+    #[test]
+    fn diff_detects_a_removed_key() {
+        let result = diff_ok(r#"{"a":1,"b":2}"#, r#"{"a":1}"#);
+        assert_eq!(result.status, DiffStatus::Changed);
+        let b = object_entry(&result, "b");
+        assert_eq!(b.status, DiffStatus::Removed);
+        assert_eq!(b.value, DiffValue::Number("2".to_string()));
+    }
+
+    #[test]
+    fn diff_detects_a_changed_scalar_value_with_old_value_attached() {
+        let result = diff_ok(r#"{"age":30}"#, r#"{"age":31}"#);
+        let age = object_entry(&result, "age");
+        assert_eq!(age.status, DiffStatus::Changed);
+        assert_eq!(age.value, DiffValue::Number("31".to_string()));
+        assert_eq!(age.old_value, Some(JsonTreeValue::Number("30".to_string())));
+    }
+
+    #[test]
+    fn diff_does_not_report_a_change_when_only_key_order_differs() {
+        let result = diff_ok(r#"{"a":1,"b":2}"#, r#"{"b":2,"a":1}"#);
+        assert_eq!(result.status, DiffStatus::Unchanged);
+    }
+
+    #[test]
+    fn diff_marks_every_descendant_of_a_newly_added_object() {
+        let result = diff_ok(r#"{}"#, r#"{"user":{"name":"x","nested":{"y":1}}}"#);
+        let user = object_entry(&result, "user");
+        assert_eq!(user.status, DiffStatus::Added);
+        let name = object_entry(user, "name");
+        assert_eq!(name.status, DiffStatus::Added);
+        let nested = object_entry(user, "nested");
+        assert_eq!(nested.status, DiffStatus::Added);
+        let y = object_entry(nested, "y");
+        assert_eq!(y.status, DiffStatus::Added);
+    }
+
+    #[test]
+    fn diff_marks_every_descendant_of_elements_trimmed_off_the_end_of_an_array() {
+        // Same-shape array-to-array comparison (not a type mismatch), so the
+        // trimmed elements are recursed into via the normal by-index path
+        // and end up `Removed` all the way down, not just at the top.
+        let result = diff_ok(r#"{"items":[1,{"a":2}]}"#, r#"{"items":[1]}"#);
+        let items = object_entry(&result, "items");
+        assert_eq!(items.status, DiffStatus::Changed);
+        match &items.value {
+            DiffValue::Array(elements) => {
+                assert_eq!(elements.len(), 2);
+                assert_eq!(elements[0].status, DiffStatus::Unchanged);
+                assert_eq!(elements[1].status, DiffStatus::Removed);
+                let inner_a = object_entry(&elements[1], "a");
+                assert_eq!(inner_a.status, DiffStatus::Removed);
+            }
+            other => panic!("expected an Array DiffValue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn diff_treats_a_type_mismatch_as_a_full_replacement_not_a_recursion() {
+        let result = diff_ok(r#"{"age":30}"#, r#"{"age":{"years":30}}"#);
+        let age = object_entry(&result, "age");
+        assert_eq!(age.status, DiffStatus::Changed);
+        assert_eq!(age.old_value, Some(JsonTreeValue::Number("30".to_string())));
+        // The new side's own structure still gets a real (Added) status per
+        // field, not flattened away by the replacement.
+        let years = object_entry(age, "years");
+        assert_eq!(years.status, DiffStatus::Added);
+    }
+
+    #[test]
+    fn diff_compares_arrays_by_index() {
+        let result = diff_ok(r#"{"a":[1,2,3]}"#, r#"{"a":[1,9,3]}"#);
+        let a = object_entry(&result, "a");
+        assert_eq!(a.status, DiffStatus::Changed);
+        match &a.value {
+            DiffValue::Array(items) => {
+                assert_eq!(items[0].status, DiffStatus::Unchanged);
+                assert_eq!(items[1].status, DiffStatus::Changed);
+                assert_eq!(
+                    items[1].old_value,
+                    Some(JsonTreeValue::Number("2".to_string()))
+                );
+                assert_eq!(items[2].status, DiffStatus::Unchanged);
+            }
+            other => panic!("expected an Array DiffValue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn diff_marks_trailing_array_elements_added_or_removed() {
+        let grew = diff_ok(r#"{"a":[1,2]}"#, r#"{"a":[1,2,3]}"#);
+        match &object_entry(&grew, "a").value {
+            DiffValue::Array(items) => {
+                assert_eq!(items.len(), 3);
+                assert_eq!(items[2].status, DiffStatus::Added);
+            }
+            other => panic!("expected an Array DiffValue, got {other:?}"),
+        }
+
+        let shrank = diff_ok(r#"{"a":[1,2,3]}"#, r#"{"a":[1,2]}"#);
+        match &object_entry(&shrank, "a").value {
+            DiffValue::Array(items) => {
+                assert_eq!(items.len(), 3);
+                assert_eq!(items[2].status, DiffStatus::Removed);
+            }
+            other => panic!("expected an Array DiffValue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn diff_propagates_changed_status_up_through_ancestors_without_a_full_replacement() {
+        let result = diff_ok(r#"{"a":{"b":{"c":1}}}"#, r#"{"a":{"b":{"c":2}}}"#);
+        assert_eq!(result.status, DiffStatus::Changed);
+        let a = object_entry(&result, "a");
+        assert_eq!(a.status, DiffStatus::Changed);
+        // A container's own propagated "something inside changed" status
+        // must not carry a top-level old_value — that would be a second,
+        // easily-stale copy of what the (real) changed descendant already
+        // says on its own.
+        assert_eq!(a.old_value, None);
+        let b = object_entry(a, "b");
+        assert_eq!(b.status, DiffStatus::Changed);
+        assert_eq!(b.old_value, None);
+        let c = object_entry(b, "c");
+        assert_eq!(c.status, DiffStatus::Changed);
+        assert_eq!(c.old_value, Some(JsonTreeValue::Number("1".to_string())));
+    }
+
+    #[test]
+    fn diff_surfaces_document_a_parse_error_tagged_with_context() {
+        let err = diff(r#"{"a":}"#, r#"{"a":1}"#).unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+        assert_eq!(err.context, Some("document-a".to_string()));
+    }
+
+    #[test]
+    fn diff_surfaces_document_b_parse_error_tagged_with_context_not_a() {
+        let err = diff(r#"{"a":1}"#, r#"{"a":}"#).unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+        assert_eq!(err.context, Some("document-b".to_string()));
+    }
+
+    #[test]
+    fn diff_succeeds_on_10mb_documents_with_localized_differences() {
+        let (a, expected_len) = large_json_fixture(10 * 1024 * 1024);
+        // Flip one field deep in the middle of the document — a realistic
+        // "two large exports with a handful of real differences" shape,
+        // not a wholesale rewrite.
+        let b = a.replacen(r#""active":true"#, r#""active":false"#, 1);
+        assert_ne!(
+            a, b,
+            "fixture must actually contain the string being replaced"
+        );
+        let result = diff(&a, &b).unwrap();
+        assert_eq!(result.status, DiffStatus::Changed);
         assert!(expected_len > 1);
     }
 }
