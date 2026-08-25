@@ -480,6 +480,66 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   `pnpm lint`, `pnpm test` (535/535 — 6 new tests), `vue-tsc --noEmit`,
   `pnpm build`, `cargo fmt --check --all`, `cargo test --workspace`
   (255/255: 177 umbra-core + 77 umbra/src-tauri + 1 integration test).
+- 2026-08-25: Developer-reported bug, found live in the real Tauri app: the
+  Validate tab became permanently unclickable after validating JSON whose
+  error happened to be exactly "missing a comma before `}`". Root cause,
+  found via the app's devtools console: three `errors.json-*` messages
+  (`json-trailing-comma`, `json-unclosed-object`, `json-expected-object-
+  separator`) contain a literal `}` describing JSON syntax — but vue-i18n
+  treats `{`/`}` as its own interpolation syntax, so a lone unmatched `}`
+  isn't plain text to it, it's a message-*compilation* error, thrown the
+  first time that specific key is actually rendered (not at build time —
+  `pnpm build`/`vue-tsc` never touch message content, only that the JSON
+  parses). Ruled out the Rust core first by running the user's exact
+  reported input directly through `parse`/`repair` in a scratch test —
+  both handled it cleanly, confirming this was purely an i18n string bug.
+  Fixed with this codebase's existing `{'}'}` literal-brace escape
+  (already used by `tools.json.treeKeysCountOne`). Added a permanent
+  regression test to `locales.spec.ts` that runs every message in both
+  locales through vue-i18n's real compiler (not a placeholder-regex
+  heuristic) — verified it actually catches this class of bug by
+  deliberately reintroducing the broken string and confirming the test
+  failed with the same "Unbalanced closing brace" error before restoring
+  the fix. Re-verified: `pnpm lint`, `pnpm test` (536/536), `vue-tsc
+  --noEmit`, `pnpm build`, `cargo fmt --check --all`, `cargo test
+  --workspace` (255/255).
+- 2026-08-25: Three more developer-reported tweaks, found while confirming
+  the fix above. (1) The error message and its `(line X, column Y)`
+  position ran together with no space — same root cause class as the i18n
+  bug: they were two adjacent text nodes separated only by incidental
+  template whitespace, which Vue's whitespace-condensing silently
+  collapsed to nothing. Fixed by making the position its own `<button
+  class="position-link">` spaced via real CSS `margin-left`, not template
+  whitespace — the same category of fix as the i18n one (stop relying on
+  incidental text-layer spacing for something that needs to visually
+  separate reliably). (2) "The error shows a line and column but the
+  textarea has no line numbers or caret position" — scoped this
+  deliberately to a caret-jump, not a full line-number gutter (a
+  substantially bigger feature — syncing a gutter to a wrapping plain
+  `<textarea>` is its own real UI investment, not a quick tweak): clicking
+  the position link now moves the textarea's caret to that exact
+  line/column and focuses it, so the native caret becomes visible at the
+  error site. Deliberately click-triggered, not automatic on every live-
+  validate tick — auto-jumping the caret while the user is still typing
+  would fight their own cursor position. Applied consistently to all three
+  error surfaces (the top Format/Minify banner, Validate, Repair) since
+  they're the same bug pattern. (3) The reported example's Repair preview
+  squashed `"theme": "dark"` and `"notifications": true` onto one line —
+  `maybe_insert_missing_comma`/`strip_trailing_comma` were using
+  `trim_end()` (strips *all* trailing whitespace, including a real
+  newline) before `truncate`-ing, destroying the original line break and
+  indentation whenever the fix happened to span one. Fixed by switching to
+  `String::insert`/`String::remove` at the exact content boundary instead
+  of truncate-then-append — this splices the comma in (or removes just the
+  comma character) without touching any of the whitespace around it, so
+  the document's original formatting survives. Two new dedicated
+  regression tests reproduce the user's exact multi-line shape for both
+  the missing-comma and trailing-comma cases. Re-verified: `pnpm lint`,
+  `pnpm test` (539/539 — 3 new frontend tests), `vue-tsc --noEmit`, `pnpm
+  build`, `cargo fmt --check --all`, `cargo test --workspace` (257/257: 179
+  umbra-core + 77 umbra/src-tauri + 1 integration test). Browser tooling
+  was unavailable for a final live visual pass this round — the developer
+  should confirm in their running app.
 
 ### File List
 
