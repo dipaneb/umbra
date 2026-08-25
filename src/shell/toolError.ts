@@ -41,7 +41,35 @@ export function toToolError(err: unknown): ToolError {
 // code coverage — an unmapped code safely falls through to `message` below.
 type Translate = (key: string, params?: Record<string, unknown>) => string;
 
-const TRANSLATABLE_CODES: ReadonlySet<string> = new Set(["uuid-count-zero"]);
+// Story 8.1 AC8: `json-*` syntax-classification codes join the set. Each one's
+// English message (crates/umbra-core/src/json.rs's `classify_syntax_error`)
+// is a fixed, canned sentence with no runtime value baked in — line/column
+// stays out of `message` entirely, carried only in the separate structured
+// `position` field — so every one of these can translate with a plain
+// `t(errors.<code>)` lookup, no params needed. `json-syntax` (the fallback
+// for an unclassified error) and `json-input-too-large`/`json-internal`
+// (different failure categories, out of AC8's "validation fails" scope) stay
+// untranslated, same as before.
+const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
+  "uuid-count-zero",
+  "json-trailing-comma",
+  "json-trailing-characters",
+  "json-unterminated-string",
+  "json-unclosed-array",
+  "json-unclosed-object",
+  "json-unexpected-end",
+  "json-expected-colon",
+  "json-expected-array-separator",
+  "json-expected-object-separator",
+  "json-expected-value",
+  "json-invalid-escape",
+  "json-invalid-number",
+  "json-number-out-of-range",
+  "json-invalid-unicode",
+  "json-control-character",
+  "json-key-must-be-string",
+  "json-nesting-too-deep",
+]);
 
 export function toolErrorMessage(err: ToolError, t: Translate): string {
   if (TRANSLATABLE_CODES.has(err.code)) {

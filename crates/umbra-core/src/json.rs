@@ -125,14 +125,114 @@ impl From<serde_json::Value> for JsonTreeValue {
     }
 }
 
+// Story 8.1 AC8: name the actual failure instead of passing serde_json's
+// generic text through unchanged (the JWT Inspector precedent). serde_json's
+// own `ErrorCode` enum (its Display impl, `error.rs`) is `pub(crate)` — not
+// reachable as a typed value — so this matches on the fixed, closed set of
+// English phrases its `Display` emits, verified directly against the vendored
+// serde_json 1.0.151 source rather than assumed. Every phrase here maps to an
+// `ErrorCode` variant that is actually reachable from `from_str::<Value>`
+// (confirmed by reading `de.rs`); variants only reachable when deserializing
+// into a typed struct (`Message`, `Io`) or a numeric-keyed map
+// (`ExpectedDoubleQuote`, `ExpectedNumericKey`, `FloatKeyMustBeFinite`) are
+// intentionally absent — `parse`/`format`/`minify` only ever target `Value`.
+// The `json-syntax` fallback exists purely as a defensive net for a future
+// serde_json release adding a new variant; every regression test below
+// exercises a real reachable branch, so a classification gap would show up as
+// a changed `err.code` assertion failing, not a silent miss.
+fn classify_syntax_error(raw: &str) -> Option<(&'static str, &'static str)> {
+    if raw.contains("trailing comma") {
+        Some((
+            "json-trailing-comma",
+            "trailing comma before a closing `]` or `}` — remove it",
+        ))
+    } else if raw.contains("trailing characters") {
+        Some((
+            "json-trailing-characters",
+            "unexpected content after the JSON value ended — check for an extra closing bracket or stray text",
+        ))
+    } else if raw.contains("EOF while parsing a string") {
+        Some((
+            "json-unterminated-string",
+            "unterminated string — missing a closing `\"`",
+        ))
+    } else if raw.contains("EOF while parsing a list") {
+        Some((
+            "json-unclosed-array",
+            "unclosed array — missing a closing `]`",
+        ))
+    } else if raw.contains("EOF while parsing an object") {
+        Some((
+            "json-unclosed-object",
+            "unclosed object — missing a closing `}`",
+        ))
+    } else if raw.contains("EOF while parsing a value") {
+        Some(("json-unexpected-end", "unexpected end of input"))
+    } else if raw.contains("expected `:`") {
+        Some(("json-expected-colon", "expected `:` after an object key"))
+    } else if raw.contains("expected `,` or `]`") {
+        Some((
+            "json-expected-array-separator",
+            "expected `,` between array items, or `]` to close the array",
+        ))
+    } else if raw.contains("expected `,` or `}`") {
+        Some((
+            "json-expected-object-separator",
+            "expected `,` between object entries, or `}` to close the object",
+        ))
+    } else if raw.contains("expected ident") || raw.contains("expected value") {
+        Some((
+            "json-expected-value",
+            "expected a value here — a string, number, object, array, true, false, or null",
+        ))
+    } else if raw.contains("invalid escape") {
+        Some((
+            "json-invalid-escape",
+            "invalid `\\` escape sequence in a string",
+        ))
+    } else if raw.contains("invalid number") {
+        Some(("json-invalid-number", "invalid number literal"))
+    } else if raw.contains("number out of range") {
+        Some((
+            "json-number-out-of-range",
+            "number is too large to represent",
+        ))
+    } else if raw.contains("invalid unicode code point")
+        || raw.contains("surrogate")
+        || raw.contains("hex escape")
+    {
+        Some(("json-invalid-unicode", "invalid unicode escape sequence"))
+    } else if raw.contains("control character") {
+        Some((
+            "json-control-character",
+            "unescaped control character in a string — escape it as `\\u00XX`",
+        ))
+    } else if raw.contains("key must be a string") {
+        Some((
+            "json-key-must-be-string",
+            "object keys must be strings wrapped in double quotes",
+        ))
+    } else if raw.contains("recursion limit exceeded") {
+        Some(("json-nesting-too-deep", "document is nested too deeply"))
+    } else {
+        None
+    }
+}
+
 fn map_parse_error(err: serde_json::Error) -> ToolError {
+    let position = Position::LineCol {
+        line: err.line() as u32,
+        column: err.column() as u32,
+    };
+    let raw = err.to_string();
+    let (code, message) = match classify_syntax_error(&raw) {
+        Some((code, message)) => (code.to_string(), message.to_string()),
+        None => ("json-syntax".to_string(), raw),
+    };
     ToolError {
-        code: "json-syntax".to_string(),
-        message: err.to_string(),
-        position: Some(Position::LineCol {
-            line: err.line() as u32,
-            column: err.column() as u32,
-        }),
+        code,
+        message,
+        position: Some(position),
         context: None,
     }
 }
@@ -191,9 +291,13 @@ mod tests {
     }
 
     #[test]
-    fn format_malformed_input_returns_json_syntax_error_with_position() {
+    fn format_malformed_input_returns_json_expected_value_error_with_position() {
         let err = format(r#"{"a":}"#, JsonIndent::TwoSpaces).unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
+        assert!(
+            !err.message.contains("line"),
+            "message should not duplicate the structured position field"
+        );
         assert!(matches!(err.position, Some(Position::LineCol { .. })));
         if let Some(Position::LineCol { line, column }) = err.position {
             assert_eq!(line, 1);
@@ -202,22 +306,22 @@ mod tests {
     }
 
     #[test]
-    fn minify_malformed_input_returns_json_syntax_error_with_position() {
+    fn minify_malformed_input_returns_json_expected_value_error_with_position() {
         let err = minify(r#"{"a":}"#).unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
         assert!(matches!(err.position, Some(Position::LineCol { .. })));
     }
 
     #[test]
-    fn format_empty_string_returns_syntax_error() {
+    fn format_empty_string_returns_unexpected_end_error() {
         let err = format("", JsonIndent::TwoSpaces).unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-unexpected-end");
     }
 
     #[test]
-    fn minify_empty_string_returns_syntax_error() {
+    fn minify_empty_string_returns_unexpected_end_error() {
         let err = minify("").unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-unexpected-end");
     }
 
     #[test]
@@ -231,9 +335,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_malformed_input_returns_json_syntax_error_with_position() {
+    fn parse_malformed_input_returns_json_expected_value_error_with_position() {
         let err = parse(r#"{"a":}"#).unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
         assert!(matches!(err.position, Some(Position::LineCol { .. })));
         if let Some(Position::LineCol { line, column }) = err.position {
             assert_eq!(line, 1);
@@ -242,9 +346,125 @@ mod tests {
     }
 
     #[test]
-    fn parse_empty_string_returns_syntax_error() {
+    fn parse_empty_string_returns_unexpected_end_error() {
         let err = parse("").unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-unexpected-end");
+    }
+
+    // Story 8.1 AC8: one regression per classified serde_json ErrorCode
+    // variant that's actually reachable from `from_str::<Value>` (verified
+    // against the vendored 1.0.151 source, see `classify_syntax_error`'s doc
+    // comment) — locks in both the code and that no location text leaks into
+    // `message` (that's `position`'s job, kept separate so the shell doesn't
+    // render the location twice).
+    #[test]
+    fn parse_trailing_comma_in_array_returns_json_trailing_comma() {
+        let err = parse("[1,2,]").unwrap_err();
+        assert_eq!(err.code, "json-trailing-comma");
+        assert!(!err.message.contains("line"));
+    }
+
+    #[test]
+    fn parse_trailing_comma_in_object_returns_json_trailing_comma() {
+        let err = parse(r#"{"a":1,}"#).unwrap_err();
+        assert_eq!(err.code, "json-trailing-comma");
+    }
+
+    #[test]
+    fn parse_trailing_characters_after_value_returns_json_trailing_characters() {
+        let err = parse("{}{}").unwrap_err();
+        assert_eq!(err.code, "json-trailing-characters");
+    }
+
+    #[test]
+    fn parse_unterminated_string_returns_json_unterminated_string() {
+        let err = parse(r#"{"a": "unterminated}"#).unwrap_err();
+        assert_eq!(err.code, "json-unterminated-string");
+    }
+
+    #[test]
+    fn parse_unclosed_array_returns_json_unclosed_array() {
+        let err = parse("[1,2").unwrap_err();
+        assert_eq!(err.code, "json-unclosed-array");
+    }
+
+    #[test]
+    fn parse_unclosed_object_returns_json_unclosed_object() {
+        let err = parse(r#"{"a":1"#).unwrap_err();
+        assert_eq!(err.code, "json-unclosed-object");
+    }
+
+    #[test]
+    fn parse_missing_colon_returns_json_expected_colon() {
+        let err = parse(r#"{"a" 1}"#).unwrap_err();
+        assert_eq!(err.code, "json-expected-colon");
+    }
+
+    #[test]
+    fn parse_missing_comma_in_array_returns_json_expected_array_separator() {
+        let err = parse("[1 2]").unwrap_err();
+        assert_eq!(err.code, "json-expected-array-separator");
+    }
+
+    #[test]
+    fn parse_missing_comma_in_object_returns_json_expected_object_separator() {
+        let err = parse(r#"{"a":1 "b":2}"#).unwrap_err();
+        assert_eq!(err.code, "json-expected-object-separator");
+    }
+
+    #[test]
+    fn parse_unquoted_key_returns_json_key_must_be_string() {
+        let err = parse("{a:1}").unwrap_err();
+        assert_eq!(err.code, "json-key-must-be-string");
+    }
+
+    #[test]
+    fn parse_single_quoted_value_returns_json_expected_value() {
+        let err = parse("{\"a\": 'x'}").unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+    }
+
+    #[test]
+    fn parse_invalid_escape_returns_json_invalid_escape() {
+        let err = parse(r#"{"a": "\q"}"#).unwrap_err();
+        assert_eq!(err.code, "json-invalid-escape");
+    }
+
+    #[test]
+    fn parse_invalid_number_returns_json_invalid_number() {
+        let err = parse("[01]").unwrap_err();
+        assert_eq!(err.code, "json-invalid-number");
+    }
+
+    #[test]
+    fn parse_number_out_of_range_returns_json_number_out_of_range() {
+        let err = parse("1e999999999999999999999999999999").unwrap_err();
+        assert_eq!(err.code, "json-number-out-of-range");
+    }
+
+    #[test]
+    fn parse_lone_leading_surrogate_returns_json_invalid_unicode() {
+        // \uD800 is a leading UTF-16 surrogate with no trailing surrogate
+        // pair to follow it — the string ends right after, so serde_json
+        // reports `UnexpectedEndOfHexEscape` rather than being able to
+        // combine it into a real codepoint.
+        let err = parse(r#"{"a": "\uD800"}"#).unwrap_err();
+        assert_eq!(err.code, "json-invalid-unicode");
+    }
+
+    #[test]
+    fn parse_non_hex_unicode_escape_returns_json_invalid_escape() {
+        // Not-hex digits after \u fail at the same step as any other
+        // malformed escape character — serde_json doesn't distinguish this
+        // from e.g. `\q`, so it's `InvalidEscape`, not `InvalidUnicodeCodePoint`.
+        let err = parse(r#"{"a": "\uZZZZ"}"#).unwrap_err();
+        assert_eq!(err.code, "json-invalid-escape");
+    }
+
+    #[test]
+    fn parse_control_character_in_string_returns_json_control_character() {
+        let err = parse("{\"a\": \"line\nbreak\"}").unwrap_err();
+        assert_eq!(err.code, "json-control-character");
     }
 
     #[test]
@@ -368,21 +588,21 @@ mod tests {
     fn parse_rejects_deeply_nested_input() {
         let input = deeply_nested_json_fixture(100_000);
         let err = parse(&input).unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-nesting-too-deep");
     }
 
     #[test]
     fn format_rejects_deeply_nested_input() {
         let input = deeply_nested_json_fixture(100_000);
         let err = format(&input, JsonIndent::TwoSpaces).unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-nesting-too-deep");
     }
 
     #[test]
     fn minify_rejects_deeply_nested_input() {
         let input = deeply_nested_json_fixture(100_000);
         let err = minify(&input).unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-nesting-too-deep");
     }
 
     // Boundary check on the legitimate side: a document nested well within

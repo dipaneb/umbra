@@ -48,7 +48,7 @@ mod tests {
         let err = json_format(r#"{"a":}"#.to_string(), JsonIndent::TwoSpaces)
             .await
             .unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
     }
 
     #[tokio::test]
@@ -62,7 +62,7 @@ mod tests {
     #[tokio::test]
     async fn json_minify_command_returns_tool_error_for_malformed_input() {
         let err = json_minify(r#"{"a":}"#.to_string()).await.unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
     }
 
     #[tokio::test]
@@ -85,7 +85,7 @@ mod tests {
     #[tokio::test]
     async fn json_parse_command_returns_tool_error_for_malformed_input() {
         let err = json_parse(r#"{"a":}"#.to_string()).await.unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
     }
 
     // Wide, flat array of many small same-shaped objects — same shape/rationale as

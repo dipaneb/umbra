@@ -17,6 +17,12 @@ const input = ref("");
 const indent = ref<JsonIndent>("two_spaces");
 const error = ref<ToolError | null>(null);
 const treeValue = ref<JsonTreeValue | null>(null);
+// Story 8.1 AC8 (Validate tab): the live parse below already re-parses the
+// shared input on every debounced keystroke — reusing its result here (rather
+// than adding a second parse call/runner) is what AD-16's "genuinely
+// independent state group" test actually calls for, since this isn't new
+// computation, just a second view over the same one.
+const validateError = ref<ToolError | null>(null);
 
 // Story 8.1 Task 2 (AC6): six tabs replace the old single flat panel; every
 // tab reads this one shared `input`. Only Explorer is wired up so far — the
@@ -48,9 +54,14 @@ const debouncedParse = debounce((value: string) => {
       const result = await runTreeParse(() =>
         value.trim() === "" ? Promise.resolve(null) : invoke<JsonTreeValue>("json_parse", { input: value }),
       );
-      if (!result.superseded) treeValue.value = result.value;
-    } catch {
-      treeValue.value = null; // invalid JSON -> tree unavailable; Format still surfaces the detailed ToolError
+      if (!result.superseded) {
+        treeValue.value = result.value;
+        validateError.value = null;
+      }
+    } catch (err) {
+      // invalid JSON -> tree unavailable; Validate surfaces the detailed reason
+      treeValue.value = null;
+      validateError.value = toToolError(err);
     }
   })();
 }, 200);
@@ -62,8 +73,7 @@ watch(input, (value) => debouncedParse(value), { immediate: true });
 // IPC round-trip that nothing will ever read.
 onUnmounted(() => debouncedParse.cancel());
 
-const errorLocation = computed(() => {
-  const position = error.value?.position;
+function positionText(position: ToolError["position"]): string | null {
   if (position?.kind === "LineCol") {
     return t("common.positionLineCol", { line: position.line, column: position.column });
   }
@@ -71,10 +81,21 @@ const errorLocation = computed(() => {
     return t("common.positionByteOffset", { offset: position.offset });
   }
   return null;
-});
+}
+
+const errorLocation = computed(() => positionText(error.value?.position ?? null));
+const validateErrorLocation = computed(() => positionText(validateError.value?.position ?? null));
+const isInputEmpty = computed(() => input.value.trim() === "");
 
 function toToolError(err: unknown): ToolError {
   return isToolError(err) ? err : { code: "unknown", message: String(err), position: null, context: null };
+}
+
+// Story 8.1 AC8: hands off to Repair with the same input already in place —
+// input is one shared ref across every tab, so "carrying it over" is just
+// switching which tab reads it.
+function onTryRepair() {
+  activeTab.value = "repair";
 }
 
 // Story 8.1 Task 2 (AC6): Format/Minify now rewrite `input` in place instead
@@ -180,6 +201,39 @@ function onTreeCopyError(err: unknown) {
       />
     </div>
     <div
+      v-else-if="activeTab === 'validate'"
+      id="tabpanel-validate"
+      role="tabpanel"
+      aria-labelledby="tab-validate"
+      class="tab-panel"
+    >
+      <p
+        v-if="isInputEmpty"
+        role="status"
+      >
+        {{ t('tools.json.validateEmpty') }}
+      </p>
+      <template v-else-if="validateError">
+        <p role="alert">
+          {{ toolErrorMessage(validateError, t) }}<template v-if="validateErrorLocation">
+            {{ validateErrorLocation }}
+          </template>
+        </p>
+        <AppButton
+          class="try-repair-button"
+          @click="onTryRepair"
+        >
+          {{ t('tools.json.tryRepair') }}
+        </AppButton>
+      </template>
+      <p
+        v-else
+        role="status"
+      >
+        {{ t('tools.json.validateValid') }}
+      </p>
+    </div>
+    <div
       v-else
       :id="`tabpanel-${activeTab}`"
       role="tabpanel"
@@ -265,6 +319,13 @@ p[role="alert"] {
 
 .tree-panel-label {
   font-weight: bold;
+}
+
+/* .tab-panel's flex-column default (align-items: stretch) would otherwise
+   stretch this to the panel's full width, unlike Format/Minify's row of
+   naturally-sized buttons above. */
+.try-repair-button {
+  align-self: flex-start;
 }
 
 .tab-panel :deep(.json-tree-scroll) {

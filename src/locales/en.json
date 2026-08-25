@@ -107,6 +107,9 @@
       "explorerNextMatch": "Next match",
       "explorerNextMatchTitle": "Next match (↓)",
       "comingSoon": "Coming soon.",
+      "validateEmpty": "Paste JSON above to validate it.",
+      "validateValid": "Valid JSON.",
+      "tryRepair": "Try Repair",
       "tab": {
         "explorer": "Explorer",
         "validate": "Validate",
@@ -212,6 +215,23 @@
     }
   },
   "errors": {
-    "uuid-count-zero": "Enter a count of at least 1."
+    "uuid-count-zero": "Enter a count of at least 1.",
+    "json-trailing-comma": "Trailing comma before a closing ] or } — remove it.",
+    "json-trailing-characters": "Unexpected content after the JSON value ended — check for an extra closing bracket or stray text.",
+    "json-unterminated-string": "Unterminated string — missing a closing \".",
+    "json-unclosed-array": "Unclosed array — missing a closing ].",
+    "json-unclosed-object": "Unclosed object — missing a closing }.",
+    "json-unexpected-end": "Unexpected end of input.",
+    "json-expected-colon": "Expected : after an object key.",
+    "json-expected-array-separator": "Expected , between array items, or ] to close the array.",
+    "json-expected-object-separator": "Expected , between object entries, or } to close the object.",
+    "json-expected-value": "Expected a value here — a string, number, object, array, true, false, or null.",
+    "json-invalid-escape": "Invalid \\ escape sequence in a string.",
+    "json-invalid-number": "Invalid number literal.",
+    "json-number-out-of-range": "Number is too large to represent.",
+    "json-invalid-unicode": "Invalid unicode escape sequence.",
+    "json-control-character": "Unescaped control character in a string — escape it as \\u00XX.",
+    "json-key-must-be-string": "Object keys must be strings wrapped in double quotes.",
+    "json-nesting-too-deep": "Document is nested too deeply."
   }
 }

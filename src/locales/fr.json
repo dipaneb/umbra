@@ -107,6 +107,9 @@
       "explorerNextMatch": "Résultat suivant",
       "explorerNextMatchTitle": "Résultat suivant (↓)",
       "comingSoon": "Bientôt disponible.",
+      "validateEmpty": "Collez du JSON ci-dessus pour le valider.",
+      "validateValid": "JSON valide.",
+      "tryRepair": "Essayer la réparation",
       "tab": {
         "explorer": "Explorateur",
         "validate": "Validation",
@@ -212,6 +215,23 @@
     }
   },
   "errors": {
-    "uuid-count-zero": "Saisissez un nombre d'au moins 1."
+    "uuid-count-zero": "Saisissez un nombre d'au moins 1.",
+    "json-trailing-comma": "Virgule superflue avant un ] ou } fermant — supprimez-la.",
+    "json-trailing-characters": "Contenu inattendu après la fin de la valeur JSON — vérifiez qu'il n'y a pas de crochet en trop ou de texte parasite.",
+    "json-unterminated-string": "Chaîne non terminée — il manque un guillemet fermant \".",
+    "json-unclosed-array": "Tableau non fermé — il manque un crochet fermant ].",
+    "json-unclosed-object": "Objet non fermé — il manque une accolade fermante }.",
+    "json-unexpected-end": "Fin de l'entrée inattendue.",
+    "json-expected-colon": "Un « : » est attendu après une clé d'objet.",
+    "json-expected-array-separator": "Une « , » est attendue entre les éléments du tableau, ou un « ] » pour le fermer.",
+    "json-expected-object-separator": "Une « , » est attendue entre les entrées de l'objet, ou un « } » pour le fermer.",
+    "json-expected-value": "Une valeur est attendue ici — une chaîne, un nombre, un objet, un tableau, true, false ou null.",
+    "json-invalid-escape": "Séquence d'échappement « \\ » invalide dans une chaîne.",
+    "json-invalid-number": "Nombre invalide.",
+    "json-number-out-of-range": "Le nombre est trop grand pour être représenté.",
+    "json-invalid-unicode": "Séquence d'échappement unicode invalide.",
+    "json-control-character": "Caractère de contrôle non échappé dans une chaîne — échappez-le en \\u00XX.",
+    "json-key-must-be-string": "Les clés d'objet doivent être des chaînes entourées de guillemets doubles.",
+    "json-nesting-too-deep": "Le document est imbriqué trop profondément."
   }
 }

@@ -247,6 +247,57 @@ describe("JsonView", () => {
     expect(wrapper.findComponent(JsonTree).props("value")).toBeNull();
   });
 
+  it("shows a neutral prompt on the Validate tab when input is empty (AC8)", async () => {
+    wrapper = mount(JsonView);
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    await wrapper.find("#tab-validate").trigger("click");
+
+    expect(wrapper.find("#tabpanel-validate").text()).toBe("Paste JSON above to validate it.");
+  });
+
+  it("shows a valid-JSON status on the Validate tab once the live parse succeeds (AC8)", async () => {
+    const parsed: JsonTreeValue = { kind: "Object", data: [] };
+    invokeMock.mockResolvedValueOnce(parsed);
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue("{}");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+    await wrapper.find("#tab-validate").trigger("click");
+
+    expect(wrapper.find("#tabpanel-validate").text()).toBe("Valid JSON.");
+  });
+
+  it("surfaces the rewritten error, its position, and a Try Repair cross-link on the Validate tab (AC8)", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "json-expected-value",
+      message: "expected a value here — a string, number, object, array, true, false, or null",
+      position: { kind: "LineCol", line: 1, column: 6 },
+      context: null,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":}');
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+    await wrapper.find("#tab-validate").trigger("click");
+
+    // json-expected-value is TRANSLATABLE_CODES-registered, so the real
+    // mounted i18n instance renders errors.json-expected-value from the
+    // locale file, not the mocked ToolError's raw `message` verbatim.
+    const panel = wrapper.find("#tabpanel-validate");
+    expect(panel.text()).toContain("Expected a value here");
+    expect(panel.text()).toContain("(line 1, column 6)");
+
+    await clickButton(wrapper, "Try Repair");
+
+    expect(wrapper.find("#tabpanel-repair").exists()).toBe(true);
+    // Same shared `input` ref — switching tabs is the whole "carry over".
+    expect(inputValue(wrapper)).toBe('{"a":}');
+  });
+
   it("ends up with a null tree, not a stale value, when input is cleared before a slow parse resolves", async () => {
     const slow = deferred<JsonTreeValue>();
     invokeMock.mockReturnValueOnce(slow.promise);
@@ -321,10 +372,12 @@ describe("JsonView", () => {
   it("shows an honest placeholder, not the tree, for a not-yet-built tab (AC6)", async () => {
     wrapper = mount(JsonView);
 
-    await wrapper.find("#tab-validate").trigger("click");
+    // Validate now has real content (AC8) — Repair is still an honest
+    // placeholder, so it's the one that exercises this AC6 behavior.
+    await wrapper.find("#tab-repair").trigger("click");
 
     expect(wrapper.findComponent(JsonTree).exists()).toBe(false);
-    expect(wrapper.find("#tabpanel-validate").text()).toBe("Coming soon.");
+    expect(wrapper.find("#tabpanel-repair").text()).toBe("Coming soon.");
   });
 
   it("surfaces a tree copy failure through the same error alert as Format/Minify", async () => {

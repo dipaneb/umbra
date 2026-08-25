@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isToolError, toToolError } from "./toolError";
+import { isToolError, toolErrorMessage, toToolError } from "./toolError";
 
 describe("isToolError", () => {
   it("accepts a value with string code and message fields", () => {
@@ -39,5 +39,22 @@ describe("toToolError", () => {
       position: null,
       context: null,
     });
+  });
+});
+
+describe("toolErrorMessage", () => {
+  // Story 8.1 AC8: a JSON syntax-classification code is TRANSLATABLE_CODES-
+  // registered — a stand-in `t` proves the lookup key shape without pulling
+  // in a real i18n instance.
+  const t = (key: string) => (key === "errors.json-expected-value" ? "translated" : key);
+
+  it("translates a code registered in TRANSLATABLE_CODES", () => {
+    const err = { code: "json-expected-value", message: "expected a value here", position: null, context: null };
+    expect(toolErrorMessage(err, t)).toBe("translated");
+  });
+
+  it("falls back to the raw message for a code not registered in TRANSLATABLE_CODES", () => {
+    const err = { code: "json-internal", message: "raw internal message", position: null, context: null };
+    expect(toolErrorMessage(err, t)).toBe("raw internal message");
   });
 });
