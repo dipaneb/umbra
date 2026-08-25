@@ -50,6 +50,17 @@ type Translate = (key: string, params?: Record<string, unknown>) => string;
 // for an unclassified error) and `json-input-too-large`/`json-internal`
 // (different failure categories, out of AC8's "validation fails" scope) stay
 // untranslated, same as before.
+//
+// Story 8.1 AC10 (Query): `json-query-invalid-expression` and
+// `json-query-expression-too-long` are deliberately NOT added here, for the
+// same reason `json-syntax`/`json-input-too-large` aren't: neither is a
+// fixed canned sentence. The first is `serde_json_path`'s own dynamic parser
+// error text (arbitrary English describing whatever the user actually typed
+// wrong — there's no finite set of phrasings to pre-author a French sentence
+// for, unlike `classify_syntax_error`'s closed set); the second bakes the
+// runtime expression length directly into the message string, the exact
+// pattern this file's own top comment already flags as unsafe to
+// re-translate around.
 const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   "uuid-count-zero",
   "json-trailing-comma",

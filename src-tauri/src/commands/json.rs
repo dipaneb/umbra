@@ -1,5 +1,7 @@
 use umbra_core::ToolError;
-use umbra_core::json::{JsonIndent, JsonTreeValue, RepairResult, format, minify, parse, repair};
+use umbra_core::json::{
+    JsonIndent, JsonTreeValue, QueryResult, RepairResult, format, minify, parse, query, repair,
+};
 
 #[tauri::command]
 pub async fn json_format(input: String, indent: JsonIndent) -> Result<String, ToolError> {
@@ -28,6 +30,16 @@ pub async fn json_parse(input: String) -> Result<JsonTreeValue, ToolError> {
 #[tauri::command]
 pub async fn json_repair(input: String) -> Result<RepairResult, ToolError> {
     tauri::async_runtime::spawn_blocking(move || repair(&input))
+        .await
+        .map_err(map_join_error)?
+}
+
+// Story 8.1 AC10/AC14: Query is genuinely new computation (JSONPath parse +
+// evaluate), so it gets its own `spawn_blocking` dispatch here — not
+// piggybacked on `json_parse`'s or `json_repair`'s.
+#[tauri::command]
+pub async fn json_query(input: String, expression: String) -> Result<QueryResult, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || query(&input, &expression))
         .await
         .map_err(map_join_error)?
 }
@@ -112,6 +124,31 @@ mod tests {
         assert!(result.still_invalid);
     }
 
+    #[tokio::test]
+    async fn json_query_command_returns_matches_for_a_valid_expression() {
+        let result = json_query(r#"{"a":1,"b":2}"#.to_string(), "$.a".to_string())
+            .await
+            .unwrap();
+        assert_eq!(result.total, 1);
+        assert_eq!(result.matches[0].path, "$['a']");
+    }
+
+    #[tokio::test]
+    async fn json_query_command_returns_tool_error_for_invalid_expression() {
+        let err = json_query(r#"{"a":1}"#.to_string(), "$.[".to_string())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "json-query-invalid-expression");
+    }
+
+    #[tokio::test]
+    async fn json_query_command_returns_tool_error_for_malformed_document() {
+        let err = json_query(r#"{"a":}"#.to_string(), "$.a".to_string())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+    }
+
     // Wide, flat array of many small same-shaped objects — same shape/rationale as
     // umbra-core's fixture (see crates/umbra-core/src/json.rs); duplicated locally
     // per this story's Dev Notes rather than sharing a test-util crate for two ~15
@@ -191,6 +228,20 @@ mod tests {
         assert!(
             elapsed.as_secs() < 20,
             "json_repair took {elapsed:?} on a 10MB document"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_query_command_handles_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let start = std::time::Instant::now();
+        let result = json_query(input, "$[0].id".to_string()).await;
+        let elapsed = start.elapsed();
+        eprintln!("json_query_command_handles_10mb_document: {elapsed:?}");
+        assert!(result.is_ok());
+        assert!(
+            elapsed.as_secs() < 20,
+            "json_query took {elapsed:?} on a 10MB document"
         );
     }
 

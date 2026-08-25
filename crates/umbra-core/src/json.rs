@@ -454,6 +454,89 @@ pub fn repair(input: &str) -> Result<RepairResult, ToolError> {
     })
 }
 
+// Story 8.1 AC10/AC14: mirrors MAX_INPUT_BYTES's CWE-400 rationale, applied to
+// the one new attacker-influenceable-length input Query adds (the expression
+// itself isn't bounded by MAX_INPUT_BYTES, which only covers the document).
+// Real JSONPath expressions are short, hand-typed strings — this is a
+// generous defensive ceiling, not a realistic-use constraint.
+const MAX_QUERY_EXPRESSION_LEN: usize = 10_000;
+
+// Story 8.1 AC10/AC14: bounds how many matches `query` returns to the caller.
+// An unbounded query (e.g. `$..*` over a 10 MB document) could otherwise
+// serialize an enormous match list over Tauri's IPC — the same class of
+// unbounded-output risk `MAX_INPUT_BYTES` guards on the input side. `total`
+// and `truncated` keep this honest (AD-9-adjacent: never silently drop
+// results) rather than quietly capping without saying so.
+const MAX_QUERY_MATCHES: usize = 1000;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct QueryMatch {
+    pub path: String,
+    pub value: JsonTreeValue,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct QueryResult {
+    pub matches: Vec<QueryMatch>,
+    pub total: usize,
+    pub truncated: bool,
+}
+
+// Story 8.1 AC10: JSONPath (RFC 9535) via `serde_json_path`, chosen and
+// live-verified per the decision record (see Cargo.toml's comment on the
+// dependency). `query_located` (not `query`) is used specifically so each
+// match carries its own normalized path — the view surfaces both, matching
+// what Explorer's own copy-JSONPath action already established as this
+// tool's convention (see `jsonPath.ts`).
+pub fn query(input: &str, expression: &str) -> Result<QueryResult, ToolError> {
+    if expression.len() > MAX_QUERY_EXPRESSION_LEN {
+        return Err(ToolError {
+            code: "json-query-expression-too-long".to_string(),
+            message: format!(
+                "query expression is {} characters, which exceeds the {MAX_QUERY_EXPRESSION_LEN}-character limit",
+                expression.len()
+            ),
+            position: None,
+            context: None,
+        });
+    }
+    let value = parse(input)?;
+    let path = serde_json_path::JsonPath::parse(expression).map_err(map_query_parse_error)?;
+    let located = path.query_located(&value);
+    let total = located.len();
+    let matches = located
+        .iter()
+        .take(MAX_QUERY_MATCHES)
+        .map(|located_node| QueryMatch {
+            path: located_node.location().to_string(),
+            value: located_node.node().clone().into(),
+        })
+        .collect();
+    Ok(QueryResult {
+        matches,
+        total,
+        truncated: total > MAX_QUERY_MATCHES,
+    })
+}
+
+// serde_json_path's `ParseError` carries a 1-indexed character offset into
+// the expression string (its own `position()`), not a position in the JSON
+// document — kept in `ToolError.position` as an honest `ByteOffset` so the
+// data isn't discarded, but the view deliberately does not wire this through
+// the same jump-to-document-caret affordance the document-position errors
+// use (Format/Validate/Repair), since that offset means something different
+// here and would jump the wrong text field.
+fn map_query_parse_error(err: serde_json_path::ParseError) -> ToolError {
+    ToolError {
+        code: "json-query-invalid-expression".to_string(),
+        message: err.to_string(),
+        position: Some(Position::ByteOffset {
+            offset: err.position() as u64,
+        }),
+        context: None,
+    }
+}
+
 // Wire type for the JSON tree (Story 1.8): `serde_json::Value::Object` round-trips
 // through Tauri's IPC as a plain JS object, and the ECMAScript spec always
 // enumerates canonical-integer-string keys ("0", "1", ...) in ascending numeric
@@ -1191,5 +1274,136 @@ mod tests {
         let result = repair(&input);
         assert!(result.is_ok());
         assert!(!result.unwrap().still_invalid);
+    }
+
+    // Story 8.1 AC10: `query` — JSONPath (RFC 9535) via `serde_json_path`.
+    #[test]
+    fn query_simple_dot_access_returns_matching_value_and_path() {
+        let result = query(r#"{"a":1,"b":2}"#, "$.a").unwrap();
+        assert_eq!(result.total, 1);
+        assert!(!result.truncated);
+        assert_eq!(result.matches.len(), 1);
+        assert_eq!(
+            result.matches[0].value,
+            JsonTreeValue::Number("1".to_string())
+        );
+        assert_eq!(result.matches[0].path, "$['a']");
+    }
+
+    #[test]
+    fn query_wildcard_returns_every_top_level_value() {
+        let result = query(r#"{"a":1,"b":2,"c":3}"#, "$.*").unwrap();
+        assert_eq!(result.total, 3);
+        let values: Vec<&JsonTreeValue> = result.matches.iter().map(|m| &m.value).collect();
+        assert_eq!(
+            values,
+            vec![
+                &JsonTreeValue::Number("1".to_string()),
+                &JsonTreeValue::Number("2".to_string()),
+                &JsonTreeValue::Number("3".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn query_recursive_descent_finds_nested_keys() {
+        let result = query(r#"{"a":{"name":"x","b":{"name":"y"}}}"#, "$..name").unwrap();
+        assert_eq!(result.total, 2);
+        let values: Vec<&JsonTreeValue> = result.matches.iter().map(|m| &m.value).collect();
+        assert_eq!(
+            values,
+            vec![
+                &JsonTreeValue::String("x".to_string()),
+                &JsonTreeValue::String("y".to_string()),
+            ]
+        );
+    }
+
+    // RFC 9535's own worked example (section 1.5's bookstore document) — a
+    // filter expression with a numeric comparison, checked against the
+    // spec's documented expected result rather than an assumption about how
+    // the crate behaves.
+    #[test]
+    fn query_filter_expression_matches_rfc9535_worked_example() {
+        let document = r#"{
+            "store": {
+                "book": [
+                    {"category": "reference", "title": "Sayings of the Century", "price": 8.95},
+                    {"category": "fiction", "title": "Sword of Honour", "price": 12.99},
+                    {"category": "fiction", "title": "Moby Dick", "price": 8.99},
+                    {"category": "fiction", "title": "The Lord of the Rings", "price": 22.99}
+                ]
+            }
+        }"#;
+        let result = query(document, "$.store.book[?@.price < 10].title").unwrap();
+        let values: Vec<&JsonTreeValue> = result.matches.iter().map(|m| &m.value).collect();
+        assert_eq!(
+            values,
+            vec![
+                &JsonTreeValue::String("Sayings of the Century".to_string()),
+                &JsonTreeValue::String("Moby Dick".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn query_with_no_matches_returns_empty_result_not_an_error() {
+        let result = query(r#"{"a":1}"#, "$.nonexistent").unwrap();
+        assert_eq!(result.total, 0);
+        assert!(result.matches.is_empty());
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn query_invalid_expression_returns_clear_error_with_position() {
+        let err = query(r#"{"a":1}"#, "$.[").unwrap_err();
+        assert_eq!(err.code, "json-query-invalid-expression");
+        assert!(!err.message.is_empty());
+        assert!(matches!(err.position, Some(Position::ByteOffset { .. })));
+    }
+
+    #[test]
+    fn query_on_malformed_document_surfaces_the_documents_own_parse_error() {
+        // Query only makes sense over a valid document (AC10's own "Given
+        // valid JSON is loaded"); when the document itself doesn't parse,
+        // `query` surfaces exactly the same classified error `parse` would,
+        // not a query-specific one — there's no separate failure mode here.
+        let err = query(r#"{"a":}"#, "$.a").unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+    }
+
+    #[test]
+    fn query_rejects_expression_over_max_length() {
+        let expression = "$".to_string() + &".a".repeat(MAX_QUERY_EXPRESSION_LEN);
+        let err = query(r#"{"a":1}"#, &expression).unwrap_err();
+        assert_eq!(err.code, "json-query-expression-too-long");
+    }
+
+    #[test]
+    fn query_truncates_and_reports_total_when_matches_exceed_the_cap() {
+        let mut items = Vec::new();
+        for i in 0..(MAX_QUERY_MATCHES + 1) {
+            items.push(i.to_string());
+        }
+        let document = format!("[{}]", items.join(","));
+        let result = query(&document, "$[*]").unwrap();
+        assert_eq!(result.total, MAX_QUERY_MATCHES + 1);
+        assert_eq!(result.matches.len(), MAX_QUERY_MATCHES);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn query_succeeds_on_10mb_document() {
+        let (input, expected_len) = large_json_fixture(10 * 1024 * 1024);
+        let result = query(&input, "$[0].id").unwrap();
+        assert_eq!(result.total, 1);
+        assert!(!result.truncated);
+        assert_eq!(
+            result.matches[0].value,
+            JsonTreeValue::Number("0".to_string())
+        );
+        // Sanity-check the fixture itself actually has more than one item,
+        // so this test is exercising a real 10 MB array, not a fluke.
+        assert!(expected_len > 1);
     }
 }

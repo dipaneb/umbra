@@ -2,14 +2,18 @@
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
+import { PhCopySimple, PhLink } from "@phosphor-icons/vue";
 import AppButton from "../../components/AppButton.vue";
 import AppTabs, { type AppTab } from "../../components/AppTabs.vue";
+import { writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { isToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import JsonTree from "./JsonTree.vue";
 import type { JsonIndent } from "./jsonIndent";
+import type { QueryMatch, QueryResult } from "./jsonQuery";
 import type { RepairResult } from "./jsonRepair";
+import { jsonTreeValueToText } from "./jsonTreeValue";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 const { t } = useI18n();
@@ -31,6 +35,13 @@ const validateError = ref<ToolError | null>(null);
 // gets its own preview state and its own runner scope below (AD-16/AC14).
 const repairResult = ref<RepairResult | null>(null);
 const repairError = ref<ToolError | null>(null);
+
+// Query (AC10): also genuinely new computation (a JSONPath parse + evaluate
+// over the parsed document), so it gets its own preview state and runner
+// scope, same as Repair.
+const queryExpression = ref("");
+const queryResult = ref<QueryResult | null>(null);
+const queryError = ref<ToolError | null>(null);
 
 // Story 8.1 Task 2 (AC6): six tabs replace the old single flat panel; every
 // tab reads this one shared `input`. Only Explorer is wired up so far — the
@@ -112,12 +123,52 @@ watch(
   { immediate: true },
 );
 
+// Own runner scope (AD-16): Query is a separate independent state group from
+// every other runner in this file, same reasoning as Repair's own scope.
+const runQuery = createLatestWinsRunner();
+
+// Deliberately does not gate on the document already being known-valid
+// before calling the command: `query`'s Rust implementation parses `input`
+// itself first, so a malformed document surfaces exactly the same rewritten,
+// already-translated `json-*` error Validate shows (via `toolErrorMessage`
+// below) — reusing that existing, tested error path instead of duplicating
+// an "is this valid JSON?" check on the client.
+const debouncedQueryRun = debounce((value: string, expression: string) => {
+  void (async () => {
+    try {
+      const result = await runQuery(() =>
+        value.trim() === "" || expression.trim() === ""
+          ? Promise.resolve(null)
+          : invoke<QueryResult>("json_query", { input: value, expression }),
+      );
+      if (!result.superseded) {
+        queryResult.value = result.value;
+        queryError.value = null;
+      }
+    } catch (err) {
+      queryResult.value = null;
+      queryError.value = toToolError(err);
+    }
+  })();
+}, 200);
+
+// Only computed while Query is the active tab, same reasoning as Repair's
+// own watcher — nothing else on screen reads this state.
+watch(
+  [activeTab, input, queryExpression],
+  ([tab, value, expression]) => {
+    if (tab === "query") debouncedQueryRun(value, expression);
+  },
+  { immediate: true },
+);
+
 // Otherwise a pending timer fires into this component's refs after the user
 // has navigated away to a different tool, wasting a debounce cycle and an
 // IPC round-trip that nothing will ever read.
 onUnmounted(() => {
   debouncedParse.cancel();
   debouncedRepair.cancel();
+  debouncedQueryRun.cancel();
 });
 
 function positionText(position: ToolError["position"]): string | null {
@@ -133,7 +184,9 @@ function positionText(position: ToolError["position"]): string | null {
 const errorLocation = computed(() => positionText(error.value?.position ?? null));
 const validateErrorLocation = computed(() => positionText(validateError.value?.position ?? null));
 const repairErrorLocation = computed(() => positionText(repairError.value?.position ?? null));
+const queryErrorLocation = computed(() => positionText(queryError.value?.position ?? null));
 const isInputEmpty = computed(() => input.value.trim() === "");
+const isQueryExpressionEmpty = computed(() => queryExpression.value.trim() === "");
 
 // Moves the caret to a reported line/column so the position text isn't just
 // a number the user has to count out by hand against a plain, line-number-
@@ -197,6 +250,27 @@ function onTreeCopyError(err: unknown) {
 function onApplyRepair() {
   if (!repairResult.value) return;
   input.value = repairResult.value.repaired;
+}
+
+// Story 8.1 AC10: same clipboard-failure convention Explorer's own
+// copy-value/copy-path actions already established (JsonTree.vue's
+// `copy-error` emit, caught by `onTreeCopyError` above) — reused directly
+// rather than inventing a second error-surfacing path for the same kind of
+// failure.
+async function copyQueryMatchValue(match: QueryMatch) {
+  try {
+    await writeClipboardText(jsonTreeValueToText(match.value));
+  } catch (err) {
+    error.value = toToolError(err);
+  }
+}
+
+async function copyQueryMatchPath(match: QueryMatch) {
+  try {
+    await writeClipboardText(match.path);
+  } catch (err) {
+    error.value = toToolError(err);
+  }
 }
 </script>
 
@@ -390,6 +464,108 @@ function onApplyRepair() {
       </template>
     </div>
     <div
+      v-else-if="activeTab === 'query'"
+      id="tabpanel-query"
+      role="tabpanel"
+      aria-labelledby="tab-query"
+      class="tab-panel"
+    >
+      <div class="field">
+        <label for="json-query-expression">{{ t('tools.json.queryExpressionLabel') }}</label>
+        <input
+          id="json-query-expression"
+          v-model="queryExpression"
+          type="text"
+          class="query-expression-input"
+          autocomplete="off"
+          spellcheck="false"
+          :placeholder="t('tools.json.queryExpressionPlaceholder')"
+        >
+      </div>
+      <p
+        v-if="isInputEmpty"
+        role="status"
+      >
+        {{ t('tools.json.queryInputEmpty') }}
+      </p>
+      <p
+        v-else-if="isQueryExpressionEmpty"
+        role="status"
+      >
+        {{ t('tools.json.queryExpressionEmpty') }}
+      </p>
+      <p
+        v-else-if="queryError"
+        role="alert"
+      >
+        {{ toolErrorMessage(queryError, t) }}<button
+          v-if="queryError.position?.kind === 'LineCol'"
+          type="button"
+          class="position-link"
+          @click="jumpToPosition(queryError.position)"
+        >
+          {{ queryErrorLocation }}
+        </button><span
+          v-else-if="queryError.position?.kind === 'ByteOffset'"
+          class="query-expression-position"
+        >{{ queryErrorLocation }}</span>
+      </p>
+      <template v-else-if="queryResult">
+        <p
+          v-if="queryResult.matches.length === 0"
+          role="status"
+        >
+          {{ t('tools.json.queryNoMatches') }}
+        </p>
+        <template v-else>
+          <p
+            role="status"
+            class="query-match-count"
+          >
+            <template v-if="queryResult.truncated">
+              {{ t('tools.json.queryMatchCountTruncated', { shown: queryResult.matches.length, total: queryResult.total }) }}
+            </template>
+            <template v-else-if="queryResult.total === 1">
+              {{ t('tools.json.queryMatchCountOne') }}
+            </template>
+            <template v-else>
+              {{ t('tools.json.queryMatchCountOther', { count: queryResult.total }) }}
+            </template>
+          </p>
+          <ul class="query-matches">
+            <li
+              v-for="match in queryResult.matches"
+              :key="match.path"
+              class="query-match"
+            >
+              <code class="query-match-path">{{ match.path }}</code>
+              <code class="query-match-value">{{ jsonTreeValueToText(match.value) }}</code>
+              <span class="query-match-actions">
+                <button
+                  type="button"
+                  class="query-copy-button"
+                  :aria-label="t('tools.json.copyValueAriaLabel')"
+                  :title="t('tools.json.copyValueAriaLabel')"
+                  @click="copyQueryMatchValue(match)"
+                >
+                  <PhCopySimple aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  class="query-copy-button"
+                  :aria-label="t('tools.json.copyPathAriaLabel')"
+                  :title="t('tools.json.copyPathAriaLabel')"
+                  @click="copyQueryMatchPath(match)"
+                >
+                  <PhLink aria-hidden="true" />
+                </button>
+              </span>
+            </li>
+          </ul>
+        </template>
+      </template>
+    </div>
+    <div
       v-else
       :id="`tabpanel-${activeTab}`"
       role="tabpanel"
@@ -539,5 +715,104 @@ p[role="alert"] {
 
 .coming-soon {
   color: var(--color-text-secondary);
+}
+
+/* JSONPath is structured text, same {typography.code} role as the shared
+   input/tree/repair-preview panels (AC13) — not `--font-body-*`. */
+.query-expression-input {
+  font-family: var(--font-code-family);
+  font-size: var(--font-code-size);
+  min-width: 20em;
+  max-width: 70em;
+  width: 100%;
+}
+
+/* Plain text, not `.position-link`: this offset locates a position in the
+   query *expression*, not the shared document textarea, so it must not
+   share the clickable jump-to-caret affordance those use — that button
+   would move the wrong text field's caret. */
+.query-expression-position {
+  margin-left: 0.4em;
+  color: var(--color-text-secondary);
+}
+
+.query-match-count {
+  color: var(--color-text-secondary);
+  font-family: var(--font-caption-family);
+  font-size: var(--font-caption-size);
+}
+
+.query-matches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-default);
+}
+
+.query-match {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.3em 0.6em;
+  font-family: var(--font-code-family);
+  font-size: var(--font-code-size);
+}
+
+.query-match:hover {
+  background: var(--color-border-hairline);
+}
+
+.query-match-path {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-family: inherit;
+}
+
+.query-match-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+  color: var(--color-text-primary);
+}
+
+.query-match-actions {
+  display: flex;
+  gap: 0.2em;
+  flex-shrink: 0;
+}
+
+/* Same fixed-px sizing as JsonTree.vue's own copy buttons — a copy icon's
+   legibility floor doesn't scale down with the surrounding 13px code font. */
+.query-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.query-copy-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.query-copy-button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-base);
+}
+
+.query-copy-button:focus-visible {
+  outline: 2px solid var(--color-accent-signature);
+  outline-offset: 1px;
 }
 </style>

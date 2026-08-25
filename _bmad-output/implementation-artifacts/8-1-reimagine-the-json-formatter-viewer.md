@@ -200,14 +200,20 @@ would produce a query syntax Explorer's copied paths can't paste into).
         the input keeps an `aria-label` for a11y. Query input stays debounced (150ms),
         same class of debounce `JsonView.vue` already uses for live re-parsing. **Still
         open, next Explorer slice:** inline editing (add/remove/move/duplicate fields).
-  - [ ] Add `serde_json_path` to `crates/umbra-core/Cargo.toml`; verify it against the
+  - [x] Add `serde_json_path` to `crates/umbra-core/Cargo.toml`; verify it against the
         RFC 9535 conformance suite it tracks before wiring it into a new query function
         (per this project's standing dependency-verification discipline — Task 2 owns this
-        live check, not assumed from Task 1's research).
-  - [ ] `crates/umbra-core/src/json.rs`: add `repair`, `query` (JSONPath via
-        `serde_json_path`), `diff` (structural, over `JsonTreeValue`), and `to_typescript`
-        pure functions per the decision record's AD-1 split — each with its own regression
-        tests, sanity-checked against the 10 MB / Story 1.9 performance floor (AC14).
+        live check, not assumed from Task 1's research). Done 2026-08-26 — see Completion
+        Notes for the live verification method (the crate's own daily-scheduled Compliance
+        CI job, not just a documentation claim).
+  - [x] `crates/umbra-core/src/json.rs`: add `query` (JSONPath via `serde_json_path`) per
+        the decision record's AD-1 split, with its own regression tests, sanity-checked
+        against the 10 MB / Story 1.9 performance floor (AC14). `repair` was already done
+        (see the 2026-08-25 entry above).
+  - [ ] `crates/umbra-core/src/json.rs`: add `diff` (structural, over `JsonTreeValue`) and
+        `to_typescript` pure functions per the decision record's AD-1 split — each with its
+        own regression tests, sanity-checked against the 10 MB / Story 1.9 performance floor
+        (AC14).
   - [ ] Explorer, next (and last) slice: inline editing (add/remove/move/duplicate
         fields) — extends `JsonTree.vue`, keeps its existing path-based focus tracking
         and ARIA tree roles. (Search/filter — the other item this line originally
@@ -217,7 +223,7 @@ would produce a query syntax Explorer's copied paths can't paste into).
         `TRANSLATABLE_CODES` (`src/shell/toolError.ts`), add the "Try Repair" cross-link.
   - [x] Build Repair's preview-then-confirm UI (per-change description, explicit apply step
         — never silent auto-apply).
-  - [ ] Build Query's expression input + result view over the new `query` command.
+  - [x] Build Query's expression input + result view over the new `query` command.
   - [ ] Build Diff's two-document input + tree-mode highlighted result over the new `diff`
         command.
   - [ ] Build Transform's TypeScript-interface output over the new `to_typescript` command.
@@ -540,6 +546,86 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   umbra-core + 77 umbra/src-tauri + 1 integration test). Browser tooling
   was unavailable for a final live visual pass this round — the developer
   should confirm in their running app.
+- 2026-08-26: Query tab (AC10). Added `serde_json_path` to
+  `crates/umbra-core/Cargo.toml`, live-verified before adopting per this
+  project's standing dependency-verification discipline: rather than trust
+  the crate's own README/docs claims, checked the actual GitHub repo (`gh
+  api`) for its dedicated daily-scheduled "Compliance" Actions workflow
+  (`.github/workflows/cts.yml`), which checks out the official
+  `jsonpath-compliance-test-suite` as a submodule, updates it to latest, and
+  runs `cargo test` against it — confirmed the last 5 daily runs (through
+  2026-08-25) all passed on `main`, and that `v0.7.2` (the version this repo
+  now depends on) is a real tagged release matching what crates.io serves.
+  New `query` pure function in `crates/umbra-core/src/json.rs` (AD-1) —
+  parses the document via the existing `parse` (so a malformed document
+  surfaces exactly the same classified `json-*` error Validate already
+  shows, no separate failure mode needed), compiles the expression via
+  `JsonPath::parse`, and evaluates with `query_located` specifically (not
+  `query`) so each match carries its own RFC 9535 normalized path alongside
+  its value — matching what Explorer's own copy-JSONPath action already
+  established as this tool's convention. Two new defensive constants mirror
+  `MAX_INPUT_BYTES`'s existing CWE-400 rationale, applied to the two new
+  attacker-influenceable-length surfaces Query adds:
+  `MAX_QUERY_EXPRESSION_LEN` (10,000 chars) rejects a pathological
+  expression before parsing it, and `MAX_QUERY_MATCHES` (1,000) caps how
+  many matches get serialized over IPC — a query like `$..*` over a large
+  document could otherwise return an enormous match list. Both cap breaches
+  are disclosed, never silent: the expression cap returns a distinct
+  `json-query-expression-too-long` error, and the match cap sets
+  `truncated: true` plus an honest `total` count rather than quietly
+  dropping results. 9 new Rust unit tests, including RFC 9535's own worked
+  bookstore-filter example from the spec (section 1.5) checked against its
+  documented expected result — not assumed from how the crate "should"
+  behave — plus a 10 MB sanity check (AC14). New `json_query` Tauri command
+  (`src-tauri/src/commands/json.rs`, registered in `lib.rs`) dispatches via
+  its own `spawn_blocking` call (AD-4); a 10 MB timing test confirmed it
+  stays well inside Story 1.9's ~440-540ms baseline. `JsonView.vue` gained a
+  Query tab panel with its own `createLatestWinsRunner()` scope (AD-16,
+  computed only while Query is the active tab, same pattern as Repair) — an
+  expression `<input>` (font-code, since JSONPath is structured text per
+  AC13) above a live-debounced (200ms) result view: a neutral prompt on
+  empty input or empty expression, "no matches" for a valid expression with
+  zero results (not an error), a match list (path + compact value + a
+  copy-value/copy-path icon pair per row, reusing the existing
+  `copyValueAriaLabel`/`copyPathAriaLabel` i18n keys and the same
+  clipboard-failure-to-alert convention Explorer's tree already established
+  rather than inventing a second one), and a truncation notice when
+  `truncated` is set. One real design decision worth flagging: an invalid
+  expression's error position (`serde_json_path`'s `ParseError.position()`,
+  a 1-indexed char offset *into the expression string*) is carried in
+  `ToolError.position` as `ByteOffset` and shown as plain text, but
+  deliberately NOT wired through the same clickable jump-to-caret button
+  Format/Validate/Repair use for their `LineCol` positions — those locate a
+  spot in the shared *document* textarea; reusing that button here would
+  have moved the wrong text field's caret. When the document itself is
+  malformed (not the expression), Query's error state correctly gets the
+  clickable jump link, since `query` surfaces that as a real `LineCol`
+  document-position error via the same `map_parse_error` path
+  Format/Validate/Repair already use — verified with a dedicated test.
+  Neither new error code (`json-query-invalid-expression`,
+  `json-query-expression-too-long`) was added to `TRANSLATABLE_CODES`: both
+  embed a Rust-side runtime value (the crate's own dynamic parser message;
+  the expression's actual length) directly into the message string, the
+  same documented reason `json-syntax`/`json-input-too-large` are already
+  excluded — noted explicitly in `toolError.ts` so this doesn't read as an
+  oversight later. Caught one real i18n bug via the existing
+  `locales.spec.ts` real-compiler regression test (the same class of test
+  written after the brace-escape bug earlier in this story, but for a
+  different special character): the placeholder text
+  `$.store.book[?@.price < 10].title` (RFC 9535's own worked example)
+  failed to compile in both locales with "Invalid linked format" — vue-i18n
+  treats a literal `@` as its own linked-message syntax trigger, not plain
+  text, the same class of trap as `{`/`}` but a different character; fixed
+  with the same `{'literal'}` escape convention already used for braces
+  (`{'@'}`). Re-verified: `pnpm lint`, `pnpm test` (547/547 — 8 new
+  frontend tests, including one fixing a since-outdated AC6 placeholder-tab
+  test that had hardcoded Query as the "coming soon" example), `vue-tsc
+  --noEmit`, `pnpm build`, `cargo fmt --check --all`, `cargo test
+  --workspace` (267/267: 189 umbra-core + 77 umbra/src-tauri + 1 integration
+  test). Browser tooling was unavailable again this round (the Chrome
+  extension reported not connected) — no live visual pass was possible; the
+  developer should confirm in their running app before this is treated as
+  fully done, same caveat as the previous entry.
 
 ### File List
 
@@ -562,3 +648,6 @@ Claude Sonnet 5 (`claude-sonnet-5`)
 - `src/shell/toolError.ts` (modified)
 - `src/shell/toolError.spec.ts` (modified)
 - `src/tools/json/jsonRepair.ts` (new)
+- `crates/umbra-core/Cargo.toml` (modified)
+- `src-tauri/src/lib.rs` (modified)
+- `src/tools/json/jsonQuery.ts` (new)

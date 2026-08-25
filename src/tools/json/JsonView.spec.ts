@@ -456,6 +456,174 @@ describe("JsonView", () => {
     );
   });
 
+  // Every Query test below routes `json_parse` (the always-on live-tree
+  // watcher) to a harmless empty tree, same convention as `mockRepair` above.
+  function mockQuery(result: unknown) {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_query") return Promise.resolve(result);
+      if (cmd === "json_parse") return Promise.resolve(null);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+  }
+
+  it("shows a neutral prompt on the Query tab when input is empty (AC10)", async () => {
+    wrapper = mount(JsonView);
+    await wrapper.find("#tab-query").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-query").text()).toContain("Paste JSON above to query it.");
+  });
+
+  it("shows a neutral prompt on the Query tab when no expression has been entered yet (AC10)", async () => {
+    wrapper = mount(JsonView);
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-query").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-query").text()).toContain(
+      "Enter a JSONPath expression above to query the document.",
+    );
+  });
+
+  it("shows matches with their path, value, and copy actions on the Query tab (AC10)", async () => {
+    mockQuery({
+      matches: [
+        { path: "$['a']", value: { kind: "Number", data: "1" } },
+        { path: "$['b']", value: { kind: "Number", data: "2" } },
+      ],
+      total: 2,
+      truncated: false,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1,"b":2}');
+    await wrapper.find("#tab-query").trigger("click");
+    await wrapper.find("#json-query-expression").setValue("$.*");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const panel = wrapper.find("#tabpanel-query");
+    expect(panel.text()).toContain("2 matches");
+    expect(panel.text()).toContain("$['a']");
+    expect(panel.text()).toContain("$['b']");
+    expect(panel.findAll("li.query-match").length).toBe(2);
+  });
+
+  it("shows a no-matches status on the Query tab for a valid expression with no results (AC10)", async () => {
+    mockQuery({ matches: [], total: 0, truncated: false });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-query").trigger("click");
+    await wrapper.find("#json-query-expression").setValue("$.nonexistent");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-query").text()).toContain("No matches for this expression.");
+  });
+
+  it("shows a truncation notice with shown/total counts when matches exceed the server-side cap (AC10/AC14)", async () => {
+    mockQuery({
+      matches: [
+        { path: "$[0]", value: { kind: "Number", data: "0" } },
+        { path: "$[1]", value: { kind: "Number", data: "1" } },
+      ],
+      total: 5,
+      truncated: true,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue("[0,1,2,3,4]");
+    await wrapper.find("#tab-query").trigger("click");
+    await wrapper.find("#json-query-expression").setValue("$[*]");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-query").text()).toContain(
+      "Showing the first 2 of 5 matches — refine your expression to see the rest.",
+    );
+  });
+
+  it("copies a query match's value and path to the clipboard (AC10)", async () => {
+    mockQuery({ matches: [{ path: "$['a']", value: { kind: "Number", data: "1" } }], total: 1, truncated: false });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-query").trigger("click");
+    await wrapper.find("#json-query-expression").setValue("$.a");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const buttons = wrapper.find("li.query-match").findAll("button");
+    await buttons[0].trigger("click");
+    expect(writeTextMock).toHaveBeenCalledWith("1");
+
+    await buttons[1].trigger("click");
+    expect(writeTextMock).toHaveBeenCalledWith("$['a']");
+  });
+
+  it("surfaces an invalid-expression error on the Query tab without a document-caret jump link (AC10)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_query") {
+        return Promise.reject({
+          code: "json-query-invalid-expression",
+          message: "expected an identifier",
+          position: { kind: "ByteOffset", offset: 3 },
+          context: null,
+        });
+      }
+      if (cmd === "json_parse") return Promise.resolve(null);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-query").trigger("click");
+    await wrapper.find("#json-query-expression").setValue("$.[");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const panel = wrapper.find("#tabpanel-query");
+    expect(panel.text()).toContain("expected an identifier");
+    expect(panel.text()).toContain("(offset 3)");
+    // A ByteOffset position here locates a spot in the *expression*, not the
+    // shared document — must not render as the same clickable jump-to-caret
+    // button Format/Validate/Repair use for their (document) LineCol
+    // positions, or it would move the wrong text field's caret.
+    expect(panel.find(".position-link").exists()).toBe(false);
+  });
+
+  it("surfaces the document's own classified parse error on the Query tab, with a working caret jump, when the input itself is malformed (AC10)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_query" || cmd === "json_parse") {
+        return Promise.reject({
+          code: "json-expected-value",
+          message: "expected a value here — a string, number, object, array, true, false, or null",
+          position: { kind: "LineCol", line: 1, column: 6 },
+          context: null,
+        });
+      }
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":}');
+    await wrapper.find("#tab-query").trigger("click");
+    await wrapper.find("#json-query-expression").setValue("$.a");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const panel = wrapper.find("#tabpanel-query");
+    // json-expected-value is TRANSLATABLE_CODES-registered (shared with
+    // Validate), so this renders the real translated message, not the
+    // mocked ToolError's raw text.
+    expect(panel.text()).toContain("Expected a value here");
+    expect(panel.text()).toContain("(line 1, column 6)");
+    expect(panel.find(".position-link").exists()).toBe(true);
+  });
+
   it("ends up with a null tree, not a stale value, when input is cleared before a slow parse resolves", async () => {
     const slow = deferred<JsonTreeValue>();
     invokeMock.mockReturnValueOnce(slow.promise);
@@ -530,12 +698,13 @@ describe("JsonView", () => {
   it("shows an honest placeholder, not the tree, for a not-yet-built tab (AC6)", async () => {
     wrapper = mount(JsonView);
 
-    // Validate and Repair now have real content (AC8/AC9) — Query is still
-    // an honest placeholder, so it's the one that exercises this AC6 behavior.
-    await wrapper.find("#tab-query").trigger("click");
+    // Validate, Repair, and Query now have real content (AC8/AC9/AC10) — Diff
+    // is still an honest placeholder, so it's the one that exercises this
+    // AC6 behavior.
+    await wrapper.find("#tab-diff").trigger("click");
 
     expect(wrapper.findComponent(JsonTree).exists()).toBe(false);
-    expect(wrapper.find("#tabpanel-query").text()).toBe("Coming soon.");
+    expect(wrapper.find("#tabpanel-diff").text()).toBe("Coming soon.");
   });
 
   it("surfaces a tree copy failure through the same error alert as Format/Minify", async () => {
