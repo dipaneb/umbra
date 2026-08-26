@@ -41,7 +41,17 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-24
+last_updated: 2026-08-26
+# note: story 8-1 moved to done 2026-08-26 (code review complete via bmad-code-review,
+# three parallel adversarial layers against b357aff..HEAD: 15 real findings after
+# dedup/dismiss -- 10 patches applied (all verified: cargo fmt/clippy/test --workspace,
+# pnpm lint/test/vue-tsc/build all clean), 5 deferred to deferred-work.md, 3 dismissed as
+# noise after direct code verification. One decision-needed item resolved live with the
+# developer (JsonTree.vue copy buttons: tabindex="-1" + C/Shift+C keybinding, replacing
+# Tab-reachability). AC7's inline-edit clause (add/remove/move/duplicate fields)
+# descoped by explicit developer decision at this review, not deferred to the backlog --
+# AC7's own text and the Task 2b gate checklist amended accordingly.
+# note: story 8-1 moved to review 2026-08-26.
 # note: story 8-1 created 2026-08-24 (first story of Epic 8, explicitly directed by the
 # developer -- epic-8 moved backlog -> in-progress). No same-epic previous story existed, and
 # Epic 8's own shared story shape cites Story 6-3's decision-record pattern as precedent, but
@@ -1154,7 +1164,7 @@ development_status:
   epic-7-retrospective: optional
 
   epic-8: in-progress
-  8-1-reimagine-the-json-formatter-viewer: ready-for-dev
+  8-1-reimagine-the-json-formatter-viewer: done
   8-2-reimagine-base64-encode-decode: backlog
   8-3-reimagine-the-uuid-generator: backlog
   8-4-reimagine-the-hash-generator: backlog

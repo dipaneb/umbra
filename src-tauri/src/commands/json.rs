@@ -280,8 +280,8 @@ mod tests {
         eprintln!("json_repair_command_handles_10mb_document: {elapsed:?}");
         assert!(result.is_ok());
         assert!(
-            elapsed.as_secs() < 20,
-            "json_repair took {elapsed:?} on a 10MB document"
+            elapsed.as_millis() < 10_000,
+            "json_repair took {elapsed:?} on a 10MB document (Story 1.9's baseline is ~440-540ms)"
         );
     }
 
@@ -294,8 +294,8 @@ mod tests {
         eprintln!("json_query_command_handles_10mb_document: {elapsed:?}");
         assert!(result.is_ok());
         assert!(
-            elapsed.as_secs() < 20,
-            "json_query took {elapsed:?} on a 10MB document"
+            elapsed.as_millis() < 10_000,
+            "json_query took {elapsed:?} on a 10MB document (Story 1.9's baseline is ~440-540ms)"
         );
     }
 
@@ -310,8 +310,8 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().status, DiffStatus::Unchanged);
         assert!(
-            elapsed.as_secs() < 20,
-            "json_diff took {elapsed:?} on two 10MB documents"
+            elapsed.as_millis() < 10_000,
+            "json_diff took {elapsed:?} on two 10MB documents (Story 1.9's baseline is ~440-540ms)"
         );
     }
 
@@ -338,8 +338,8 @@ mod tests {
         eprintln!("json_transform_command_handles_10mb_document: {elapsed:?}");
         assert!(result.is_ok());
         assert!(
-            elapsed.as_secs() < 20,
-            "json_transform took {elapsed:?} on a 10MB document"
+            elapsed.as_millis() < 10_000,
+            "json_transform took {elapsed:?} on a 10MB document (Story 1.9's baseline is ~440-540ms)"
         );
     }
 

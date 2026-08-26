@@ -245,6 +245,25 @@ describe("JsonTree", () => {
     expect(writeTextMock).toHaveBeenCalledWith("$.b");
   });
 
+  it("keeps the copy buttons out of the tab order, since they'd otherwise defeat the tree's roving tabindex", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    const rowB = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+    expect(rowB?.find('button[aria-label="Copy value"]').attributes("tabindex")).toBe("-1");
+    expect(rowB?.find('button[aria-label="Copy JSONPath"]').attributes("tabindex")).toBe("-1");
+  });
+
+  it("copies the focused row's value on 'c' and its path on 'C', replacing Tab as the keyboard affordance", async () => {
+    wrapper = await mountTree(nestedFixture());
+
+    const rowB = treeItems(wrapper).find((row) => row.text().includes("shallow"));
+    await rowB?.trigger("keydown", { key: "c" });
+    expect(writeTextMock).toHaveBeenCalledWith('"shallow"');
+
+    await rowB?.trigger("keydown", { key: "C" });
+    expect(writeTextMock).toHaveBeenCalledWith("$.b");
+  });
+
   it("surfaces a clipboard write failure via a copy-error emit instead of failing silently", async () => {
     writeTextMock.mockRejectedValueOnce(new Error("clipboard write failed"));
     wrapper = await mountTree(nestedFixture());

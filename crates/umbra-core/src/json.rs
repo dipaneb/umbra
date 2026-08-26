@@ -245,10 +245,19 @@ impl RepairScanner {
         while self.i < self.len() {
             let c = self.cur();
             if c == '\\' && self.peek(1).is_some() {
-                let ch = self.bump();
-                self.out.push(ch);
-                let ch = self.bump();
-                self.out.push(ch);
+                self.bump(); // backslash
+                if quote == '\'' && self.cur() == '\'' {
+                    // `\'` is not a legal JSON escape. Inside the
+                    // double-quoted output a literal `'` needs no escaping
+                    // at all, so drop the backslash instead of copying an
+                    // escape sequence JSON can't parse.
+                    let ch = self.bump();
+                    self.out.push(ch);
+                } else {
+                    self.out.push('\\');
+                    let ch = self.bump();
+                    self.out.push(ch);
+                }
                 continue;
             }
             if c == quote {
@@ -316,7 +325,11 @@ impl RepairScanner {
         }
         let is_key = self.chars.get(j) == Some(&':');
 
-        if is_key && word != "true" && word != "false" && word != "null" {
+        // The `true`/`false`/`null` exclusion only matters when `is_key` is
+        // false (a bare literal value, e.g. an array element) — a colon
+        // confirmed key position already rules out "this is the literal
+        // value `true`", so a key spelled `true` still needs quoting.
+        if is_key {
             self.out.push('"');
             self.out.push_str(&word);
             self.out.push('"');
@@ -819,6 +832,7 @@ pub fn to_typescript(input: &str) -> Result<String, ToolError> {
     let value = parse(input)?;
     let mut ctx = TsGenContext::default();
     let root_expr = ctx.infer_type_from_values(&[&value], "Root");
+    let root_expr = ctx.reclaim_root_name(&root_expr);
 
     // Root reads first in the output when the document itself is an object
     // (the common case) — `infer_type_from_values` registers nested
@@ -994,6 +1008,103 @@ impl TsGenContext {
             }
         }
     }
+
+    // Nested fields register before the document root does (bottom-up
+    // recursion — a field's own `infer_type_from_values` call, and thus its
+    // `register_interface`, completes before the object that contains it
+    // calls `register_interface` for itself). If some field happens to be
+    // named "root" (any case), it can win the plain "Root" name before the
+    // real document root gets a turn, leaving the root's own interface
+    // suffixed to "Root2" — or, if the root isn't an object at all, leaving
+    // an orphaned `interface Root` that collides with the `type Root = ...`
+    // alias `to_typescript` still emits for a non-object root. Called once,
+    // after the whole tree is built, to give "Root" back to whichever
+    // interface actually represents the document root.
+    fn reclaim_root_name(&mut self, root_expr: &str) -> String {
+        if root_expr == "Root" {
+            return root_expr.to_string();
+        }
+        let Some(squatter_body) = self.bodies.remove("Root") else {
+            return root_expr.to_string();
+        };
+        let mut displaced_name = "Root2".to_string();
+        let mut suffix = 3u32;
+        while self.bodies.contains_key(&displaced_name) {
+            displaced_name = format!("Root{suffix}");
+            suffix += 1;
+        }
+        for (_, body) in self.interfaces.iter_mut() {
+            *body = rename_type_reference(body, "Root", &displaced_name);
+        }
+        if let Some(pos) = self.interfaces.iter().position(|(name, _)| name == "Root") {
+            self.interfaces[pos].0 = displaced_name.clone();
+        }
+        self.bodies.insert(displaced_name, squatter_body);
+
+        match self.bodies.remove(root_expr) {
+            Some(root_body) => {
+                for (_, body) in self.interfaces.iter_mut() {
+                    *body = rename_type_reference(body, root_expr, "Root");
+                }
+                if let Some(pos) = self
+                    .interfaces
+                    .iter()
+                    .position(|(name, _)| name == root_expr)
+                {
+                    self.interfaces[pos].0 = "Root".to_string();
+                }
+                self.bodies.insert("Root".to_string(), root_body);
+                "Root".to_string()
+            }
+            // The root itself isn't a registered interface (a scalar or
+            // array-of-primitives root) — nothing to rename it to, but the
+            // squatter is out of the way so `type Root = <root_expr>;`
+            // no longer collides with it.
+            None => root_expr.to_string(),
+        }
+    }
+}
+
+// Renames every occurrence of `old` used as a *type reference* inside a
+// rendered interface body (`key: Old;`, `key: Old[];`, `key: Old | null;`,
+// ...) to `new`, without touching an occurrence of the same text used as a
+// *property key* (`Old: number;`) — the two are told apart by what follows
+// the match: a type reference is never immediately followed by `:` or `?`
+// (only `render_interface_body`'s fixed `{prop}{opt}: {ty};\n` grammar
+// produces either shape, so this rule is exhaustive for output this
+// generator itself produced).
+fn rename_type_reference(body: &str, old: &str, new: &str) -> String {
+    if old == new {
+        return body.to_string();
+    }
+    let mut result = String::with_capacity(body.len());
+    let mut rest = body;
+    'scan: while !rest.is_empty() {
+        if rest.starts_with(old) {
+            let prev_ok = result
+                .chars()
+                .next_back()
+                .map(|c| !is_ts_ident_char(c))
+                .unwrap_or(true);
+            let after = &rest[old.len()..];
+            let next_char = after.chars().next();
+            let next_ok = next_char.map(|c| !is_ts_ident_char(c)).unwrap_or(true);
+            let is_key_position = matches!(next_char, Some(':') | Some('?'));
+            if prev_ok && next_ok && !is_key_position {
+                result.push_str(new);
+                rest = after;
+                continue 'scan;
+            }
+        }
+        let ch = rest.chars().next().unwrap();
+        result.push(ch);
+        rest = &rest[ch.len_utf8()..];
+    }
+    result
+}
+
+fn is_ts_ident_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '$'
 }
 
 fn render_interface_body(fields: &[(String, String, bool)]) -> String {
@@ -1662,6 +1773,24 @@ mod tests {
     }
 
     #[test]
+    fn repair_quotes_true_false_null_when_actually_used_as_a_key() {
+        let result = repair(r#"{true: 1, false: 2, null: 3}"#).unwrap();
+        assert_eq!(result.repaired, r#"{"true": 1, "false": 2, "null": 3}"#);
+        assert_eq!(
+            change_codes(&result),
+            vec!["unquoted-key", "unquoted-key", "unquoted-key"]
+        );
+        assert!(!result.still_invalid);
+    }
+
+    #[test]
+    fn repair_unescapes_an_escaped_single_quote_inside_a_repaired_single_quoted_string() {
+        let result = repair(r#"{"a": 'it\'s a test'}"#).unwrap();
+        assert_eq!(result.repaired, r#"{"a": "it's a test"}"#);
+        assert!(!result.still_invalid);
+    }
+
+    #[test]
     fn repair_removes_trailing_comma_in_array() {
         let result = repair("[1,2,]").unwrap();
         assert_eq!(result.repaired, "[1,2]");
@@ -2315,6 +2444,33 @@ mod tests {
         assert!(result.contains("interface Foo2 {\n  x: string;\n}"));
         assert!(result.contains("Foo: Foo;"));
         assert!(result.contains("foo: Foo2;"));
+    }
+
+    #[test]
+    fn to_typescript_reclaims_the_root_name_from_a_colliding_nested_field() {
+        // A field literally named "root" pascal-cases to the same name as
+        // the document root's own hint -- and registers first, since
+        // nested fields always register before their parent. The root
+        // must still end up named "Root"; the colliding field gets
+        // renamed out of the way, including in the root's own field list.
+        let result = to_typescript(r#"{"root":{"x":1},"y":2}"#).unwrap();
+        assert!(result.starts_with("interface Root {\n"));
+        assert!(result.contains("y: number;"));
+        assert!(!result.contains("root: Root;"));
+        assert!(result.contains("x: number;"));
+    }
+
+    #[test]
+    fn to_typescript_avoids_a_root_alias_collision_when_root_is_an_array() {
+        // The root here is an array, which never itself registers as
+        // literal "Root" -- but a doubly-nested field named "root" would
+        // otherwise squat on "Root" and collide with the `type Root =
+        // ...` alias a non-object root always gets. The squatter must be
+        // renamed out of the way.
+        let result = to_typescript(r#"[{"root":{"x":1}}]"#).unwrap();
+        assert!(result.contains("type Root = RootItem[];"));
+        assert!(!result.contains("interface Root {"));
+        assert!(result.contains("x: number;"));
     }
 
     #[test]

@@ -62,7 +62,7 @@ function onKeydown(event: KeyboardEvent, index: number) {
       :aria-selected="tab.id === modelValue"
       :aria-controls="`tabpanel-${tab.id}`"
       :tabindex="tab.id === modelValue ? 0 : -1"
-      @click="emit('update:modelValue', tab.id)"
+      @click="selectByIndex(index)"
       @keydown="onKeydown($event, index)"
     >
       {{ tab.label }}

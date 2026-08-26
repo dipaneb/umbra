@@ -207,6 +207,14 @@ async function onKeydown(event: KeyboardEvent, index: number) {
       event.preventDefault();
       await focusRow(index - 1);
       break;
+    case "c":
+      event.preventDefault();
+      await copyValue(row);
+      break;
+    case "C":
+      event.preventDefault();
+      await copyPath(row);
+      break;
   }
 }
 
@@ -489,6 +497,7 @@ function onSearchKeydown(event: KeyboardEvent) {
           >
             <button
               type="button"
+              tabindex="-1"
               class="json-tree-copy-button"
               :aria-label="isCopied(valueCopyKey(row)) ? t('tools.json.copiedValueAriaLabel') : t('tools.json.copyValueAriaLabel')"
               :title="isCopied(valueCopyKey(row)) ? t('tools.json.copiedValueAriaLabel') : t('tools.json.copyValueAriaLabel')"
@@ -506,6 +515,7 @@ function onSearchKeydown(event: KeyboardEvent) {
             </button>
             <button
               type="button"
+              tabindex="-1"
               class="json-tree-copy-button"
               :aria-label="isCopied(pathCopyKey(row)) ? t('tools.json.copiedPathAriaLabel') : t('tools.json.copyPathAriaLabel')"
               :title="isCopied(pathCopyKey(row)) ? t('tools.json.copiedPathAriaLabel') : t('tools.json.copyPathAriaLabel')"

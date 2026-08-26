@@ -31,6 +31,18 @@ describe("AppTabs", () => {
     expect(wrapper.emitted("update:modelValue")?.[0]).toEqual(["three"]);
   });
 
+  // WebKit (this app's Tauri macOS runtime) doesn't move focus to a
+  // clicked button by default, unlike Chromium/Firefox — clicking must
+  // explicitly call .focus() the same way ArrowRight/ArrowLeft already do,
+  // or a following arrow-key press acts on stale focus.
+  it("moves DOM focus to the clicked tab", async () => {
+    wrapper = mount(AppTabs, { props: { tabs: TABS, modelValue: "one" }, attachTo: document.body });
+
+    await wrapper.find("#tab-three").trigger("click");
+
+    expect(document.activeElement?.id).toBe("tab-three");
+  });
+
   it("moves selection with ArrowRight/ArrowLeft, wrapping at the ends", async () => {
     wrapper = mount(AppTabs, { props: { tabs: TABS, modelValue: "three" }, attachTo: document.body });
 

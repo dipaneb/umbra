@@ -208,6 +208,51 @@ describe("JsonView", () => {
     expect(textarea.selectionStart).toBe(expectedOffset);
   });
 
+  it("lands the caret correctly when a multi-byte character precedes it on the same line", async () => {
+    // serde_json's reported column is a UTF-8 *byte* offset (confirmed
+    // against SliceRead::position_of_index), not a UTF-16 code-unit count.
+    // The emoji here is 4 bytes in UTF-8 but 2 JS code units (a surrogate
+    // pair) -- byte column 19 (1-indexed) for the trailing '}' would
+    // naively land past the end of this 17-code-unit line if the two were
+    // conflated.
+    invokeMock.mockRejectedValueOnce({
+      code: "json-unclosed-object",
+      message: "unexpected end of input",
+      position: { kind: "LineCol", line: 1, column: 19 },
+      context: null,
+    });
+    wrapper = mount(JsonView);
+
+    const value = '{"e": "🙂", "b":}';
+    await inputTextarea(wrapper).setValue(value);
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+    await wrapper.find(".position-link").trigger("click");
+
+    const textarea = inputTextarea(wrapper).element as HTMLTextAreaElement;
+    expect(textarea.selectionStart).toBe(16); // JS index of the trailing '}'
+  });
+
+  it("clears a stale Format/Minify error banner as soon as the input is edited, not just on the next Format/Minify click", async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: "json-expected-value",
+      message: "expected a value here",
+      position: { kind: "LineCol", line: 1, column: 6 },
+      context: null,
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":}');
+    await clickButton(wrapper, "Format");
+    await flushPromises();
+    expect(wrapper.find("[role='alert']").exists()).toBe(true);
+
+    await inputTextarea(wrapper).setValue('{"a": 1}');
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").exists()).toBe(false);
+  });
+
   it("does not render a Paste or Copy button — cut in the Story 8.1 Task 2 design pass", () => {
     wrapper = mount(JsonView);
 

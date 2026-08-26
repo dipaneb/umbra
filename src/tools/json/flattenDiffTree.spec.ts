@@ -97,6 +97,14 @@ describe("flattenDiffTree", () => {
     expect(rows[0]?.preview).toBe('"new"');
   });
 
+  it("truncates a long number preview instead of rendering it at full width", () => {
+    const longNumber = "1".repeat(200);
+    const root = unchanged(num(longNumber));
+    const rows = flattenDiffTree(root, new Set(["[]"]));
+    expect(rows[0]?.preview.length).toBeLessThan(longNumber.length);
+    expect(rows[0]?.preview.endsWith("…")).toBe(true);
+  });
+
   it("labels array entries with numeric string keyLabels in source order", () => {
     const root = changedContainer(arr([unchanged(str("x")), added(str("y")), removed(str("z"))]));
 

@@ -107,6 +107,16 @@ const debouncedParse = debounce((value: string) => {
 
 watch(input, (value) => debouncedParse(value), { immediate: true });
 
+// Clears synchronously (not debounced, unlike `validateError` above) so a
+// stale Format/Minify error -- with a jump-to-position link keyed to a
+// line/column that may no longer even exist -- disappears the moment the
+// user starts editing, rather than lingering until the next Format/Minify
+// click. Regression fix: the old Paste handler used to double as this
+// reset before Paste was cut from the toolbar (Story 8.1 AC6).
+watch(input, () => {
+  error.value = null;
+});
+
 // Own runner scope (AD-16): repair is a separate independent state group
 // from Format/Minify/Paste and from live tree-parsing — none of those three
 // should have their in-flight request treated as superseded by a repair
@@ -299,6 +309,24 @@ const isDiffInputBEmpty = computed(() => diffInputB.value.trim() === "");
 // explicitly (not always the shared `jsonInput`/`input`) because Diff owns
 // a second, independent textarea (AC6) — an error on that side must jump
 // its own caret, not the shared input's.
+// `position.column` is a UTF-8 *byte* offset within the line (serde_json's
+// own `SliceRead::position_of_index` computes it as a raw byte index), not
+// a character count -- for any non-ASCII content earlier on that line (an
+// accented letter, an emoji), that byte count no longer matches this JS
+// string's UTF-16 code-unit indexing that `setSelectionRange` expects. Walk
+// the line by Unicode codepoint (`for...of`, which correctly steps over a
+// surrogate pair as one unit) and convert byte count to JS offset as we go.
+function byteColumnToJsOffset(line: string, byteColumn: number): number {
+  let bytesConsumed = 0;
+  let jsOffset = 0;
+  for (const ch of line) {
+    if (bytesConsumed >= byteColumn) break;
+    bytesConsumed += new TextEncoder().encode(ch).length;
+    jsOffset += ch.length;
+  }
+  return jsOffset;
+}
+
 function jumpToPositionIn(position: ToolError["position"], textarea: HTMLTextAreaElement | null, text: string) {
   if (position?.kind !== "LineCol" || !textarea) return;
   const lines = text.split("\n");
@@ -306,7 +334,9 @@ function jumpToPositionIn(position: ToolError["position"], textarea: HTMLTextAre
   for (let i = 0; i < position.line - 1 && i < lines.length; i++) {
     offset += lines[i].length + 1; // +1 for the newline consumed between lines
   }
-  offset = Math.min(offset + Math.max(0, position.column - 1), text.length);
+  const targetLine = lines[position.line - 1] ?? "";
+  offset += byteColumnToJsOffset(targetLine, Math.max(0, position.column - 1));
+  offset = Math.min(offset, text.length);
   textarea.focus();
   textarea.setSelectionRange(offset, offset);
 }

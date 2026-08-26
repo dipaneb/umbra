@@ -109,6 +109,23 @@ describe("DiffTree", () => {
     expect(rows[3]?.classes()).toContain("diff-tree-row-removed");
   });
 
+  it("gives each row's status icon an accessible name, since it's otherwise conveyed only by shape and color", async () => {
+    const root = changedContainer(
+      obj([
+        ["a", unchanged(str("x"))],
+        ["b", added(str("y"))],
+        ["c", removed(str("z"))],
+      ]),
+    );
+    wrapper = await mountTree(root);
+
+    const rows = treeItems(wrapper);
+    expect(rows[0]?.find(".diff-tree-status-icon").attributes("aria-label")).toBe("Changed"); // root
+    expect(rows[1]?.find(".diff-tree-status-icon").attributes("aria-label")).toBeUndefined(); // "a", unchanged
+    expect(rows[2]?.find(".diff-tree-status-icon").attributes("aria-label")).toBe("Added"); // "b"
+    expect(rows[3]?.find(".diff-tree-status-icon").attributes("aria-label")).toBe("Removed"); // "c"
+  });
+
   it("renders a changed leaf's old and new values inline, not just one value", async () => {
     const root = changedContainer(obj([["age", changedLeaf(num("31"), jNum("30"))]]));
     wrapper = await mountTree(root);

@@ -4,7 +4,7 @@ baseline_commit: b357aff
 
 # Story 8.1: Reimagine the JSON Formatter/Viewer
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -60,10 +60,13 @@ would produce a query syntax Explorer's copied paths can't paste into).
    *not* being the pattern to copy here (those tools genuinely have one signature verb;
    JSON doesn't anymore).
 7. **Explorer** — **Given** valid JSON is loaded, **when** the user interacts with the
-   Explorer tab's tree, **then** they can inline-edit values (add/remove/move/duplicate
-   fields), search/filter the tree by key or value, and click a node to copy either its
-   value or its JSONPath (e.g. `$.data[3].user.email`) — extending FR8 from a read-only
-   view to an editable one.
+   Explorer tab's tree, **then** they can search/filter the tree by key or value, and
+   click a node to copy either its value or its JSONPath (e.g. `$.data[3].user.email`).
+   **Descoped 2026-08-26, developer decision at code review:** inline-editing
+   (add/remove/move/duplicate fields) is cut from this story's scope, not deferred —
+   Explorer stays read-only-plus-search-plus-copy, extending FR8 that far but not to a
+   fully editable tree. Not added to the public backlog (FR35); the developer's own call
+   was that this isn't a candidate to revisit, not an idea cut for later.
 8. **Validate** — **Given** malformed JSON is submitted, **when** validation fails, **then**
    the tool surfaces a specific, rewritten failure message (not `serde_json`'s generic text
    passed through unchanged) with line/column position; that message's error code is
@@ -216,11 +219,11 @@ would produce a query syntax Explorer's copied paths can't paste into).
   - [x] `crates/umbra-core/src/json.rs`: add `to_typescript` pure function per the decision
         record's AD-1 split — its own regression tests, sanity-checked against the 10 MB /
         Story 1.9 performance floor (AC14).
-  - [ ] Explorer, next (and last) slice: inline editing (add/remove/move/duplicate
-        fields) — extends `JsonTree.vue`, keeps its existing path-based focus tracking
-        and ARIA tree roles. (Search/filter — the other item this line originally
-        listed — is done, see the "second slice" entry above; this is the one thing
-        left before Explorer fully satisfies AC7.)
+  - [x] ~~Explorer, next (and last) slice: inline editing (add/remove/move/duplicate
+        fields)~~ — **Descoped 2026-08-26, developer decision at code review** (see AC7's
+        own amendment above): not built, not deferred to the backlog. Search/filter and
+        copy — the other items this line originally listed — are done, see the "second
+        slice" entry above.
   - [x] Rewrite Validate's error messages, register new `json-*` codes in
         `TRANSLATABLE_CODES` (`src/shell/toolError.ts`), add the "Try Repair" cross-link.
   - [x] Build Repair's preview-then-confirm UI (per-change description, explicit apply step
@@ -232,12 +235,40 @@ would produce a query syntax Explorer's copied paths can't paste into).
   - [x] Give each new async command its own `createLatestWinsRunner()` scope (AD-16) and
         `spawn_blocking` dispatch (AD-4) — do not share the existing Format/Minify/Paste or
         live-tree-parse runners.
-  - [ ] Implement per AC6–14; run the standard verification pass (`pnpm lint`, `pnpm test`,
-        `vue-tsc --noEmit`, `pnpm build`, `cargo fmt --check`, `cargo test --workspace`).
-        (Kept open: Explorer's inline-editing slice, line above, is the one
-        remaining piece of AC6–14 — this line is the final "everything's in"
-        gate, not a per-slice re-check. Every slice, including this one, has
-        already run this exact pipeline clean on its own.)
+  - [x] Implement per AC6–14 (AC7's inline-edit clause descoped, see above); run the
+        standard verification pass (`pnpm lint`, `pnpm test`, `vue-tsc --noEmit`,
+        `pnpm build`, `cargo fmt --check`, `cargo test --workspace`) — re-run clean
+        2026-08-26 after this code review's patches (584 frontend tests, 229 Rust tests).
+
+### Review Findings
+
+Code review 2026-08-26 (bmad-code-review), three parallel adversarial layers (Blind
+Hunter, Edge Case Hunter, Acceptance Auditor) against `b357aff..HEAD` (36 files,
++7768/-364). Explorer's inline-edit clause of AC7 (add/remove/move/duplicate fields)
+is confirmed intentionally out of scope by developer decision — not raised as a
+finding. 19 raw findings → 1 merge → 3 dismissed after direct code verification
+(reasons below) → 15 real findings: 9 patch + 1 decision-needed (resolved with
+the developer, became a patch) = 10 patches, all applied below; 5 deferred.
+
+- [x] [Review][Decision→Patch] JsonTree.vue's per-row copy-value/copy-path buttons break the tree's roving-tabindex model [src/tools/json/JsonTree.vue:490-523] — Native `<button>`s have no `tabindex="-1"`, so they stay independently Tab-reachable regardless of which row is focused, inflating Tab stops ~2x per visible row, working against the roving-tabindex pattern used elsewhere in the tree. **Resolved with the developer 2026-08-26:** add `tabindex="-1"` to both buttons, and add `C` (copy value) / `Shift+C` (copy path) as the keyboard shortcut while a row has focus, replacing Tab-reachability as the keyboard affordance. **Applied.**
+
+- [x] [Review][Patch] RepairScanner leaves `true`/`false`/`null`-named unquoted keys unrepaired [crates/umbra-core/src/json.rs:319] — `scan_word`'s `is_key` branch excludes these three words even when the colon-lookahead already confirms key position, so `{true: 1}` / `{false: 1}` / `{null: 1}` ship unrepaired (silently reported as "no fixes available" when Repair's own advertised "unquoted keys" category should catch this). **Applied**, plus a regression test.
+- [x] [Review][Patch] RepairScanner emits an invalid `\'` escape when converting an escaped single quote [crates/umbra-core/src/json.rs:247-253] — `'it\'s a test'` repairs to `"it\'s a test"`, but `\'` isn't a legal JSON escape. Caught by `still_invalid` (not silent corruption), but the "single quotes" heuristic doesn't fully work for this input. **Applied**, plus a regression test.
+- [x] [Review][Patch] AppTabs.vue's click handler never moves DOM focus, unlike its keyboard handler [src/components/AppTabs.vue:65] — `selectByIndex` calls `.focus()`, the `@click` handler doesn't. WebKit (Tauri macOS's WKWebView) doesn't focus buttons on click by default, so a mouse click can switch the active tab while leaving keyboard focus on the previous tab — a following arrow-key press then acts on stale state. **Applied** (click now calls `selectByIndex`), plus a regression test.
+- [x] [Review][Patch] DiffTree.vue's added/removed/changed row status has no `aria-label` [src/tools/json/DiffTree.vue:211-239] — conveyed only via icon shape and CSS color class; a screen-reader user gets no signal of what changed, which is the Diff tab's core purpose. **Applied** (`role="img"` + `aria-label` on the status icon, new i18n keys), plus a regression test.
+- [x] [Review][Patch] JsonView.vue's top Format/Minify error banner never clears when the input is edited afterward [src/tools/json/JsonView.vue:27,108] — unlike `validateError`, which the live-parse watcher clears every edit, `error` is only reset at the next Format/Minify click. A stale error (with a stale jump-to-position link) persists after the document is already fixed — a regression from removing the old Paste handler, which used to double as the implicit reset. **Applied** (dedicated `watch(input, ...)`), plus a regression test.
+- [x] [Review][Patch] flattenDiffTree.ts's Number preview isn't truncated [src/tools/json/flattenDiffTree.ts:54-55] — every other value kind is (String calls `truncate()`); an unusually long number literal renders an unbounded-width Diff row. **Applied**, plus a regression test.
+- [x] [Review][Patch] jumpToPositionIn mixes UTF-16 and char-based offset counting [src/tools/json/JsonView.vue:302-312] — sums JS `.length` (UTF-16 code units) against a Rust-reported line/column; likely diverges for astral-plane characters (e.g. emoji) before the error, misplacing the "click to jump caret" affordance. **Applied** (confirmed against serde_json's own `SliceRead::position_of_index` source that `column` is a UTF-8 byte offset; added a codepoint-aware `byteColumnToJsOffset` conversion), plus a regression test.
+- [x] [Review][Patch] to_typescript can rename the actual document-root interface to `Root2` [crates/umbra-core/src/json.rs:818-851,977-996] — nested fields register (bottom-up) before the document root does, so a field literally named "root" can claim the canonical `Root` interface name first. Confusing generated output, not a functional/compile defect. **Applied** (`reclaim_root_name`, with a global type-reference rename pass) — while implementing, found and also fixed a related, more severe sub-case: a non-object root (scalar/array) squatted-on by the same collision produces an actual `interface Root {}` / `type Root = ...` naming collision (invalid TypeScript), not just confusing naming. Two regression tests added, one per sub-case.
+- [x] [Review][Patch] AC14's 10 MB latency check is ~40x looser than its own cited baseline [src-tauri/src/commands/json.rs:241,255,269,283,297,313,341; crates/umbra-core/src/json.rs 10MB tests carry no timing at all] — asserts `elapsed.as_secs() < 20` against a ~440–540ms baseline cited in the AC and completion notes; a regression to several seconds would pass every automated check. **Applied** to the four new-in-this-story commands (repair/query/diff/transform) only — format/minify/parse's identical `<20s` assertions predate this story (Story 1.9), out of scope here. Initially tightened to 2s, which proved flaky under real parallel `cargo test --workspace` execution (observed 2.8–5.1s under contention, not a regression); settled on 10s — still a 50% tightening from the original 20s ceiling, with real headroom above observed worst-case contention.
+
+- [x] [Review][Defer] Client-side JS full-tree walks have no performance testing against the 10MB ceiling [src/tools/json/flattenJsonTree.ts, flattenDiffTree.ts] — deferred, pre-existing pattern; AC14's literal text scopes the requirement to `spawn_blocking`-dispatched commands, this is outside the letter though arguably within the spirit.
+- [x] [Review][Defer] findMatches undercounts occurrences for a truncated (>80 char) leaf when some but not all matches sit past the truncation boundary [src/tools/json/flattenJsonTree.ts:230-235] — deferred, narrow edge case; the code already handles the "all-hidden" case, and arguably by its own stated design (count only what's visibly markable) this partial case isn't clearly wrong.
+- [x] [Review][Defer] Query tab's own completion notes never log a "belated visual confirmation" the way Diff's did [story completion notes, 2026-08-26] — deferred, process note not a code defect; a same-day entry about a copy-button hover bug suggests Query was exercised live at least once.
+- [x] [Review][Defer] Format/Minify's top error banner and the Validate tab's own error can display the same failure simultaneously [src/tools/json/JsonView.vue:477-483] — deferred, already self-acknowledged in-code as "Provisional placement," non-blocking.
+- [x] [Review][Defer] No fuzz/property-based testing for three new hand-written algorithms (RepairScanner, diff_values, to_typescript) [crates/umbra-core/src/json.rs] — deferred, general recommendation; coverage is exclusively hand-picked examples, the same style that missed the two Repair findings above.
+
+Dismissed as noise after direct code verification (3): `useCopyFeedback`'s doc comment claim of independent-simultaneous confirmations doesn't hold up against its actual wording; `to_typescript`'s claimed Foo/foo/Foo2 suffix collision doesn't reproduce — `register_interface`'s loop re-checks the `bodies` map against every candidate name and always finds a free one; Diff's rename-adjacency fix having "no UI signal" isn't a gap — the code's own comment already discloses this is deliberately not rename detection.
 
 ## Dev Notes
 

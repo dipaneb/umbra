@@ -52,7 +52,7 @@ function previewForDiffValue(value: DiffValue, childCount: number): string {
     case "String":
       return truncate(JSON.stringify(value.data));
     case "Number":
-      return value.data;
+      return truncate(value.data);
     case "Bool":
       return String(value.data);
     case "Null":

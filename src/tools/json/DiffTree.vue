@@ -21,7 +21,30 @@ const props = defineProps<{ root: DiffNode | null }>();
 // their exact stroke width/viewBox is what the design canvas comparison
 // mockup already used and the developer already approved, so this
 // reproduces that instead of re-deriving the same look from a library glyph.
-const diffIconProps = { width: "14", height: "14", viewBox: "0 0 16 16", fill: "none" };
+const diffIconProps = {
+  width: "14",
+  height: "14",
+  viewBox: "0 0 16 16",
+  fill: "none",
+  "aria-hidden": "true",
+};
+
+// Status is otherwise conveyed only by icon shape and CSS color, invisible
+// to a screen reader — `role="img"` on the wrapping span (see template)
+// gives it an accessible name a native `<span>` can't get from `aria-label`
+// alone.
+function diffRowStatusLabel(status: DiffTreeRow["status"]): string | undefined {
+  switch (status) {
+    case "added":
+      return t("tools.json.diffRowStatusAdded");
+    case "removed":
+      return t("tools.json.diffRowStatusRemoved");
+    case "changed":
+      return t("tools.json.diffRowStatusChanged");
+    default:
+      return undefined;
+  }
+}
 const PlusIcon = () =>
   h("svg", diffIconProps, [
     h("path", { d: "M8 3v10M3 8h10", stroke: "currentColor", "stroke-width": "1.6", "stroke-linecap": "round" }),
@@ -232,7 +255,11 @@ async function onKeydown(event: KeyboardEvent, index: number) {
         @keydown="onKeydown($event, virtualRow.index)"
         @focus="focusedPath = row.path"
       >
-        <span class="diff-tree-status-icon">
+        <span
+          class="diff-tree-status-icon"
+          :role="row.status === 'unchanged' ? undefined : 'img'"
+          :aria-label="diffRowStatusLabel(row.status)"
+        >
           <PlusIcon v-if="row.status === 'added'" />
           <MinusIcon v-else-if="row.status === 'removed'" />
           <PencilIcon v-else-if="row.status === 'changed' && row.oldPreview !== null" />
