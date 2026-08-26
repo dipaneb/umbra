@@ -213,7 +213,7 @@ would produce a query syntax Explorer's copied paths can't paste into).
   - [x] `crates/umbra-core/src/json.rs`: add `diff` (structural, over `JsonTreeValue`) per
         the decision record's AD-1 split, with its own regression tests, sanity-checked
         against the 10 MB / Story 1.9 performance floor (AC14).
-  - [ ] `crates/umbra-core/src/json.rs`: add `to_typescript` pure function per the decision
+  - [x] `crates/umbra-core/src/json.rs`: add `to_typescript` pure function per the decision
         record's AD-1 split — its own regression tests, sanity-checked against the 10 MB /
         Story 1.9 performance floor (AC14).
   - [ ] Explorer, next (and last) slice: inline editing (add/remove/move/duplicate
@@ -228,12 +228,16 @@ would produce a query syntax Explorer's copied paths can't paste into).
   - [x] Build Query's expression input + result view over the new `query` command.
   - [x] Build Diff's two-document input + tree-mode highlighted result over the new `diff`
         command.
-  - [ ] Build Transform's TypeScript-interface output over the new `to_typescript` command.
-  - [ ] Give each new async command its own `createLatestWinsRunner()` scope (AD-16) and
+  - [x] Build Transform's TypeScript-interface output over the new `to_typescript` command.
+  - [x] Give each new async command its own `createLatestWinsRunner()` scope (AD-16) and
         `spawn_blocking` dispatch (AD-4) — do not share the existing Format/Minify/Paste or
         live-tree-parse runners.
   - [ ] Implement per AC6–14; run the standard verification pass (`pnpm lint`, `pnpm test`,
         `vue-tsc --noEmit`, `pnpm build`, `cargo fmt --check`, `cargo test --workspace`).
+        (Kept open: Explorer's inline-editing slice, line above, is the one
+        remaining piece of AC6–14 — this line is the final "everything's in"
+        gate, not a per-slice re-check. Every slice, including this one, has
+        already run this exact pipeline clean on its own.)
 
 ## Dev Notes
 
@@ -765,6 +769,95 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   were needed; `cargo fmt --check --all`, `cargo clippy --workspace
   --all-targets -- -D warnings`, `cargo test --workspace` (207/207), and
   `pnpm test -- --run` (573/573) all re-verified clean.
+- 2026-08-26: Transform tab (AC12) — the last of the six tabs, so Task 2b's
+  tab shell no longer has any "coming soon" placeholder. New `to_typescript`
+  pure function in `crates/umbra-core/src/json.rs` (AD-1): infers a
+  TypeScript `interface`/`type` from a parsed document via one recursive
+  `infer_type_from_values` call that operates over a *slice* of values
+  rather than a single one — the same function handles "the type of one
+  field" (one occurrence) and "the type of a field across every element of
+  an array" (many occurrences), which is what lets array-of-objects merging
+  fall out of the recursion for free instead of needing a second code path.
+  Scoped deliberately narrower than a full quicktype-class generator (own
+  doc comment in `json.rs` records this in full): an array of objects merges
+  into *one* interface (union of keys, a key missing from some elements
+  becomes `key?:`, a key whose type varies becomes a union like
+  `string | number`) rather than one interface per element, since a merged
+  shape is what's actually useful for the realistic case (API responses,
+  log dumps); nested objects reached through a merged array (e.g. every
+  element's own `address` field) merge the same way, recursively. Explicitly
+  not attempted, same category of deliberate boundary as Diff's rename
+  detection: discriminated-union inference across structurally different
+  shapes at one array position, and deduplicating identical shapes that
+  ended up with different interface names. Interface names are
+  `pascal_case`d from the originating key (`Root`/`RootItem` for the
+  document root and its array elements); a name collision with a
+  *different* shape gets a numeric suffix (`Foo`, `Foo2`), a collision with
+  an *identical* shape reuses the existing interface rather than emitting a
+  duplicate — covered by dedicated tests for both branches. A document root
+  that isn't itself an object (a bare array, or a scalar) gets a
+  `type Root = ...;` alias instead of an `interface` block, since
+  `interface Root = string[]` isn't legal TypeScript. 18 new Rust unit
+  tests, one per documented behavior (flat/nested objects, array merging
+  with optional/union fields, nested-array-of-arrays, mixed-primitive-array
+  parenthesization, empty array/object, non-identifier property-name
+  quoting, both collision branches, malformed input) plus a 10 MB sanity
+  check (AC14) — the merge algorithm is linear in document size (one pass
+  per field per merge level), well inside Story 1.9's baseline. New
+  `json_transform` Tauri command (`src-tauri/src/commands/json.rs`,
+  registered in `lib.rs`) dispatches via its own `spawn_blocking` call
+  (AD-4); a 10 MB timing test confirmed it stays well inside baseline too.
+  `JsonView.vue` gained a Transform tab panel with its own
+  `createLatestWinsRunner()` scope (AD-16, computed only while Transform is
+  the active tab, same pattern as Repair/Query/Diff) — a neutral prompt on
+  empty input, the classified `json-*` parse error (with the same
+  clickable caret-jump the document-position errors already use, since
+  `to_typescript` surfaces a malformed document through the same
+  `map_parse_error` path Format/Validate/Repair/Query/Diff all share) on a
+  malformed document, and otherwise a read-only preview textarea plus a
+  Copy button. One deliberate UI-consistency call: the Copy button is
+  plain-text (`AppButton`, toggling its own label between "Copy"/"Copied!"),
+  not icon+checkmark like Explorer's/Query's per-row copy buttons — every
+  other `AppButton` in this file (Format, Minify, Try Repair, Apply repair)
+  is plain text with no icon, and `AppButton` itself has no icon+text layout
+  precedent anywhere in the codebase to safely reuse, so this matches the
+  established convention for a single full-sized action button rather than
+  introducing unverified icon-alignment CSS. Output is a plain `string`, the
+  same wire shape as Format/Minify's own command results — unlike
+  Repair/Query/Diff there was no richer structure to carry, so no
+  `jsonTransform.ts` mirror type was needed. Removed the now-fully-dead
+  `tools.json.comingSoon` locale key and its template branch/CSS class
+  (`v-else` + `.coming-soon`) from both locale files and `JsonView.vue` —
+  with all six tabs now real, `TAB_IDS`' six ids are all explicitly matched,
+  so that branch could never be reached again; replaced the one spec test
+  that exercised it with 5 new Transform-tab tests (empty prompt, preview
+  render, copy-and-confirm-then-revert, no-false-confirmation-on-clipboard-
+  failure, error-with-working-caret-jump) mirroring Repair's/Query's own
+  test conventions. Browser tooling connected this round (unlike every
+  earlier slice this story) — visually confirmed live against the running
+  `pnpm dev` server at `/tools/json`, same `window.__TAURI_INTERNALS__.invoke`
+  mock convention prior slices used to see a populated tree without the
+  real native Tauri window. Checked all three Transform states (empty
+  prompt, the classified-error alert with its working caret-jump link, and
+  the success preview + Copy button, including the copy-confirmation label
+  swap and its revert) in both light and dark mode — all rendered as
+  designed, including the default (not primary/orange) Copy button variant
+  and the dimmed read-only preview matching Repair's own treatment.
+  Re-verified:
+  `pnpm lint`, `vue-tsc --noEmit`, `pnpm test -- --run` (577/577 — 5 new,
+  1 removed), `pnpm build`, `cargo fmt --check --all`, `cargo clippy
+  --workspace --all-targets -- -D warnings`, `cargo test --workspace`
+  (314/314: 225 umbra-core + 88 umbra/src-tauri + 1 integration test).
+- 2026-08-26: Belated Diff-tab (AC11) visual confirmation. Browser tooling
+  connected this session for the first time since Diff shipped, closing the
+  gap its own two prior completion-note entries flagged. Confirmed live
+  against the running `pnpm dev` server, mocked `json_diff` result covering
+  all three non-unchanged statuses at once (a changed scalar with its
+  strikethrough-old→new inline display, a removed key, an added key), in
+  both light and dark mode — the full-row red/green treatment (the
+  deliberate two-hue-system exception recorded in `DESIGN.md`) renders
+  legibly in both, and the pencil/minus/plus status icons are visually
+  distinct from one another. No code change; confirmation only.
 
 ### File List
 

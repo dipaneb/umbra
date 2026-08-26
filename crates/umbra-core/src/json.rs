@@ -782,6 +782,306 @@ pub fn diff(input_a: &str, input_b: &str) -> Result<DiffNode, ToolError> {
     Ok(diff_values(&a, &b))
 }
 
+// Story 8.1 AC12: JSON -> TypeScript interface generation. Plain `String`
+// output, same shape as `format`/`minify` — unlike Repair/Query/Diff, there's
+// no richer wire type to carry (no per-change list, no match set, no status
+// tree), just displayable text, so the view doesn't need a dedicated
+// `jsonTransform.ts` mirror type either.
+//
+// Design, scoped deliberately narrower than a full quicktype-class tool:
+// - A single object infers one `interface` per level, one property per key,
+//   in source key order (this file's established "preserve source order"
+//   convention, same as `JsonTreeValue`/`DiffValue`).
+// - An array of objects is *merged* into one interface: the union of keys
+//   across every element, a key absent from some elements becomes `key?:`,
+//   and a key whose occurrences don't all share one type becomes a union
+//   (`string | number`). This is the one genuinely load-bearing judgment
+//   call here — arrays of same-shaped-ish records (API responses, log
+//   dumps) are the realistic case this needs to handle well, and per-element
+//   interfaces (`Item1`, `Item2`, ...) would be far less useful output.
+// - Nested objects reachable through a merged array (e.g. every element's
+//   `address` field) are merged the same way, recursively — `address`
+//   becomes one interface built from every element's `address`, not one
+//   interface per element.
+// - Interface names come from `pascal_case`-ing the originating key (or
+//   `Root`/`RootItem` for the document root and its array elements). A name
+//   collision with a *different* shape gets a numeric suffix (`Foo`, `Foo2`,
+//   ...); a collision with the *same* shape reuses the existing interface
+//   rather than emitting a duplicate.
+// - Explicitly not attempted: inferring a union across *structurally
+//   different* object shapes at the same array position as a discriminated
+//   union type, or deduplicating identical shapes that ended up with
+//   different names (e.g. two unrelated keys that happen to produce the same
+//   fields). Both are real features with their own design questions, not
+//   quick additions — same category of deliberate scope boundary as Diff's
+//   rename detection.
+pub fn to_typescript(input: &str) -> Result<String, ToolError> {
+    let value = parse(input)?;
+    let mut ctx = TsGenContext::default();
+    let root_expr = ctx.infer_type_from_values(&[&value], "Root");
+
+    // Root reads first in the output when the document itself is an object
+    // (the common case) — `infer_type_from_values` registers nested
+    // interfaces before the one that references them (bottom-up, a natural
+    // side effect of the recursion), so without this the root interface
+    // would otherwise print last. Declaration order has no effect on
+    // TypeScript's own resolution, so this reordering is purely for the
+    // human reading the output top-to-bottom.
+    if let Some(pos) = ctx
+        .interfaces
+        .iter()
+        .position(|(name, _)| name == &root_expr)
+    {
+        let root_entry = ctx.interfaces.remove(pos);
+        ctx.interfaces.insert(0, root_entry);
+    }
+
+    let mut blocks: Vec<String> = ctx
+        .interfaces
+        .iter()
+        .map(|(name, body)| format!("interface {name} {{\n{body}}}"))
+        .collect();
+    // The document root wasn't itself an object (or object-array) — no
+    // interface was registered for "Root", so the root type is a bare
+    // expression (`string`, `number[]`, `string | null`, ...) that needs a
+    // named alias to be usable TypeScript.
+    if !ctx.interfaces.iter().any(|(name, _)| name == &root_expr) {
+        blocks.push(format!("type Root = {root_expr};"));
+    }
+    Ok(format!("{}\n", blocks.join("\n\n")))
+}
+
+#[derive(Default)]
+struct TsGenContext {
+    // Registration order (bottom-up, see `to_typescript`'s doc comment) —
+    // `bodies` mirrors this by name for O(1) collision/reuse lookups.
+    interfaces: Vec<(String, String)>,
+    bodies: std::collections::HashMap<String, String>,
+}
+
+impl TsGenContext {
+    // Infers a single TS type expression covering every value in `values` —
+    // one call site for both "the type of this one field" (a single
+    // occurrence) and "the type of this field across every element of a
+    // merged array" (many occurrences), which is what lets object/array
+    // merging fall out of the same recursion instead of needing a separate
+    // code path. `hint` names the interface that gets registered if any of
+    // `values` are objects or arrays-of-objects.
+    fn infer_type_from_values(&mut self, values: &[&serde_json::Value], hint: &str) -> String {
+        let mut has_null = false;
+        let mut has_bool = false;
+        let mut has_number = false;
+        let mut has_string = false;
+        let mut arrays: Vec<&serde_json::Value> = Vec::new();
+        let mut objects: Vec<&serde_json::Map<String, serde_json::Value>> = Vec::new();
+
+        for v in values {
+            match v {
+                serde_json::Value::Null => has_null = true,
+                serde_json::Value::Bool(_) => has_bool = true,
+                serde_json::Value::Number(_) => has_number = true,
+                serde_json::Value::String(_) => has_string = true,
+                serde_json::Value::Array(_) => arrays.push(v),
+                serde_json::Value::Object(map) => objects.push(map),
+            }
+        }
+
+        // Fixed emission order (objects, arrays, string, number, boolean,
+        // null) regardless of the order types were actually encountered in
+        // `values` — keeps output deterministic for a given document.
+        let mut parts: Vec<String> = Vec::new();
+        if !objects.is_empty() {
+            parts.push(self.merge_objects_into_interface(&objects, hint));
+        }
+        if !arrays.is_empty() {
+            // Every array occurrence's elements are pooled into one merge
+            // target — same reasoning as merging object occurrences: this
+            // field/position is treated as "one logical array shape",
+            // not one shape per occurrence.
+            let mut items: Vec<&serde_json::Value> = Vec::new();
+            for arr in &arrays {
+                if let serde_json::Value::Array(inner) = arr {
+                    items.extend(inner.iter());
+                }
+            }
+            let elem_type = if items.is_empty() {
+                "unknown".to_string()
+            } else {
+                self.infer_type_from_values(&items, &format!("{hint}Item"))
+            };
+            parts.push(format!("{}[]", wrap_if_union(&elem_type)));
+        }
+        if has_string {
+            parts.push("string".to_string());
+        }
+        if has_number {
+            parts.push("number".to_string());
+        }
+        if has_bool {
+            parts.push("boolean".to_string());
+        }
+        if has_null {
+            parts.push("null".to_string());
+        }
+
+        if parts.is_empty() {
+            // Only reachable if `values` was itself empty — `infer_type_from_values`
+            // is never called with an empty slice (the empty-array case is
+            // handled before recursing, above), kept as a defensive fallback
+            // rather than a `panic!`/`unreachable!` for a state this function
+            // alone can't fully prove impossible to a reader.
+            return "unknown".to_string();
+        }
+        parts.join(" | ")
+    }
+
+    // Merges `maps` (every occurrence of "this object" — one for a plain
+    // field, many for an array-of-objects) into a single interface: the
+    // union of keys in first-seen order, a key present on only some maps
+    // becomes optional, and each key's type is inferred across every
+    // occurrence that has it (so nested objects under that key merge too,
+    // recursively, via the same `infer_type_from_values` call).
+    fn merge_objects_into_interface(
+        &mut self,
+        maps: &[&serde_json::Map<String, serde_json::Value>],
+        hint: &str,
+    ) -> String {
+        let mut field_order: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for map in maps {
+            for k in map.keys() {
+                if seen.insert(k.as_str()) {
+                    field_order.push(k.clone());
+                }
+            }
+        }
+
+        let total = maps.len();
+        let mut fields: Vec<(String, String, bool)> = Vec::with_capacity(field_order.len());
+        for key in &field_order {
+            let occurrences: Vec<&serde_json::Value> =
+                maps.iter().filter_map(|m| m.get(key.as_str())).collect();
+            let optional = occurrences.len() < total;
+            let ty = self.infer_type_from_values(&occurrences, key);
+            fields.push((key.clone(), ty, optional));
+        }
+
+        self.register_interface(hint, &fields)
+    }
+
+    // Registers (or reuses) an interface named after `hint`'s pascal-cased
+    // form. A name already used for the exact same field list is reused
+    // outright (no duplicate interface for two keys that happen to produce
+    // identical shapes); a name already used for a *different* shape gets a
+    // numeric suffix instead of silently colliding.
+    fn register_interface(&mut self, hint: &str, fields: &[(String, String, bool)]) -> String {
+        let base = pascal_case(hint);
+        let body = render_interface_body(fields);
+        let mut name = base.clone();
+        let mut suffix = 2u32;
+        loop {
+            match self.bodies.get(&name) {
+                None => {
+                    self.bodies.insert(name.clone(), body.clone());
+                    self.interfaces.push((name.clone(), body));
+                    return name;
+                }
+                Some(existing) if *existing == body => return name,
+                Some(_) => {
+                    name = format!("{base}{suffix}");
+                    suffix += 1;
+                }
+            }
+        }
+    }
+}
+
+fn render_interface_body(fields: &[(String, String, bool)]) -> String {
+    let mut out = String::new();
+    for (key, ty, optional) in fields {
+        let prop = if is_valid_ts_identifier(key) {
+            key.clone()
+        } else {
+            quote_ts_key(key)
+        };
+        let opt = if *optional { "?" } else { "" };
+        out.push_str(&format!("  {prop}{opt}: {ty};\n"));
+    }
+    out
+}
+
+// Wraps a union type (`a | b`) in parens before it's used as an array
+// element type (`(a | b)[]`) — without this, `a | b[]` would parse in
+// TypeScript as `a | (b[])`, silently changing the type's meaning.
+fn wrap_if_union(ty: &str) -> String {
+    if ty.contains(" | ") {
+        format!("({ty})")
+    } else {
+        ty.to_string()
+    }
+}
+
+// A valid unquoted TS/JS property name: `[A-Za-z_$][A-Za-z0-9_$]*`. Reserved
+// words (`class`, `interface`, ...) are deliberately not excluded here —
+// unlike a variable name, a property name isn't keyword-restricted in
+// TypeScript, so `{ class: string }` is already valid without quoting.
+fn is_valid_ts_identifier(key: &str) -> bool {
+    let mut chars = key.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+fn quote_ts_key(key: &str) -> String {
+    let mut out = String::with_capacity(key.len() + 2);
+    out.push('"');
+    for c in key.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+// Converts an arbitrary JSON key into a PascalCase TS interface name: splits
+// on runs of non-alphanumeric characters, capitalizes each chunk's first
+// character, leaves the rest of the chunk as-is (so an already-camelCase key
+// like `userId` becomes `UserId` without mangling internal casing). Falls
+// back to `Field`/`Field<name>` for a key that produces an empty or
+// digit-leading result (an empty key, or one made entirely of punctuation),
+// since neither is a legal TS identifier.
+fn pascal_case(input: &str) -> String {
+    let mut result = String::new();
+    let mut chunk_start = true;
+    for c in input.chars() {
+        if c.is_alphanumeric() {
+            if chunk_start {
+                result.extend(c.to_uppercase());
+                chunk_start = false;
+            } else {
+                result.push(c);
+            }
+        } else {
+            chunk_start = true;
+        }
+    }
+    if result.is_empty() {
+        return "Field".to_string();
+    }
+    if result.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        return format!("Field{result}");
+    }
+    result
+}
+
 // Wire type for the JSON tree (Story 1.8): `serde_json::Value::Object` round-trips
 // through Tauri's IPC as a plain JS object, and the ECMAScript spec always
 // enumerates canonical-integer-string keys ("0", "1", ...) in ascending numeric
@@ -1896,5 +2196,151 @@ mod tests {
         let result = diff(&a, &b).unwrap();
         assert_eq!(result.status, DiffStatus::Changed);
         assert!(expected_len > 1);
+    }
+
+    // Story 8.1 AC12: `to_typescript` — one test per documented behavior
+    // (flat/nested objects, array merging with optional/union fields,
+    // primitive roots, name collision handling, identifier quoting).
+
+    #[test]
+    fn to_typescript_generates_interface_for_flat_object_in_key_order() {
+        let result = to_typescript(r#"{"b":1,"a":"x","c":true,"d":null}"#).unwrap();
+        assert_eq!(
+            result,
+            "interface Root {\n  b: number;\n  a: string;\n  c: boolean;\n  d: null;\n}\n"
+        );
+    }
+
+    #[test]
+    fn to_typescript_generates_nested_interface_with_root_printed_first() {
+        let result = to_typescript(r#"{"user":{"name":"a"}}"#).unwrap();
+        assert_eq!(
+            result,
+            "interface Root {\n  user: User;\n}\n\ninterface User {\n  name: string;\n}\n"
+        );
+    }
+
+    #[test]
+    fn to_typescript_merges_array_of_objects_into_one_element_interface() {
+        let result = to_typescript(r#"[{"a":1},{"a":2}]"#).unwrap();
+        assert_eq!(
+            result,
+            "interface RootItem {\n  a: number;\n}\n\ntype Root = RootItem[];\n"
+        );
+    }
+
+    #[test]
+    fn to_typescript_marks_a_key_optional_when_absent_from_some_array_elements() {
+        let result = to_typescript(r#"[{"a":1,"b":2},{"a":3}]"#).unwrap();
+        assert_eq!(
+            result,
+            "interface RootItem {\n  a: number;\n  b?: number;\n}\n\ntype Root = RootItem[];\n"
+        );
+    }
+
+    #[test]
+    fn to_typescript_unions_a_keys_type_across_array_elements() {
+        let result = to_typescript(r#"[{"a":1},{"a":"x"}]"#).unwrap();
+        assert_eq!(
+            result,
+            "interface RootItem {\n  a: string | number;\n}\n\ntype Root = RootItem[];\n"
+        );
+    }
+
+    #[test]
+    fn to_typescript_merges_nested_objects_reached_through_a_merged_array() {
+        let result = to_typescript(r#"[{"addr":{"city":"a"}},{"addr":{"city":"b"}}]"#).unwrap();
+        assert_eq!(
+            result,
+            "interface Addr {\n  city: string;\n}\n\ninterface RootItem {\n  addr: Addr;\n}\n\ntype Root = RootItem[];\n"
+        );
+    }
+
+    #[test]
+    fn to_typescript_handles_array_of_primitives_as_a_type_alias() {
+        let result = to_typescript("[1,2,3]").unwrap();
+        assert_eq!(result, "type Root = number[];\n");
+    }
+
+    #[test]
+    fn to_typescript_handles_mixed_primitive_array_as_a_parenthesized_union() {
+        let result = to_typescript(r#"[1,"a",true]"#).unwrap();
+        assert_eq!(result, "type Root = (string | number | boolean)[];\n");
+    }
+
+    #[test]
+    fn to_typescript_handles_top_level_scalar_as_a_type_alias() {
+        let result = to_typescript(r#""hello""#).unwrap();
+        assert_eq!(result, "type Root = string;\n");
+    }
+
+    #[test]
+    fn to_typescript_handles_empty_array_as_unknown_array_alias() {
+        let result = to_typescript("[]").unwrap();
+        assert_eq!(result, "type Root = unknown[];\n");
+    }
+
+    #[test]
+    fn to_typescript_handles_empty_object() {
+        let result = to_typescript("{}").unwrap();
+        assert_eq!(result, "interface Root {\n}\n");
+    }
+
+    #[test]
+    fn to_typescript_handles_nested_array_of_arrays() {
+        let result = to_typescript("[[1,2],[3,4]]").unwrap();
+        assert_eq!(result, "type Root = number[][];\n");
+    }
+
+    #[test]
+    fn to_typescript_quotes_a_property_name_that_is_not_a_valid_identifier() {
+        let result = to_typescript(r#"{"my-key":1}"#).unwrap();
+        assert_eq!(result, "interface Root {\n  \"my-key\": number;\n}\n");
+    }
+
+    #[test]
+    fn to_typescript_converts_snake_case_keys_to_pascal_case_interface_names() {
+        let result = to_typescript(r#"{"user_profile":{"a":1}}"#).unwrap();
+        assert!(result.contains("interface UserProfile {"));
+        assert!(result.contains("user_profile: UserProfile;"));
+    }
+
+    #[test]
+    fn to_typescript_disambiguates_colliding_names_with_different_shapes() {
+        // "Foo" and "foo" pascal-case to the same name but hold different
+        // shapes -- the second registration must not silently overwrite or
+        // merge with the first.
+        let result = to_typescript(r#"{"Foo":{"x":1},"foo":{"x":"s"}}"#).unwrap();
+        assert!(result.contains("interface Foo {\n  x: number;\n}"));
+        assert!(result.contains("interface Foo2 {\n  x: string;\n}"));
+        assert!(result.contains("Foo: Foo;"));
+        assert!(result.contains("foo: Foo2;"));
+    }
+
+    #[test]
+    fn to_typescript_reuses_one_interface_for_two_keys_with_identical_shape() {
+        let result = to_typescript(r#"{"Foo":{"x":1},"foo":{"x":2}}"#).unwrap();
+        // Only one `interface Foo` should be emitted -- the second key's
+        // identical shape reuses it rather than emitting a duplicate `Foo2`.
+        assert_eq!(result.matches("interface Foo {").count(), 1);
+        assert!(!result.contains("Foo2"));
+        assert!(result.contains("Foo: Foo;"));
+        assert!(result.contains("foo: Foo;"));
+    }
+
+    #[test]
+    fn to_typescript_propagates_malformed_input_as_a_tool_error() {
+        let err = to_typescript(r#"{"a":}"#).unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+    }
+
+    #[test]
+    fn to_typescript_succeeds_on_10mb_document() {
+        let (input, _) = large_json_fixture(10 * 1024 * 1024);
+        let result = to_typescript(&input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("interface RootItem {"));
+        assert!(output.contains("type Root = RootItem[];"));
     }
 }

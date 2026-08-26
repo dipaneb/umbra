@@ -1,7 +1,7 @@
 use umbra_core::ToolError;
 use umbra_core::json::{
     DiffNode, JsonIndent, JsonTreeValue, QueryResult, RepairResult, diff, format, minify, parse,
-    query, repair,
+    query, repair, to_typescript,
 };
 
 #[tauri::command]
@@ -54,6 +54,16 @@ pub async fn json_query(input: String, expression: String) -> Result<QueryResult
 #[tauri::command(rename_all = "snake_case")]
 pub async fn json_diff(input_a: String, input_b: String) -> Result<DiffNode, ToolError> {
     tauri::async_runtime::spawn_blocking(move || diff(&input_a, &input_b))
+        .await
+        .map_err(map_join_error)?
+}
+
+// Story 8.1 AC12/AC14: Transform is genuinely new computation (recursive
+// shape inference + interface merging), so it gets its own `spawn_blocking`
+// dispatch here — not piggybacked on any other command's.
+#[tauri::command]
+pub async fn json_transform(input: String) -> Result<String, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || to_typescript(&input))
         .await
         .map_err(map_join_error)?
 }
@@ -302,6 +312,34 @@ mod tests {
         assert!(
             elapsed.as_secs() < 20,
             "json_diff took {elapsed:?} on two 10MB documents"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_transform_command_generates_an_interface_for_a_valid_object() {
+        let result = json_transform(r#"{"a":1,"b":"x"}"#.to_string())
+            .await
+            .unwrap();
+        assert_eq!(result, "interface Root {\n  a: number;\n  b: string;\n}\n");
+    }
+
+    #[tokio::test]
+    async fn json_transform_command_returns_tool_error_for_malformed_input() {
+        let err = json_transform(r#"{"a":}"#.to_string()).await.unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+    }
+
+    #[tokio::test]
+    async fn json_transform_command_handles_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let start = std::time::Instant::now();
+        let result = json_transform(input).await;
+        let elapsed = start.elapsed();
+        eprintln!("json_transform_command_handles_10mb_document: {elapsed:?}");
+        assert!(result.is_ok());
+        assert!(
+            elapsed.as_secs() < 20,
+            "json_transform took {elapsed:?} on a 10MB document"
         );
     }
 

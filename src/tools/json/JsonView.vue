@@ -55,6 +55,14 @@ const diffInputB = ref("");
 const diffResult = ref<DiffNode | null>(null);
 const diffError = ref<ToolError | null>(null);
 
+// Transform (AC12): also genuinely new computation (recursive shape
+// inference over the parsed document), so it gets its own preview state and
+// runner scope, same as Repair/Query/Diff. Output is a plain generated-code
+// string, same shape as Format/Minify's own command results — unlike
+// Repair/Query/Diff there's no richer wire type to mirror here.
+const transformResult = ref<string | null>(null);
+const transformError = ref<ToolError | null>(null);
+
 // Story 8.1 Task 2 (AC6): six tabs replace the old single flat panel; every
 // tab reads this one shared `input`. Only Explorer is wired up so far — the
 // rest render an honest "not built yet" placeholder rather than fabricating
@@ -213,6 +221,43 @@ watch(
   { immediate: true },
 );
 
+// Own runner scope (AD-16): Transform is a separate independent state group
+// from every other runner in this file, same reasoning as Repair's/Query's/
+// Diff's own.
+const runTransformGen = createLatestWinsRunner();
+
+// Deliberately does not pre-validate the document on the client before
+// calling: `to_typescript`'s Rust implementation parses `input` itself
+// first, so a malformed document surfaces the exact same rewritten `json-*`
+// error Validate/Repair/Query/Diff already show — reused here instead of
+// duplicating an "is this valid JSON?" check a fifth time on the client.
+const debouncedTransformRun = debounce((value: string) => {
+  void (async () => {
+    try {
+      const result = await runTransformGen(() =>
+        value.trim() === "" ? Promise.resolve(null) : invoke<string>("json_transform", { input: value }),
+      );
+      if (!result.superseded) {
+        transformResult.value = result.value;
+        transformError.value = null;
+      }
+    } catch (err) {
+      transformResult.value = null;
+      transformError.value = toToolError(err);
+    }
+  })();
+}, 200);
+
+// Only computed while Transform is the active tab, same reasoning as
+// Repair's/Query's/Diff's own watchers.
+watch(
+  [activeTab, input],
+  ([tab, value]) => {
+    if (tab === "transform") debouncedTransformRun(value);
+  },
+  { immediate: true },
+);
+
 // Otherwise a pending timer fires into this component's refs after the user
 // has navigated away to a different tool, wasting a debounce cycle and an
 // IPC round-trip that nothing will ever read.
@@ -221,7 +266,9 @@ onUnmounted(() => {
   debouncedRepair.cancel();
   debouncedQueryRun.cancel();
   debouncedDiffRun.cancel();
+  debouncedTransformRun.cancel();
   cancelQueryCopyFeedback();
+  cancelTransformCopyFeedback();
 });
 
 function positionText(position: ToolError["position"]): string | null {
@@ -239,6 +286,7 @@ const validateErrorLocation = computed(() => positionText(validateError.value?.p
 const repairErrorLocation = computed(() => positionText(repairError.value?.position ?? null));
 const queryErrorLocation = computed(() => positionText(queryError.value?.position ?? null));
 const diffErrorLocation = computed(() => positionText(diffError.value?.position ?? null));
+const transformErrorLocation = computed(() => positionText(transformError.value?.position ?? null));
 const isInputEmpty = computed(() => input.value.trim() === "");
 const isQueryExpressionEmpty = computed(() => queryExpression.value.trim() === "");
 const isDiffInputBEmpty = computed(() => diffInputB.value.trim() === "");
@@ -357,6 +405,27 @@ async function copyQueryMatchPath(match: QueryMatch) {
   try {
     await writeClipboardText(match.path);
     markQueryMatchCopied(queryMatchPathCopyKey(match));
+  } catch (err) {
+    error.value = toToolError(err);
+  }
+}
+
+// Story 8.1 AC12: a single, unkeyed copy action (unlike Explorer/Query's
+// per-row buttons) — Transform only ever has one thing on screen to copy,
+// the whole generated interface text, so a fixed key is enough.
+const {
+  isCopied: isTransformCopiedRaw,
+  markCopied: markTransformCopied,
+  cancel: cancelTransformCopyFeedback,
+} = useCopyFeedback();
+const TRANSFORM_COPY_KEY = "transform";
+const isTransformCopied = computed(() => isTransformCopiedRaw(TRANSFORM_COPY_KEY));
+
+async function onCopyTransform() {
+  if (!transformResult.value) return;
+  try {
+    await writeClipboardText(transformResult.value);
+    markTransformCopied(TRANSFORM_COPY_KEY);
   } catch (err) {
     error.value = toToolError(err);
   }
@@ -727,15 +796,49 @@ async function copyQueryMatchPath(match: QueryMatch) {
       </template>
     </div>
     <div
-      v-else
-      :id="`tabpanel-${activeTab}`"
+      v-else-if="activeTab === 'transform'"
+      id="tabpanel-transform"
       role="tabpanel"
-      :aria-labelledby="`tab-${activeTab}`"
+      aria-labelledby="tab-transform"
       class="tab-panel"
     >
-      <p class="coming-soon">
-        {{ t('tools.json.comingSoon') }}
+      <p
+        v-if="isInputEmpty"
+        role="status"
+      >
+        {{ t('tools.json.transformEmpty') }}
       </p>
+      <p
+        v-else-if="transformError"
+        role="alert"
+      >
+        {{ toolErrorMessage(transformError, t) }}<button
+          v-if="transformErrorLocation"
+          type="button"
+          class="position-link"
+          @click="jumpToPosition(transformError.position)"
+        >
+          {{ transformErrorLocation }}
+        </button>
+      </p>
+      <template v-else-if="transformResult">
+        <div class="field">
+          <label for="transform-output">{{ t('tools.json.transformOutputLabel') }}</label>
+          <textarea
+            id="transform-output"
+            :value="transformResult"
+            rows="10"
+            readonly
+            spellcheck="false"
+          />
+        </div>
+        <AppButton
+          class="tab-action-button"
+          @click="onCopyTransform"
+        >
+          {{ isTransformCopied ? t('tools.json.copiedTypescript') : t('tools.json.copyTypescript') }}
+        </AppButton>
+      </template>
     </div>
   </section>
 </template>
@@ -875,7 +978,14 @@ p[role="alert"] {
   color: var(--color-text-secondary);
 }
 
-.coming-soon {
+/* Read-only generated-code preview, same treatment as #repair-preview:
+   dimmed so it doesn't compete visually with the shared input above it. */
+#transform-output {
+  font-family: var(--font-code-family);
+  font-size: var(--font-code-size);
+  min-width: 20em;
+  max-width: 70em;
+  width: 100%;
   color: var(--color-text-secondary);
 }
 

@@ -108,7 +108,6 @@
       "explorerPreviousMatchTitle": "Previous match (↑)",
       "explorerNextMatch": "Next match",
       "explorerNextMatchTitle": "Next match (↓)",
-      "comingSoon": "Coming soon.",
       "validateEmpty": "Paste JSON above to validate it.",
       "validateValid": "Valid JSON.",
       "tryRepair": "Try Repair",
@@ -132,6 +131,10 @@
       "diffErrorInInputAbove": "In the input above: ",
       "diffErrorInSecondDocument": "In the second document: ",
       "diffNoDifferences": "No differences.",
+      "transformEmpty": "Paste JSON above to generate a TypeScript interface.",
+      "transformOutputLabel": "Generated TypeScript",
+      "copyTypescript": "Copy",
+      "copiedTypescript": "Copied!",
       "tab": {
         "explorer": "Explorer",
         "validate": "Validate",

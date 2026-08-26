@@ -108,7 +108,6 @@
       "explorerPreviousMatchTitle": "Résultat précédent (↑)",
       "explorerNextMatch": "Résultat suivant",
       "explorerNextMatchTitle": "Résultat suivant (↓)",
-      "comingSoon": "Bientôt disponible.",
       "validateEmpty": "Collez du JSON ci-dessus pour le valider.",
       "validateValid": "JSON valide.",
       "tryRepair": "Essayer la réparation",
@@ -132,6 +131,10 @@
       "diffErrorInInputAbove": "Dans l'entrée ci-dessus : ",
       "diffErrorInSecondDocument": "Dans le second document : ",
       "diffNoDifferences": "Aucune différence.",
+      "transformEmpty": "Collez du JSON ci-dessus pour générer une interface TypeScript.",
+      "transformOutputLabel": "TypeScript généré",
+      "copyTypescript": "Copier",
+      "copiedTypescript": "Copié !",
       "tab": {
         "explorer": "Explorateur",
         "validate": "Validation",

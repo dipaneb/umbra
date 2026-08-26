@@ -819,6 +819,112 @@ describe("JsonView", () => {
     expect(textareaA.selectionStart).not.toBe(5);
   });
 
+  // Every Transform test below routes `json_parse` (the always-on live-tree
+  // watcher) to a harmless empty tree, same convention as `mockRepair`/
+  // `mockQuery` above.
+  function mockTransform(result: unknown) {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_transform") return Promise.resolve(result);
+      if (cmd === "json_parse") return Promise.resolve(null);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+  }
+
+  it("shows a neutral prompt on the Transform tab when input is empty (AC12)", async () => {
+    wrapper = mount(JsonView);
+    await wrapper.find("#tab-transform").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-transform").text()).toBe(
+      "Paste JSON above to generate a TypeScript interface.",
+    );
+  });
+
+  it("shows the generated TypeScript interface in a read-only preview on the Transform tab (AC12)", async () => {
+    mockTransform("interface Root {\n  a: number;\n}\n");
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-transform").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const preview = wrapper.find("#transform-output").element as HTMLTextAreaElement;
+    expect(preview.value).toBe("interface Root {\n  a: number;\n}\n");
+    expect(preview.readOnly).toBe(true);
+    // The shared input is untouched -- Transform only ever renders a preview,
+    // it never rewrites the document (unlike Format/Minify/Apply repair).
+    expect(inputValue(wrapper)).toBe('{"a":1}');
+  });
+
+  it("copies the generated TypeScript to the clipboard and briefly confirms, then reverts (AC12)", async () => {
+    mockTransform("interface Root {\n  a: number;\n}\n");
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-transform").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    await clickButton(wrapper, "Copy");
+    await flushPromises();
+
+    expect(writeTextMock).toHaveBeenCalledWith("interface Root {\n  a: number;\n}\n");
+    expect(wrapper.find("#tabpanel-transform").text()).toContain("Copied!");
+
+    await vi.advanceTimersByTimeAsync(1500);
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-transform").text()).not.toContain("Copied!");
+  });
+
+  it("does not show a false copied confirmation when a Transform copy fails (AC12)", async () => {
+    mockTransform("interface Root {\n  a: number;\n}\n");
+    writeTextMock.mockRejectedValueOnce(new Error("clipboard write failed"));
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":1}');
+    await wrapper.find("#tab-transform").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    await clickButton(wrapper, "Copy");
+    await flushPromises();
+
+    expect(wrapper.find("#tabpanel-transform").text()).not.toContain("Copied!");
+    // Same shared error-alert path Query's own copy failures already use.
+    expect(wrapper.find("[role='alert']").text()).toContain("clipboard write failed");
+  });
+
+  it("surfaces the document's own classified parse error on the Transform tab, with a working caret jump (AC12)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "json_transform") {
+        return Promise.reject({
+          code: "json-expected-value",
+          message: "expected a value here",
+          position: { kind: "LineCol", line: 1, column: 6 },
+          context: null,
+        });
+      }
+      if (cmd === "json_parse") return Promise.resolve(null);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+    wrapper = mount(JsonView);
+
+    await inputTextarea(wrapper).setValue('{"a":}');
+    await wrapper.find("#tab-transform").trigger("click");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    const panel = wrapper.find("#tabpanel-transform");
+    expect(panel.text()).toContain("Expected a value here");
+
+    await panel.find(".position-link").trigger("click");
+    const textarea = inputTextarea(wrapper).element as HTMLTextAreaElement;
+    expect(textarea.selectionStart).toBe(5);
+  });
+
   it("ends up with a null tree, not a stale value, when input is cleared before a slow parse resolves", async () => {
     const slow = deferred<JsonTreeValue>();
     invokeMock.mockReturnValueOnce(slow.promise);
@@ -888,18 +994,6 @@ describe("JsonView", () => {
     const explorerTab = wrapper.find("#tab-explorer");
     expect(explorerTab.attributes("aria-selected")).toBe("true");
     expect(wrapper.findComponent(JsonTree).exists()).toBe(true);
-  });
-
-  it("shows an honest placeholder, not the tree, for a not-yet-built tab (AC6)", async () => {
-    wrapper = mount(JsonView);
-
-    // Validate, Repair, Query, and Diff now have real content
-    // (AC8/AC9/AC10/AC11) — Transform is still an honest placeholder, so
-    // it's the one that exercises this AC6 behavior.
-    await wrapper.find("#tab-transform").trigger("click");
-
-    expect(wrapper.findComponent(JsonTree).exists()).toBe(false);
-    expect(wrapper.find("#tabpanel-transform").text()).toBe("Coming soon.");
   });
 
   it("surfaces a tree copy failure through the same error alert as Format/Minify", async () => {
