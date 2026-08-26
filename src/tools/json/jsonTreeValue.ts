@@ -10,3 +10,25 @@ export type JsonTreeValue =
   | { kind: "String"; data: string }
   | { kind: "Array"; data: JsonTreeValue[] }
   | { kind: "Object"; data: Array<[string, JsonTreeValue]> };
+
+// Re-serializes a subtree back to compact JSON text — Explorer's "copy value"
+// action on a container row (Story 8.1 Task 2, AC7). Numbers reuse their
+// exact source text unchanged (never reparsed into a JS number), the same
+// precision contract `crates/umbra-core/src/json.rs`'s `JsonTreeValue`
+// conversion already guarantees for IPC.
+export function jsonTreeValueToText(value: JsonTreeValue): string {
+  switch (value.kind) {
+    case "Null":
+      return "null";
+    case "Bool":
+      return String(value.data);
+    case "Number":
+      return value.data;
+    case "String":
+      return JSON.stringify(value.data);
+    case "Array":
+      return `[${value.data.map(jsonTreeValueToText).join(",")}]`;
+    case "Object":
+      return `{${value.data.map(([k, v]) => `${JSON.stringify(k)}:${jsonTreeValueToText(v)}`).join(",")}}`;
+  }
+}

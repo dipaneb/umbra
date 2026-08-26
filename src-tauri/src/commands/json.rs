@@ -1,5 +1,8 @@
 use umbra_core::ToolError;
-use umbra_core::json::{JsonIndent, JsonTreeValue, format, minify, parse};
+use umbra_core::json::{
+    DiffNode, JsonIndent, JsonTreeValue, QueryResult, RepairResult, diff, format, minify, parse,
+    query, repair, to_typescript,
+};
 
 #[tauri::command]
 pub async fn json_format(input: String, indent: JsonIndent) -> Result<String, ToolError> {
@@ -22,6 +25,49 @@ pub async fn json_parse(input: String) -> Result<JsonTreeValue, ToolError> {
         .map_err(map_join_error)?
 }
 
+// Story 8.1 AC9/AC14: Repair is genuinely new computation (a char-by-char
+// heuristic scan), so it gets its own `spawn_blocking` dispatch here — not
+// piggybacked on `json_parse`'s.
+#[tauri::command]
+pub async fn json_repair(input: String) -> Result<RepairResult, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || repair(&input))
+        .await
+        .map_err(map_join_error)?
+}
+
+// Story 8.1 AC10/AC14: Query is genuinely new computation (JSONPath parse +
+// evaluate), so it gets its own `spawn_blocking` dispatch here — not
+// piggybacked on `json_parse`'s or `json_repair`'s.
+#[tauri::command]
+pub async fn json_query(input: String, expression: String) -> Result<QueryResult, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || query(&input, &expression))
+        .await
+        .map_err(map_join_error)?
+}
+
+// Story 8.1 AC11/AC14: Diff is genuinely new computation (structural
+// comparison of two parsed documents), so it gets its own `spawn_blocking`
+// dispatch here — not piggybacked on any other command's. `rename_all =
+// "snake_case"` matches `base64.rs`'s own precedent for a multi-word param
+// name — without it, Tauri's default camelCase mapping would make this the
+// only json_* command whose IPC arg names don't match their Rust names.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn json_diff(input_a: String, input_b: String) -> Result<DiffNode, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || diff(&input_a, &input_b))
+        .await
+        .map_err(map_join_error)?
+}
+
+// Story 8.1 AC12/AC14: Transform is genuinely new computation (recursive
+// shape inference + interface merging), so it gets its own `spawn_blocking`
+// dispatch here — not piggybacked on any other command's.
+#[tauri::command]
+pub async fn json_transform(input: String) -> Result<String, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || to_typescript(&input))
+        .await
+        .map_err(map_join_error)?
+}
+
 fn map_join_error(err: tauri::Error) -> ToolError {
     ToolError {
         code: "json-internal".to_string(),
@@ -34,6 +80,7 @@ fn map_join_error(err: tauri::Error) -> ToolError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use umbra_core::json::DiffStatus;
 
     #[tokio::test]
     async fn json_format_command_pretty_prints_valid_input() {
@@ -48,7 +95,7 @@ mod tests {
         let err = json_format(r#"{"a":}"#.to_string(), JsonIndent::TwoSpaces)
             .await
             .unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
     }
 
     #[tokio::test]
@@ -62,7 +109,7 @@ mod tests {
     #[tokio::test]
     async fn json_minify_command_returns_tool_error_for_malformed_input() {
         let err = json_minify(r#"{"a":}"#.to_string()).await.unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
     }
 
     #[tokio::test]
@@ -85,7 +132,75 @@ mod tests {
     #[tokio::test]
     async fn json_parse_command_returns_tool_error_for_malformed_input() {
         let err = json_parse(r#"{"a":}"#.to_string()).await.unwrap_err();
-        assert_eq!(err.code, "json-syntax");
+        assert_eq!(err.code, "json-expected-value");
+    }
+
+    #[tokio::test]
+    async fn json_repair_command_fixes_a_trailing_comma() {
+        let result = json_repair("[1,2,]".to_string()).await.unwrap();
+        assert_eq!(result.repaired, "[1,2]");
+        assert_eq!(result.changes.len(), 1);
+        assert!(!result.still_invalid);
+    }
+
+    #[tokio::test]
+    async fn json_repair_command_reports_still_invalid_for_unfixable_input() {
+        let result = json_repair("1, 2".to_string()).await.unwrap();
+        assert!(result.still_invalid);
+    }
+
+    #[tokio::test]
+    async fn json_query_command_returns_matches_for_a_valid_expression() {
+        let result = json_query(r#"{"a":1,"b":2}"#.to_string(), "$.a".to_string())
+            .await
+            .unwrap();
+        assert_eq!(result.total, 1);
+        assert_eq!(result.matches[0].path, "$['a']");
+    }
+
+    #[tokio::test]
+    async fn json_query_command_returns_tool_error_for_invalid_expression() {
+        let err = json_query(r#"{"a":1}"#.to_string(), "$.[".to_string())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "json-query-invalid-expression");
+    }
+
+    #[tokio::test]
+    async fn json_query_command_returns_tool_error_for_malformed_document() {
+        let err = json_query(r#"{"a":}"#.to_string(), "$.a".to_string())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+    }
+
+    #[tokio::test]
+    async fn json_diff_command_reports_added_removed_and_changed_keys() {
+        let result = json_diff(
+            r#"{"a":1,"b":2}"#.to_string(),
+            r#"{"a":9,"c":3}"#.to_string(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.status, DiffStatus::Changed);
+    }
+
+    #[tokio::test]
+    async fn json_diff_command_returns_tool_error_tagged_document_a_for_malformed_a() {
+        let err = json_diff(r#"{"a":}"#.to_string(), r#"{"a":1}"#.to_string())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+        assert_eq!(err.context, Some("document-a".to_string()));
+    }
+
+    #[tokio::test]
+    async fn json_diff_command_returns_tool_error_tagged_document_b_for_malformed_b() {
+        let err = json_diff(r#"{"a":1}"#.to_string(), r#"{"a":}"#.to_string())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+        assert_eq!(err.context, Some("document-b".to_string()));
     }
 
     // Wide, flat array of many small same-shaped objects — same shape/rationale as
@@ -153,6 +268,78 @@ mod tests {
         assert!(
             elapsed.as_secs() < 20,
             "json_parse took {elapsed:?} on a 10MB document"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_repair_command_handles_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let start = std::time::Instant::now();
+        let result = json_repair(input).await;
+        let elapsed = start.elapsed();
+        eprintln!("json_repair_command_handles_10mb_document: {elapsed:?}");
+        assert!(result.is_ok());
+        assert!(
+            elapsed.as_millis() < 10_000,
+            "json_repair took {elapsed:?} on a 10MB document (Story 1.9's baseline is ~440-540ms)"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_query_command_handles_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let start = std::time::Instant::now();
+        let result = json_query(input, "$[0].id".to_string()).await;
+        let elapsed = start.elapsed();
+        eprintln!("json_query_command_handles_10mb_document: {elapsed:?}");
+        assert!(result.is_ok());
+        assert!(
+            elapsed.as_millis() < 10_000,
+            "json_query took {elapsed:?} on a 10MB document (Story 1.9's baseline is ~440-540ms)"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_diff_command_handles_two_10mb_documents() {
+        let input_a = large_json_fixture(10 * 1024 * 1024);
+        let input_b = input_a.clone();
+        let start = std::time::Instant::now();
+        let result = json_diff(input_a, input_b).await;
+        let elapsed = start.elapsed();
+        eprintln!("json_diff_command_handles_two_10mb_documents: {elapsed:?}");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().status, DiffStatus::Unchanged);
+        assert!(
+            elapsed.as_millis() < 10_000,
+            "json_diff took {elapsed:?} on two 10MB documents (Story 1.9's baseline is ~440-540ms)"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_transform_command_generates_an_interface_for_a_valid_object() {
+        let result = json_transform(r#"{"a":1,"b":"x"}"#.to_string())
+            .await
+            .unwrap();
+        assert_eq!(result, "interface Root {\n  a: number;\n  b: string;\n}\n");
+    }
+
+    #[tokio::test]
+    async fn json_transform_command_returns_tool_error_for_malformed_input() {
+        let err = json_transform(r#"{"a":}"#.to_string()).await.unwrap_err();
+        assert_eq!(err.code, "json-expected-value");
+    }
+
+    #[tokio::test]
+    async fn json_transform_command_handles_10mb_document() {
+        let input = large_json_fixture(10 * 1024 * 1024);
+        let start = std::time::Instant::now();
+        let result = json_transform(input).await;
+        let elapsed = start.elapsed();
+        eprintln!("json_transform_command_handles_10mb_document: {elapsed:?}");
+        assert!(result.is_ok());
+        assert!(
+            elapsed.as_millis() < 10_000,
+            "json_transform took {elapsed:?} on a 10MB document (Story 1.9's baseline is ~440-540ms)"
         );
     }
 

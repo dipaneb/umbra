@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createI18n } from "vue-i18n";
 import en from "./en.json";
 import fr from "./fr.json";
 
@@ -77,5 +78,39 @@ describe("locale key parity (en.json vs fr.json)", () => {
       }
     }
     expect(mismatches).toEqual([]);
+  });
+
+  // Regression: a message string describing JSON syntax can contain a bare
+  // `}` (e.g. "...missing a closing }.") that reads as plain English but is
+  // NOT plain text to vue-i18n — its compiler treats `{`/`}` as interpolation
+  // syntax, so a lone unmatched brace throws "Unbalanced closing brace" the
+  // first time that key is actually rendered, not at build time (`pnpm
+  // build`/`vue-tsc` never touch message *content*, only that the JSON
+  // parses). This slipped past every other check in Story 8.1's Validate
+  // slice — found live, in the real app, only because a user's JSON syntax
+  // error happened to be exactly the one message with an unescaped `}`. The
+  // real i18n compiler (not a placeholder regex) is the only thing that
+  // actually proves a message is safe to render — it's what threw for the
+  // user, so it's what has to pass here.
+  it("compiles every message in both locales without throwing (unescaped brace regression)", () => {
+    const testI18n = createI18n({
+      legacy: false,
+      locale: "en",
+      fallbackLocale: "en",
+      messages: { en, fr },
+    });
+
+    const failures: string[] = [];
+    for (const [locale, keys] of [["en", enKeys], ["fr", frKeys]] as const) {
+      testI18n.global.locale.value = locale;
+      for (const key of keys.keys()) {
+        try {
+          testI18n.global.t(key);
+        } catch (err) {
+          failures.push(`${locale}:${key}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
   });
 });

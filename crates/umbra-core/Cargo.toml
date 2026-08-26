@@ -28,3 +28,13 @@ image = "0.25"
 # BorrowedFormatItem::StringLiteral variant lopdf's datetime.rs still
 # references, so `cargo build` fails with default features on.
 lopdf = { version = "0.44", default-features = false }
+# Story 8.1 AC10 (Query tab): RFC 9535 JSONPath. Live-verified before adopting
+# (this project's standing dependency-verification discipline): the crate runs
+# a daily-scheduled "Compliance" GitHub Actions job that checks out the
+# official jsonpath-compliance-test-suite as a submodule and runs `cargo test`
+# against it — every run on `main` through 2026-08-25 passed, and v0.7.2 (the
+# version below) is a real tagged release matching what crates.io serves, not
+# just a documentation claim. Default features (`functions`, `regex`) stay on
+# since RFC 9535's function extensions (length(), count(), match(), etc.) are
+# part of the spec itself, not optional add-ons.
+serde_json_path = "0.7"

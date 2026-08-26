@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flattenJsonTree } from "./flattenJsonTree";
+import { findMatches, flattenJsonTree, highlightSegments } from "./flattenJsonTree";
 import type { JsonTreeValue } from "./jsonTreeValue";
 
 function obj(data: Array<[string, JsonTreeValue]>): JsonTreeValue {
@@ -101,5 +101,149 @@ describe("flattenJsonTree", () => {
     const rows = flattenJsonTree(str(longString), new Set(["[]"]));
     expect(rows[0]?.preview.length).toBeLessThan(longString.length);
     expect(rows[0]?.preview.endsWith("…")).toBe(true);
+  });
+
+  it("carries the row's own JsonTreeValue and a matching JSONPath for copy actions", () => {
+    const root = obj([["a", arr([str("x"), str("y")])]]);
+    const rows = flattenJsonTree(root, new Set(["[]", '["a"]']));
+
+    const rowA = rows.find((r) => r.keyLabel === "a");
+    expect(rowA?.value).toEqual(arr([str("x"), str("y")]));
+    expect(rowA?.jsonPath).toBe("$.a");
+
+    const rowY = rows.find((r) => r.keyLabel === "1");
+    expect(rowY?.value).toEqual(str("y"));
+    expect(rowY?.jsonPath).toBe("$.a[1]");
+  });
+
+});
+
+describe("findMatches", () => {
+  it("walks the whole tree regardless of collapse state, in document order", () => {
+    const root = obj([
+      ["a", obj([["deep", str("hidden")]])],
+      ["b", str("hidden too")],
+    ]);
+
+    const matches = findMatches(root, "hidden");
+
+    expect(matches.map((m) => m.path)).toEqual(['["a","deep"]', '["b"]']);
+  });
+
+  it("records every ancestor path a match needs expanded to become visible", () => {
+    const root = obj([["a", obj([["deep", str("hidden")]])]]);
+
+    const matches = findMatches(root, "hidden");
+
+    expect(matches).toEqual([
+      { path: '["a","deep"]', ancestorPaths: ["[]", '["a"]'], field: "value", occurrenceIndex: 0 },
+    ]);
+  });
+
+  it("matches a key even when its value doesn't match", () => {
+    const root = obj([["needle", str("unrelated")]]);
+
+    expect(findMatches(root, "needle").map((m) => m.path)).toEqual(['["needle"]']);
+  });
+
+  it("is case-insensitive and matches substrings, not just whole values", () => {
+    const root = obj([["name", str("Ada Lovelace")]]);
+
+    expect(findMatches(root, "ada").map((m) => m.path)).toEqual(['["name"]']);
+    expect(findMatches(root, "LOVELACE").map((m) => m.path)).toEqual(['["name"]']);
+  });
+
+  it("never matches a container's own collapsed-summary text — only real content", () => {
+    const root = obj([["items", arr([str("x"), str("y")])]]);
+
+    // "items" has 2 entries, so its preview text would read "[2 items]" —
+    // searching the word that preview is built from must not count as a
+    // spurious match against the container's own metadata.
+    expect(findMatches(root, "items").map((m) => m.path)).toEqual(['["items"]']); // via the key itself
+    expect(findMatches(root, "2 items")).toEqual([]); // not via the summary text
+  });
+
+  it("returns an empty array when nothing matches", () => {
+    const root = obj([["a", str("x")]]);
+
+    expect(findMatches(root, "nonexistent-zzz")).toEqual([]);
+  });
+
+  it("counts multiple occurrences within a single value as separate matches, not one", () => {
+    const root = obj([["phrase", str("banana banana banana")]]);
+
+    const matches = findMatches(root, "banana");
+
+    expect(matches).toEqual([
+      { path: '["phrase"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 0 },
+      { path: '["phrase"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 1 },
+      { path: '["phrase"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 2 },
+    ]);
+  });
+
+  it("counts multiple occurrences within a single key as separate matches", () => {
+    const root = obj([["aa", str("x")]]);
+
+    const matches = findMatches(root, "a");
+
+    expect(matches.filter((m) => m.field === "key")).toEqual([
+      { path: '["aa"]', ancestorPaths: ["[]"], field: "key", occurrenceIndex: 0 },
+      { path: '["aa"]', ancestorPaths: ["[]"], field: "key", occurrenceIndex: 1 },
+    ]);
+  });
+
+  it("counts a key occurrence and a value occurrence on the same row as two separate matches", () => {
+    const root = obj([["apple", str("apple")]]);
+
+    const matches = findMatches(root, "apple");
+
+    expect(matches).toEqual([
+      { path: '["apple"]', ancestorPaths: ["[]"], field: "key", occurrenceIndex: 0 },
+      { path: '["apple"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 0 },
+    ]);
+  });
+
+  it("falls back to exactly one occurrence when a match is hidden entirely inside a truncated preview", () => {
+    // Preview truncates at 80 chars — put the only match well past that so
+    // the raw value matches but the rendered (truncated) preview does not.
+    const longValue = `${"x".repeat(90)}needle`;
+    const root = obj([["a", str(longValue)]]);
+
+    const matches = findMatches(root, "needle");
+
+    expect(matches).toEqual([{ path: '["a"]', ancestorPaths: ["[]"], field: "value", occurrenceIndex: 0 }]);
+  });
+});
+
+describe("highlightSegments", () => {
+  it("returns the whole text unmatched when the query is empty", () => {
+    expect(highlightSegments("hello", "")).toEqual([{ text: "hello", matched: false }]);
+  });
+
+  it("splits text into unmatched/matched/unmatched around a substring", () => {
+    expect(highlightSegments("Ada Lovelace", "Love")).toEqual([
+      { text: "Ada ", matched: false },
+      { text: "Love", matched: true },
+      { text: "lace", matched: false },
+    ]);
+  });
+
+  it("matches case-insensitively while preserving the source text's original casing", () => {
+    expect(highlightSegments("Ada Lovelace", "ADA")).toEqual([
+      { text: "Ada", matched: true },
+      { text: " Lovelace", matched: false },
+    ]);
+  });
+
+  it("highlights every occurrence, not just the first", () => {
+    expect(highlightSegments("ababab", "ab")).toEqual([
+      { text: "ab", matched: true },
+      { text: "ab", matched: true },
+      { text: "ab", matched: true },
+    ]);
+  });
+
+  it("returns the whole text unmatched when the query doesn't occur", () => {
+    expect(highlightSegments("hello", "zzz")).toEqual([{ text: "hello", matched: false }]);
   });
 });
