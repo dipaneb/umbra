@@ -727,6 +727,44 @@ Claude Sonnet 5 (`claude-sonnet-5`)
   (Chrome extension not connected) — no live visual pass was possible;
   the developer should confirm in their running app, in both light and
   dark mode, before this is treated as fully done.
+- 2026-08-26: Diff ordering follow-up. The developer found a real UX bug
+  trying the tab live: renaming a key (e.g. `"active"` → `"activ"`) showed
+  the new key at the very bottom of the object instead of next to the
+  removed one, because `diff_values`'s Object branch walked all of A's keys
+  first and only appended B-only keys after — every `Added` row landed at
+  the tail regardless of where the edit happened. Discussed feasibility
+  first (explicitly asked not to code yet): true rename detection (folding
+  the pair into one "renamed" row) is a separate, heavier feature — it
+  needs a similarity heuristic (value or name closeness) with no
+  objectively correct answer, the same category of judgment call
+  `git diff -M`'s content-based file-rename detection makes; even
+  jsondiffpatch, the reference JS diff library researched for this tab's
+  visual design, doesn't do it for object keys by default. The ordering fix
+  (keep the pair adjacent) was scoped as the tractable, worthwhile half.
+  Replaced the "walk A, append B's extras" merge with a two-pointer merge
+  over `diff_object_entries` in `crates/umbra-core/src/json.rs`: walks A's
+  keys, and whenever the next key is common to both sides, first flushes
+  any B-only keys sitting earlier in B's order (so an added key surfaces
+  right where the edit happened). A full Myers/LCS diff was ruled out —
+  O(n·m) time/space is infeasible for a single object with tens of
+  thousands of keys, a realistic shape inside a 10MB document (e.g. a
+  dictionary keyed by UUID) — but JSON object keys are always unique within
+  an object, which is exactly what makes the cheaper O(n + m) two-pointer
+  merge correct: every key's status depends only on which side(s) it
+  exists on, never on where it lands, so even the fallback case (a genuine
+  key-order shuffle unrelated to any add/remove) can't mislabel a status,
+  only place that one key less optimally. 4 new regression tests
+  (`crates/umbra-core/src/json.rs`) covering the rename-adjacency case, a
+  brand-new key landing at its natural position instead of the end, two
+  independent renames staying independently adjacent, and a genuine
+  key-shuffle case asserting no key is lost or duplicated. All 18
+  `diff_*` tests green, including the 10MB timing sanity check (same
+  overall linear-in-document-size complexity, unaffected — this only
+  changes the per-object merge, not the recursion structure). No wire
+  format change (`DiffNode`/`DiffValue` untouched), so no frontend edits
+  were needed; `cargo fmt --check --all`, `cargo clippy --workspace
+  --all-targets -- -D warnings`, `cargo test --workspace` (207/207), and
+  `pnpm test -- --run` (573/573) all re-verified clean.
 
 ### File List
 

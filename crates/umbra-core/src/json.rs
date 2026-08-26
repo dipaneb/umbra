@@ -630,24 +630,7 @@ fn mark_all(v: &serde_json::Value, status: DiffStatus) -> DiffNode {
 fn diff_values(a: &serde_json::Value, b: &serde_json::Value) -> DiffNode {
     match (a, b) {
         (serde_json::Value::Object(a_map), serde_json::Value::Object(b_map)) => {
-            let mut entries = Vec::new();
-            let mut any_change = false;
-            // A's key order first (matches JsonTreeValue's own order-preserving
-            // convention), then any B-only keys appended in B's order.
-            for (k, av) in a_map {
-                let child = match b_map.get(k) {
-                    Some(bv) => diff_values(av, bv),
-                    None => mark_all(av, DiffStatus::Removed),
-                };
-                any_change |= child.status != DiffStatus::Unchanged;
-                entries.push((k.clone(), child));
-            }
-            for (k, bv) in b_map {
-                if !a_map.contains_key(k) {
-                    any_change = true;
-                    entries.push((k.clone(), mark_all(bv, DiffStatus::Added)));
-                }
-            }
+            let (entries, any_change) = diff_object_entries(a_map, b_map);
             DiffNode {
                 status: if any_change {
                     DiffStatus::Changed
@@ -696,6 +679,88 @@ fn diff_values(a: &serde_json::Value, b: &serde_json::Value) -> DiffNode {
             node
         }
     }
+}
+
+// Story 8.1 AC11 follow-up: merges two objects' key lists so a key that
+// exists on both sides keeps its diffed position, and a B-only key lands
+// immediately next to wherever A's matching context left off — not appended
+// after every one of A's own keys the way a naive "walk A, then tack on B's
+// extras" merge would. That naive ordering is what made a renamed key read
+// as unrelated: the `Removed` row for the old name stayed in place, but the
+// `Added` row for the new name always fell at the very end of the object,
+// regardless of where the rename happened. This does not attempt to detect
+// that a Removed/Added pair *is* a rename (a real feature, not attempted
+// here — it would need a similarity heuristic, e.g. "do these two values
+// look alike", the same idea `git diff -M` uses for file renames, and would
+// deserve its own explicit scope); it only keeps the two rows adjacent.
+//
+// A real Myers/LCS diff would place the two sequences optimally, but costs
+// O(n*m) time and space in the worst case — infeasible for a single object
+// with tens of thousands of keys, a realistic shape inside a 10MB document
+// (e.g. a dictionary keyed by UUID). Object keys are always unique within
+// an object, though, and that's what makes a much cheaper two-pointer merge
+// correct here: walk A's keys in order, and whenever the next key is common
+// to both sides, first flush any B-only keys sitting earlier than it in B's
+// order. A common key that genuinely sits in a different relative order in
+// B (some key shuffling happened, not just an add/remove) doesn't get
+// perfectly interleaved — it's simply emitted from A's own walk instead —
+// but every key's status is unaffected either way, since status depends
+// only on which side(s) a key exists on, never on where it's placed. This
+// keeps the whole merge O(n + m) time and space, same order of magnitude as
+// the object itself.
+fn diff_object_entries(
+    a_map: &serde_json::Map<String, serde_json::Value>,
+    b_map: &serde_json::Map<String, serde_json::Value>,
+) -> (Vec<(String, DiffNode)>, bool) {
+    let b_keys: Vec<&str> = b_map.keys().map(String::as_str).collect();
+    let mut entries = Vec::with_capacity(a_map.len() + b_map.len());
+    let mut any_change = false;
+    let mut emitted_b: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut bi = 0usize;
+
+    for (ak, av) in a_map {
+        let Some(bv) = b_map.get(ak) else {
+            any_change = true;
+            entries.push((ak.clone(), mark_all(av, DiffStatus::Removed)));
+            continue;
+        };
+        while bi < b_keys.len() && b_keys[bi] != ak.as_str() {
+            let bk = b_keys[bi];
+            if emitted_b.contains(bk) {
+                bi += 1;
+                continue;
+            }
+            if a_map.contains_key(bk) {
+                // A still-unvisited common key that B places before `ak` —
+                // a genuine order conflict. Leave it for A's own walk to
+                // reach rather than forcing a sync here.
+                break;
+            }
+            any_change = true;
+            let bv = b_map.get(bk).expect("bk came from b_map's own key list");
+            entries.push((bk.to_string(), mark_all(bv, DiffStatus::Added)));
+            emitted_b.insert(bk);
+            bi += 1;
+        }
+        let child = diff_values(av, bv);
+        any_change |= child.status != DiffStatus::Unchanged;
+        entries.push((ak.clone(), child));
+        emitted_b.insert(ak.as_str());
+        if bi < b_keys.len() && b_keys[bi] == ak.as_str() {
+            bi += 1;
+        }
+    }
+    while bi < b_keys.len() {
+        let bk = b_keys[bi];
+        if !emitted_b.contains(bk) {
+            any_change = true;
+            let bv = b_map.get(bk).expect("bk came from b_map's own key list");
+            entries.push((bk.to_string(), mark_all(bv, DiffStatus::Added)));
+        }
+        bi += 1;
+    }
+
+    (entries, any_change)
 }
 
 // Story 8.1 AC11/AC14: each side is parsed independently via the existing
@@ -1641,6 +1706,62 @@ mod tests {
     fn diff_does_not_report_a_change_when_only_key_order_differs() {
         let result = diff_ok(r#"{"a":1,"b":2}"#, r#"{"b":2,"a":1}"#);
         assert_eq!(result.status, DiffStatus::Unchanged);
+    }
+
+    fn entry_order(node: &DiffNode) -> Vec<&str> {
+        match &node.value {
+            DiffValue::Object(entries) => entries.iter().map(|(k, _)| k.as_str()).collect(),
+            other => panic!("expected an Object DiffValue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn diff_places_a_renamed_keys_added_row_right_after_its_removed_row() {
+        // Story 8.1 AC11 follow-up: renaming "active" to "activ" must not
+        // leave the new key stranded at the very end of the object.
+        let result = diff_ok(
+            r#"{"age":30,"active":true,"roles":[]}"#,
+            r#"{"age":30,"activ":true,"roles":[]}"#,
+        );
+        assert_eq!(
+            entry_order(&result),
+            vec!["age", "active", "activ", "roles"]
+        );
+        assert_eq!(object_entry(&result, "active").status, DiffStatus::Removed);
+        assert_eq!(object_entry(&result, "activ").status, DiffStatus::Added);
+    }
+
+    #[test]
+    fn diff_places_a_genuinely_new_key_at_its_natural_position_not_the_end() {
+        let result = diff_ok(r#"{"a":1,"b":2,"c":3}"#, r#"{"a":1,"new":9,"b":2,"c":3}"#);
+        assert_eq!(entry_order(&result), vec!["a", "new", "b", "c"]);
+    }
+
+    #[test]
+    fn diff_keeps_two_independent_renamed_pairs_each_locally_adjacent() {
+        let result = diff_ok(
+            r#"{"first":1,"second":2,"third":3}"#,
+            r#"{"firs":1,"second":2,"thir":3}"#,
+        );
+        assert_eq!(
+            entry_order(&result),
+            vec!["first", "firs", "second", "third", "thir"]
+        );
+    }
+
+    #[test]
+    fn diff_does_not_lose_or_duplicate_keys_when_common_keys_are_reordered() {
+        // A genuine shuffle among common keys (not just an add/remove) isn't
+        // guaranteed a perfectly interleaved position, but every key must
+        // still appear exactly once with the correct status.
+        let result = diff_ok(r#"{"a":1,"b":2,"c":3}"#, r#"{"c":3,"a":1,"new":9,"b":2}"#);
+        let mut order = entry_order(&result);
+        order.sort_unstable();
+        assert_eq!(order, vec!["a", "b", "c", "new"]);
+        assert_eq!(object_entry(&result, "new").status, DiffStatus::Added);
+        assert_eq!(object_entry(&result, "a").status, DiffStatus::Unchanged);
+        assert_eq!(object_entry(&result, "b").status, DiffStatus::Unchanged);
+        assert_eq!(object_entry(&result, "c").status, DiffStatus::Unchanged);
     }
 
     #[test]
