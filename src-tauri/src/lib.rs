@@ -6,7 +6,10 @@ mod clipboard_watch;
 pub mod commands;
 mod fs_helper;
 
-use commands::base64::{base64_decode, base64_decode_to_file, base64_encode, base64_encode_file};
+use commands::base64::{
+    base64_decode, base64_decode_to_file, base64_encode, base64_ingest_file, base64_parse_data_uri,
+    base64_sniff,
+};
 use commands::bucket::{bucket_extract_text, bucket_extract_text_from_clipboard};
 use commands::cron::{cron_explain, cron_parse_schedule};
 use commands::hash::{hash_compute, hash_compute_file};
@@ -51,7 +54,9 @@ pub fn run() {
             json_transform,
             base64_encode,
             base64_decode,
-            base64_encode_file,
+            base64_sniff,
+            base64_parse_data_uri,
+            base64_ingest_file,
             base64_decode_to_file,
             uuid_generate,
             hash_compute,

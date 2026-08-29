@@ -24,7 +24,7 @@ const base64Tool: ToolRegistryEntry = {
   route: "/tools/base64",
   icon: "base64",
   component: () => import("../tools/base64/Base64View.vue"),
-  drop: { acceptedMimeTypes: [], handler: "base64_encode_file" },
+  drop: { acceptedMimeTypes: [], handler: "base64_ingest_file" },
 };
 
 const jsonTool: ToolRegistryEntry = {
@@ -231,7 +231,7 @@ describe("DropZone", () => {
     capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/file.bin"] } });
     await flushPromises();
 
-    expect(invokeMock).toHaveBeenCalledWith("base64_encode_file", { path: "/tmp/file.bin", url_safe: true });
+    expect(invokeMock).toHaveBeenCalledWith("base64_ingest_file", { path: "/tmp/file.bin", url_safe: true });
     expect(registry.dropResult).toEqual({ toolId: "base64", value: "//4AAQ==" });
   });
 

@@ -150,15 +150,33 @@
     "base64": {
       "description": "Encoder et décoder du texte ou des fichiers en Base64.",
       "heading": "Base64",
-      "dropHint": "Déposez un fichier n'importe où dans la fenêtre pour l'encoder en Base64.",
-      "inputLabel": "Entrée texte ou Base64",
-      "alphabetLegend": "Alphabet (utilisé uniquement pour l'encodage)",
-      "alphabetStandard": "Standard",
-      "alphabetUrlSafe": "Compatible URL",
+      "dropHintEncode": "Déposez un fichier n'importe où dans la fenêtre pour l'encoder en Base64.",
+      "dropHintDecode": "Déposez un fichier dont le contenu est du texte Base64 pour le décoder.",
+      "fileNotBase64Text": "Ce fichier n'est pas du texte Base64, il n'y a donc rien à décoder. Un fichier binaire ne peut qu'être encodé — passez en mode Encoder.",
+      "inputLabelEncode": "Texte à encoder",
+      "inputLabelDecode": "Base64 à décoder",
+      "directionLegend": "Sens",
+      "urlSafeAlphabet": "Alphabet compatible URL",
       "encode": "Encoder",
       "decode": "Décoder",
-      "decodeToFile": "Décoder vers un fichier",
-      "outputLabel": "Sortie"
+      "looksLikeJwt": "Ressemble à un JWT.",
+      "readAsJwt": "Lire comme un JWT",
+      "readingAsJwt": "Lecture en tant que JWT",
+      "showRaw": "Afficher le brut",
+      "looksLikeBinary": "Ressemble à un fichier {type} ({size}).",
+      "decodedUnrecognized": "{size} décodés — type non reconnu.",
+      "jwtHeader": "En-tête JWT",
+      "jwtPayload": "Charge utile JWT",
+      "imagePreviewAlt": "Aperçu de l'image décodée",
+      "saveAsFile": "Enregistrer dans un fichier",
+      "dataUriImageLine": "Image d'une URI data ({mime}).",
+      "dataUriBuilder": "Construire une URI data",
+      "dataUriMimeLabel": "Type MIME",
+      "dataUriCopied": "URI data copiée",
+      "wrapLabel": "Retour à la ligne",
+      "wrapNone": "Aucun",
+      "outputLabel": "Sortie",
+      "outputCopied": "Sortie copiée"
     },
     "uuid": {
       "description": "Générer des identifiants UUID v4 ou v7, un par un ou en série.",
@@ -260,6 +278,11 @@
     "json-invalid-unicode": "Séquence d'échappement unicode invalide.",
     "json-control-character": "Caractère de contrôle non échappé dans une chaîne — échappez-le en \\u00XX.",
     "json-key-must-be-string": "Les clés d'objet doivent être des chaînes entourées de guillemets doubles.",
-    "json-nesting-too-deep": "Le document est imbriqué trop profondément."
+    "json-nesting-too-deep": "Le document est imbriqué trop profondément.",
+    "base64-invalid-char": "Caractère Base64 invalide.",
+    "base64-invalid-length": "La longueur de l'entrée Base64 n'est pas valide.",
+    "base64-invalid-padding": "Le remplissage de l'entrée Base64 n'est pas valide.",
+    "base64-not-utf8": "Les octets décodés ne sont pas du texte UTF-8 valide.",
+    "base64-data-uri-malformed": "Ce n'est pas une URI data Base64 valide — il faut un marqueur ';base64,' avant la charge utile."
   }
 }

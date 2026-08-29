@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-28
+last_updated: 2026-08-29
 # note: story 8-2 moved to in-progress 2026-08-28 (bmad-dev-story). Branched
 # feat/story-8-2-reimagine-base64-encode-decode from 13c6942 (origin/main tip b151314 + the
 # story-creation commit, so the story file travels with the branch). baseline_commit b151314
@@ -1180,7 +1180,19 @@ development_status:
   # (src-tauri/src/commands/base64.rs), view (src/tools/base64/Base64View.vue) and tools.base64.*
   # i18n live-read in full this session so discovery starts from confirmed fact. epic-8 already
   # in-progress (from 8-1), no epic status change.
-  8-2-reimagine-base64-encode-decode: in-progress
+  # note: story 8-2 moved to review 2026-08-29. Task 1 (bmad-party-mode discovery ->
+  # 8-2-base64-decision-record.md, 3 cut-idea issues #113-115) and Task 2a (AC6-AC16) done
+  # earlier this session; Task 2b implemented as 6 vertical slices, each with a developer
+  # render-review pass (several picked up mid-slice /design explorations + fixes -- see the
+  # story's Debug Log). Slices: (1) single enriched view + Epic-7 tokenization; (2) live
+  # conversion + sliding-thumb Encode/Decode switch; (3) `sniff` -> one contextual slot
+  # (JWT split / inline image / note), + drop-follows-direction; (4) data-URI build + decode
+  # + preview (`parse_data_uri`); (5) line-wrap on encode (`LineWrap`); (6) classified
+  # `base64-*` error codes + fr. Full verification green (614 FE / 96 core + 248 tauri Rust,
+  # lint, vue-tsc, build, cargo fmt, cargo clippy --workspace). Committed on
+  # feat/story-8-2-reimagine-base64-encode-decode. Next: bmad-code-review (fresh context,
+  # different LLM), then review -> done.
+  8-2-reimagine-base64-encode-decode: review
   8-3-reimagine-the-uuid-generator: backlog
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog
