@@ -96,7 +96,7 @@ const TOOLS: ToolRegistryEntry[] = [
     // Tauri's native drop event carries only filesystem paths, never a
     // browser-supplied MIME type — this field is presence-of-`.drop`-means-
     // accepts, not yet used for actual filtering (no story needs it yet).
-    drop: { acceptedMimeTypes: [], handler: "base64_encode_file" },
+    drop: { acceptedMimeTypes: [], handler: "base64_ingest_file" },
     // specificity 1 (lowest): the base64 alphabet is a superset of JWT's per-segment alphabet
     // and overlaps heavily with JSON's, so this is the most permissive of the three text
     // matchers and most likely to collide with either — it must never outrank them.

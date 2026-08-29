@@ -24,7 +24,7 @@ const base64Tool: ToolRegistryEntry = {
   route: "/tools/base64",
   icon: "base64",
   component: () => import("../tools/base64/Base64View.vue"),
-  drop: { acceptedMimeTypes: [], handler: "base64_encode_file" },
+  drop: { acceptedMimeTypes: [], handler: "base64_ingest_file" },
 };
 
 const jsonTool: ToolRegistryEntry = {
@@ -223,7 +223,8 @@ describe("DropZone", () => {
   });
 
   it("invokes the registry-declared handler with the dropped path and the tool's provided args (AC1, AD-14)", async () => {
-    invokeMock.mockResolvedValueOnce("//4AAQ==");
+    const ingest = { mode: "encoded", value: "//4AAQ==", mime: null };
+    invokeMock.mockResolvedValueOnce(ingest);
     const { pinia } = await setupDropZone("/tools/base64");
     const registry = useRegistryStore(pinia);
     registry.setDropArgsProvider("base64", () => ({ url_safe: true }));
@@ -231,8 +232,8 @@ describe("DropZone", () => {
     capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/file.bin"] } });
     await flushPromises();
 
-    expect(invokeMock).toHaveBeenCalledWith("base64_encode_file", { path: "/tmp/file.bin", url_safe: true });
-    expect(registry.dropResult).toEqual({ toolId: "base64", value: "//4AAQ==" });
+    expect(invokeMock).toHaveBeenCalledWith("base64_ingest_file", { path: "/tmp/file.bin", url_safe: true });
+    expect(registry.dropResult).toEqual({ toolId: "base64", value: ingest });
   });
 
   it("stores a ToolError on the registry when the invoked handler rejects", async () => {

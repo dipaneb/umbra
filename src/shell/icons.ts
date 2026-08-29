@@ -1,13 +1,17 @@
 import type { Component } from "vue";
 import {
   PhBracketsCurly,
-  PhBinary,
   PhFingerprint,
   PhHash,
   PhKey,
   PhClock,
   PhArchive,
 } from "@phosphor-icons/vue";
+// Base64 is the one deliberate exception to the Phosphor icon set: a
+// typographic "64" badge, the mark the original DESIGN.md mockups used. It
+// names *which* encoding in a way no pictogram does (`PhBinary`, the previous
+// pick, reads as base-2). See DESIGN.md "Card" note.
+import Base64GlyphIcon from "./Base64GlyphIcon.vue";
 
 // One key per current registry tool id (src/stores/registry.ts) — an
 // unmapped id is a compile-time error here, not a runtime gap.
@@ -18,7 +22,7 @@ export type IconName = "json" | "base64" | "uuid" | "hash" | "jwt" | "cron" | "b
 // "all icons resolved" guard is needed.
 const ICONS: Record<IconName, Component> = {
   json: PhBracketsCurly,
-  base64: PhBinary,
+  base64: Base64GlyphIcon,
   uuid: PhFingerprint,
   hash: PhHash,
   jwt: PhKey,

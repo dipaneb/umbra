@@ -80,6 +80,18 @@ const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   "json-control-character",
   "json-key-must-be-string",
   "json-nesting-too-deep",
+  // Story 8.2 slice 6 (AC15): the classified `base64-*` decode codes. Each
+  // one's Rust message (crates/umbra-core's `map_decode_error` / `decode` /
+  // `parse_data_uri`) is a fixed canned sentence with no runtime value baked
+  // in — a byte offset, where one exists, rides the structured `position`
+  // field, exactly like the `json-*` codes above. `base64-input-too-large`
+  // is deliberately left out (it embeds a byte count in prose), matching
+  // `json-input-too-large`.
+  "base64-invalid-char",
+  "base64-invalid-length",
+  "base64-invalid-padding",
+  "base64-not-utf8",
+  "base64-data-uri-malformed",
 ]);
 
 export function toolErrorMessage(err: ToolError, t: Translate): string {

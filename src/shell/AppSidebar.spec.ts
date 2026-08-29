@@ -98,12 +98,11 @@ describe("AppSidebar", () => {
       const tool = registry.tools[index];
       const icon = link.findComponent(resolveIcon(tool.icon));
       expect(icon.exists()).toBe(true);
-      // Exact match, not `not.toContain(tool.icon)` — the icon component
-      // renders no text, so the link's only real text content is the tool
-      // name. An exact match rules out any raw icon string leaking in,
-      // regardless of case, rather than relying on today's icon/name pairs
-      // happening to differ by case.
-      expect(link.text()).toBe(tool.name);
+      // Subtract whatever the icon component renders itself (nothing, for the
+      // Phosphor SVGs; the literal "64" for Base64's deliberate typographic
+      // badge — DESIGN.md) — the rest of the link's text must be exactly the
+      // tool name, still ruling out any raw icon-key string leaking in.
+      expect(link.text().replace(icon.text(), "").trim()).toBe(tool.name);
     });
   });
 
@@ -243,7 +242,12 @@ describe("AppSidebar", () => {
     const links = wrapper.findAll("ul.nav-all a");
 
     links.forEach((link, index) => {
-      expect(link.text()).toBe(registry.tools[index].name);
+      const tool = registry.tools[index];
+      const iconText = link.findComponent(resolveIcon(tool.icon)).text();
+      // The collapsed accessible name is the (visually-hidden) label; the
+      // icon is `aria-hidden`. Subtract the icon's own text ("64" for Base64,
+      // nothing for the rest) before comparing to the tool name.
+      expect(link.text().replace(iconText, "").trim()).toBe(tool.name);
     });
 
     const settingsLink = wrapper.find('a[href="/settings"]');

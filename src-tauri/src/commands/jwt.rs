@@ -23,7 +23,7 @@ mod tests {
     use umbra_core::base64::encode_bytes;
 
     fn segment(json: &str) -> String {
-        encode_bytes(json.as_bytes(), true).unwrap()
+        encode_bytes(json.as_bytes(), true, None).unwrap()
     }
 
     #[tokio::test]

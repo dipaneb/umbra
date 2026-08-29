@@ -77,7 +77,7 @@ mod tests {
     use serde_json::json;
 
     fn segment(value: &serde_json::Value) -> String {
-        encode_bytes(value.to_string().as_bytes(), true).unwrap()
+        encode_bytes(value.to_string().as_bytes(), true, None).unwrap()
     }
 
     fn token(header: &serde_json::Value, payload: &serde_json::Value, sig: &str) -> String {
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn decode_payload_valid_base64_invalid_json_returns_jwt_invalid_payload() {
         let header = json!({"alg": "HS256", "typ": "JWT"});
-        let bad_json_payload = encode_bytes(b"not json bytes {{{", true).unwrap();
+        let bad_json_payload = encode_bytes(b"not json bytes {{{", true, None).unwrap();
         let jwt = format!("{}.{}.sig", segment(&header), bad_json_payload);
 
         let err = decode(&jwt).unwrap_err();
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn decode_header_non_object_json_returns_jwt_invalid_header() {
-        let non_object_header = encode_bytes(b"null", true).unwrap();
+        let non_object_header = encode_bytes(b"null", true, None).unwrap();
         let payload = json!({"sub": "x"});
         let jwt = format!("{}.{}.sig", non_object_header, segment(&payload));
 
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn decode_header_array_json_returns_jwt_invalid_header() {
-        let non_object_header = encode_bytes(b"[1,2]", true).unwrap();
+        let non_object_header = encode_bytes(b"[1,2]", true, None).unwrap();
         let payload = json!({"sub": "x"});
         let jwt = format!("{}.{}.sig", non_object_header, segment(&payload));
 
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn decode_payload_non_object_json_returns_jwt_invalid_payload() {
         let header = json!({"alg": "HS256", "typ": "JWT"});
-        let non_object_payload = encode_bytes(b"null", true).unwrap();
+        let non_object_payload = encode_bytes(b"null", true, None).unwrap();
         let jwt = format!("{}.{}.sig", segment(&header), non_object_payload);
 
         let err = decode(&jwt).unwrap_err();

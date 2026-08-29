@@ -41,7 +41,32 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-26
+last_updated: 2026-08-30
+# note: story 8-2 code review 2026-08-30 (bmad-code-review, status "review" -> "done") --
+# three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor)
+# against b151314..HEAD. 33 raw findings -> 23 after dedup -> 4 decision-needed, 8 patch,
+# 6 deferred, 5 dismissed; no layer failed. The 4 decision-needed items were spec-vs-reality
+# gaps the Dev Agent Record had half-acknowledged: AC6's "exactly three controls" (Encode
+# direction carries seven), AC14's "tests pass without modification", AC16's shared-file
+# boundary, and the AC14 drop-args text -- all resolved by amending the AC text in place
+# (the same *Amended* discipline AC9/AC10/AC12 already had); two others (restore Save-as-file
+# for text output; validate the JWT signature segment) became patches. All 10 patches applied
+# + verified (cargo test --workspace +4 new, pnpm test 615 +1, fmt/clippy/lint/vue-tsc/build
+# all green): drop-vs-debounce race, parse_data_uri CWE-400 guard, data-URI PNG preview
+# payload fix, onSaveAsFile TOCTOU, classify_bytes text-before-magic narrow fix (AC10
+# amended), MIME-table alignment, case-insensitive data:/;base64/image/ matching,
+# dropZone.spec Ingest-shape fixture, Save-as-file on the text panel, sniff_jwt signature-
+# segment check. 6 deferred items in deferred-work.md (whitespace-relative decode offsets
+# [pre-existing]; live sniff cost per keystroke; orphaned base64_decode command;
+# suppressConvertOnce one-shot fragility; jwtCollapsed reset per keystroke; cross-tool
+# useCopyFeedback import). Review patches are UNCOMMITTED working-tree changes on
+# feat/story-8-2-reimagine-base64-encode-decode -- not committed, not pushed.
+# note: story 8-2 moved to in-progress 2026-08-28 (bmad-dev-story). Branched
+# feat/story-8-2-reimagine-base64-encode-decode from 13c6942 (origin/main tip b151314 + the
+# story-creation commit, so the story file travels with the branch). baseline_commit b151314
+# preserved from story frontmatter. Task 0 (branch) done; Task 1 (bmad-party-mode discovery ->
+# 8-2-base64-decision-record.md) starting -- this is the gated charter story shape, only Task 1
+# carries real ACs.
 # note: story 8-1 moved to done 2026-08-26 (code review complete via bmad-code-review,
 # three parallel adversarial layers against b357aff..HEAD: 15 real findings after
 # dedup/dismiss -- 10 patches applied (all verified: cargo fmt/clippy/test --workspace,
@@ -1165,7 +1190,28 @@ development_status:
 
   epic-8: in-progress
   8-1-reimagine-the-json-formatter-viewer: done
-  8-2-reimagine-base64-encode-decode: backlog
+  # note: story 8-2 created 2026-08-28 (bmad-create-story) -- second Epic 8 charter story,
+  # following the pattern Story 8-1 proved end to end. Task-1-gated: only Task 1 (discovery
+  # via bmad-party-mode -> 8-2-base64-decision-record.md) carries real ACs; Task 2's ACs are
+  # deferred to a Task 2a follow-up edit once that record exists, per epics.md. baseline_commit
+  # b151314 confirmed as origin/main's tip (8-1 merged as PR #105, then releases 0.2.0/0.2.1).
+  # Current Base64 core (crates/umbra-core/src/base64.rs), command wrapper
+  # (src-tauri/src/commands/base64.rs), view (src/tools/base64/Base64View.vue) and tools.base64.*
+  # i18n live-read in full this session so discovery starts from confirmed fact. epic-8 already
+  # in-progress (from 8-1), no epic status change.
+  # note: story 8-2 moved to review 2026-08-29. Task 1 (bmad-party-mode discovery ->
+  # 8-2-base64-decision-record.md, 3 cut-idea issues #113-115) and Task 2a (AC6-AC16) done
+  # earlier this session; Task 2b implemented as 6 vertical slices, each with a developer
+  # render-review pass (several picked up mid-slice /design explorations + fixes -- see the
+  # story's Debug Log). Slices: (1) single enriched view + Epic-7 tokenization; (2) live
+  # conversion + sliding-thumb Encode/Decode switch; (3) `sniff` -> one contextual slot
+  # (JWT split / inline image / note), + drop-follows-direction; (4) data-URI build + decode
+  # + preview (`parse_data_uri`); (5) line-wrap on encode (`LineWrap`); (6) classified
+  # `base64-*` error codes + fr. Full verification green (614 FE / 96 core + 248 tauri Rust,
+  # lint, vue-tsc, build, cargo fmt, cargo clippy --workspace). Committed on
+  # feat/story-8-2-reimagine-base64-encode-decode. Next: bmad-code-review (fresh context,
+  # different LLM), then review -> done.
+  8-2-reimagine-base64-encode-decode: done
   8-3-reimagine-the-uuid-generator: backlog
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog

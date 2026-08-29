@@ -150,15 +150,33 @@
     "base64": {
       "description": "Encode and decode text or files to and from Base64.",
       "heading": "Base64",
-      "dropHint": "Drop a file anywhere in the window to Base64-encode it.",
-      "inputLabel": "Text or Base64 input",
-      "alphabetLegend": "Alphabet (used by Encode only)",
-      "alphabetStandard": "Standard",
-      "alphabetUrlSafe": "URL-safe",
+      "dropHintEncode": "Drop a file anywhere in the window to Base64-encode it.",
+      "dropHintDecode": "Drop a file whose contents are Base64 text to decode it.",
+      "fileNotBase64Text": "That file isn't Base64 text, so there's nothing to decode. A binary file can only be encoded — switch to Encode.",
+      "inputLabelEncode": "Text to encode",
+      "inputLabelDecode": "Base64 to decode",
+      "directionLegend": "Direction",
+      "urlSafeAlphabet": "URL-safe alphabet",
       "encode": "Encode",
       "decode": "Decode",
-      "decodeToFile": "Decode to file",
-      "outputLabel": "Output"
+      "looksLikeJwt": "Looks like a JWT.",
+      "readAsJwt": "Read as JWT",
+      "readingAsJwt": "Reading as JWT",
+      "showRaw": "Show raw",
+      "looksLikeBinary": "Looks like a {type} file ({size}).",
+      "decodedUnrecognized": "Decoded {size} — unrecognized.",
+      "jwtHeader": "JWT header",
+      "jwtPayload": "JWT payload",
+      "imagePreviewAlt": "Preview of the decoded image",
+      "saveAsFile": "Save as file",
+      "dataUriImageLine": "Image from a data: URI ({mime}).",
+      "dataUriBuilder": "Build a data URI",
+      "dataUriMimeLabel": "MIME type",
+      "dataUriCopied": "Data URI copied",
+      "wrapLabel": "Wrap",
+      "wrapNone": "None",
+      "outputLabel": "Output",
+      "outputCopied": "Output copied"
     },
     "uuid": {
       "description": "Generate UUID v4 or v7 identifiers, single or in bulk.",
@@ -260,6 +278,11 @@
     "json-invalid-unicode": "Invalid unicode escape sequence.",
     "json-control-character": "Unescaped control character in a string — escape it as \\u00XX.",
     "json-key-must-be-string": "Object keys must be strings wrapped in double quotes.",
-    "json-nesting-too-deep": "Document is nested too deeply."
+    "json-nesting-too-deep": "Document is nested too deeply.",
+    "base64-invalid-char": "Invalid Base64 character.",
+    "base64-invalid-length": "The Base64 input isn't a valid length.",
+    "base64-invalid-padding": "The Base64 input has invalid padding.",
+    "base64-not-utf8": "The decoded bytes aren't valid UTF-8 text.",
+    "base64-data-uri-malformed": "That isn't a valid Base64 data URI — it needs a ';base64,' marker before the payload."
   }
 }
