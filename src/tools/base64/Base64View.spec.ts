@@ -200,6 +200,28 @@ describe("Base64View", () => {
     expect(wrapper!.find(".detection").exists()).toBe(false);
   });
 
+  it("offers Save as file on the text output panel and writes the decoded bytes (AC14, code review DN2)", async () => {
+    invokeMock.mockResolvedValueOnce({ kind: "text", text: "hello" });
+    mountView();
+
+    await setDirection(wrapper!, "decode");
+    await inputTextarea(wrapper!).setValue("aGVsbG8=");
+    await settleConversion();
+
+    expect(wrapper!.findAll("button").some((b) => b.text() === "Save as file")).toBe(true);
+
+    saveMock.mockResolvedValueOnce("/tmp/out.txt");
+    invokeMock.mockClear();
+    await clickButton(wrapper!, "Save as file");
+    await flushPromises();
+
+    expect(saveMock).toHaveBeenCalledWith({ defaultPath: "decoded.txt" });
+    expect(invokeMock).toHaveBeenCalledWith("base64_decode_to_file", {
+      input: "aGVsbG8=",
+      path: "/tmp/out.txt",
+    });
+  });
+
   it("does not convert until the debounce elapses (AC7)", async () => {
     invokeMock.mockResolvedValue("aGVsbG8=");
     mountView();

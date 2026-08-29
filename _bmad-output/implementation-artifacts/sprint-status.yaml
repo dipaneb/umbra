@@ -41,7 +41,26 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-29
+last_updated: 2026-08-30
+# note: story 8-2 code review 2026-08-30 (bmad-code-review, status "review" -> "done") --
+# three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor)
+# against b151314..HEAD. 33 raw findings -> 23 after dedup -> 4 decision-needed, 8 patch,
+# 6 deferred, 5 dismissed; no layer failed. The 4 decision-needed items were spec-vs-reality
+# gaps the Dev Agent Record had half-acknowledged: AC6's "exactly three controls" (Encode
+# direction carries seven), AC14's "tests pass without modification", AC16's shared-file
+# boundary, and the AC14 drop-args text -- all resolved by amending the AC text in place
+# (the same *Amended* discipline AC9/AC10/AC12 already had); two others (restore Save-as-file
+# for text output; validate the JWT signature segment) became patches. All 10 patches applied
+# + verified (cargo test --workspace +4 new, pnpm test 615 +1, fmt/clippy/lint/vue-tsc/build
+# all green): drop-vs-debounce race, parse_data_uri CWE-400 guard, data-URI PNG preview
+# payload fix, onSaveAsFile TOCTOU, classify_bytes text-before-magic narrow fix (AC10
+# amended), MIME-table alignment, case-insensitive data:/;base64/image/ matching,
+# dropZone.spec Ingest-shape fixture, Save-as-file on the text panel, sniff_jwt signature-
+# segment check. 6 deferred items in deferred-work.md (whitespace-relative decode offsets
+# [pre-existing]; live sniff cost per keystroke; orphaned base64_decode command;
+# suppressConvertOnce one-shot fragility; jwtCollapsed reset per keystroke; cross-tool
+# useCopyFeedback import). Review patches are UNCOMMITTED working-tree changes on
+# feat/story-8-2-reimagine-base64-encode-decode -- not committed, not pushed.
 # note: story 8-2 moved to in-progress 2026-08-28 (bmad-dev-story). Branched
 # feat/story-8-2-reimagine-base64-encode-decode from 13c6942 (origin/main tip b151314 + the
 # story-creation commit, so the story file travels with the branch). baseline_commit b151314
@@ -1192,7 +1211,7 @@ development_status:
   # lint, vue-tsc, build, cargo fmt, cargo clippy --workspace). Committed on
   # feat/story-8-2-reimagine-base64-encode-decode. Next: bmad-code-review (fresh context,
   # different LLM), then review -> done.
-  8-2-reimagine-base64-encode-decode: review
+  8-2-reimagine-base64-encode-decode: done
   8-3-reimagine-the-uuid-generator: backlog
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog

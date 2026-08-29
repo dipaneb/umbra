@@ -39,6 +39,9 @@ type DataUriResult =
   | { kind: "image"; mime: string; payload: string }
   | { kind: "sniffed"; mime: string; payload: string; sniff: Sniff };
 
+// Kept in sync with `mime_from_path` (src-tauri/src/commands/base64.rs) so a
+// dropped file's guessed MIME always has a matching builder option to
+// pre-select (code review P6).
 const DATA_URI_MIME_OPTIONS = [
   "application/octet-stream",
   "image/png",
@@ -48,6 +51,10 @@ const DATA_URI_MIME_OPTIONS = [
   "image/svg+xml",
   "application/pdf",
   "application/json",
+  "application/zip",
+  "application/gzip",
+  "application/wasm",
+  "font/woff2",
   "text/plain",
   "text/html",
   "text/css",
@@ -73,7 +80,8 @@ const MIME_EXT: Record<string, string> = {
 };
 
 function mimeToExt(mime: string): string {
-  const base = mime.split(";")[0].trim();
+  const base = mime.split(";")[0].trim().toLowerCase();
+  if (base === "application/octet-stream") return "bin";
   if (MIME_EXT[base]) return MIME_EXT[base];
   const sub = base.split("/")[1]?.replace(/\+.*/, "");
   return sub && /^[a-z0-9._-]+$/.test(sub) ? sub : "bin";
@@ -230,10 +238,19 @@ const showOutputPanel = computed(
 // Either the payload of a parsed `data:image/*` URI, or a bare PNG blob
 // `sniff` recognised.
 const imageDataUri = computed(() => {
-  if (dataUri.value?.kind === "image") {
-    return `data:${dataUri.value.mime};base64,${dataUri.value.payload.replace(/\s+/g, "")}`;
+  const du = dataUri.value;
+  if (du?.kind === "image") {
+    return `data:${du.mime};base64,${du.payload.replace(/\s+/g, "")}`;
   }
-  if (sniff.value?.kind === "png") {
+  // A PNG blob delivered through a non-image `data:` URI: preview it from the
+  // *parsed payload*, not the raw input (which still carries the `data:…`
+  // prefix) — code review P3.
+  if (du?.kind === "sniffed" && du.sniff.kind === "png") {
+    const b64 = du.payload.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+    return `data:image/png;base64,${b64}`;
+  }
+  // A bare PNG blob `sniff` recognised straight from the input box.
+  if (!du && sniff.value?.kind === "png") {
     const b64 = input.value.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
     return `data:image/png;base64,${b64}`;
   }
@@ -257,6 +274,8 @@ function saveDefaultName(): string {
       return "decoded.gz";
     case "zip":
       return "decoded.zip";
+    case "text":
+      return "decoded.txt";
     default:
       return "decoded.bin";
   }
@@ -313,7 +332,7 @@ async function convert() {
             }),
       );
       if (!result.superseded) output.value = result.value;
-    } else if (value.trim().startsWith("data:")) {
+    } else if (/^data:/i.test(value.trim())) {
       // Decode a `data:` URI (AC12): parse the MIME + payload off, then
       // preview an image by its MIME or run the inner payload through
       // `sniff` for everything else. Both calls ride the one latest-wins
@@ -322,7 +341,7 @@ async function convert() {
         const du = await invoke<{ mime: string; payload: string }>("base64_parse_data_uri", {
           input: value,
         });
-        if (du.mime.startsWith("image/")) {
+        if (du.mime.toLowerCase().startsWith("image/")) {
           return { kind: "image", mime: du.mime, payload: du.payload };
         }
         const s = await invoke<Sniff>("base64_sniff", { input: du.payload });
@@ -408,6 +427,12 @@ watch(
   (result) => {
     if (!result || result.toolId !== "base64") return;
     registry.dropResult = null; // one-shot signal
+    // A debounce scheduled by the last keystroke would otherwise fire ~200 ms
+    // later, re-run `convert()` against the input this handler is about to
+    // rewrite, and wipe the drop's output. `suppressConvertOnce` only
+    // neutralises the synchronous watcher run, not a pending timer (code
+    // review P1).
+    debouncedConvert.cancel();
     sniff.value = null;
     dataUri.value = null;
     jwtCollapsed.value = false;
@@ -457,14 +482,18 @@ watch(
 
 async function onSaveAsFile() {
   error.value = null;
+  // Snapshot the source and the name up front: a debounced `convert()` can
+  // fire while the native save dialog is open, and the bytes written must
+  // match the detection the user clicked on, not whatever the input became
+  // (code review P4). For a data URI that source is the payload — not the
+  // whole `data:…` string.
+  const source = saveSource.value;
+  const defaultPath = saveDefaultName();
   decodingToFile.value = true;
   try {
-    // Filename from the data URI's MIME extension when we have one, else
-    // `sniff`'s identification (`decoded.png`, …), else `.bin`.
-    const path = await save({ defaultPath: saveDefaultName() });
+    const path = await save({ defaultPath });
     if (path === null) return; // user cancelled — not an error
-    // For a data URI, write the payload — not the whole `data:…` string.
-    await invoke("base64_decode_to_file", { input: saveSource.value, path });
+    await invoke("base64_decode_to_file", { input: source, path });
   } catch (err) {
     error.value = toToolError(err);
   } finally {
@@ -593,6 +622,18 @@ async function onCopy() {
             </option>
           </select>
         </label>
+        <!-- AC14 preserved behaviour (code review DN2): a decoded text result
+             is still writable to a file, not only Copy-able. Decode direction
+             only — the encode-direction output is Base64 you Copy. -->
+        <button
+          v-if="direction === 'decode' && output !== ''"
+          type="button"
+          class="offer-action"
+          :disabled="decodingToFile"
+          @click="onSaveAsFile"
+        >
+          {{ t('tools.base64.saveAsFile') }}
+        </button>
         <button
           type="button"
           class="copy-button"

@@ -178,26 +178,44 @@ pub struct DataUri {
     pub payload: String,
 }
 
+/// `str::strip_suffix`, but comparing the suffix ASCII-case-insensitively.
+fn strip_suffix_ci<'a>(s: &'a str, suffix: &str) -> Option<&'a str> {
+    let split = s.len().checked_sub(suffix.len())?;
+    if !s.is_char_boundary(split) {
+        return None;
+    }
+    let (head, tail) = s.split_at(split);
+    tail.eq_ignore_ascii_case(suffix).then_some(head)
+}
+
 /// Splits `data:[<mediatype>][;base64],<payload>`. Only the `;base64` form is
 /// supported (this is a Base64 tool); a missing `data:` scheme, `,` or
 /// `;base64` marker is `base64-data-uri-malformed` — never a crash or a
 /// silent pass-through (AC12). Pure — no I/O (AD-1 / AC16).
 pub fn parse_data_uri(input: &str) -> Result<DataUri, ToolError> {
+    // The data-URI path must honour the same CWE-400 ceiling as every other
+    // entry point — a pasted `data:` URI is exactly the "embedded data URI"
+    // case `MAX_INPUT_BYTES` was sized for, and the image-preview branch never
+    // reaches `decode_bytes`/`check_size` on its own (code review P2).
+    check_size(input.len())?;
     let malformed = |why: &str| ToolError {
         code: "base64-data-uri-malformed".to_string(),
         message: format!("not a valid base64 data URI ({why})"),
         position: None,
         context: None,
     };
-    let rest = input
-        .trim_start()
-        .strip_prefix("data:")
+    // RFC 2397 / RFC 3986: the `data:` scheme and the `;base64` extension
+    // token are case-insensitive (code review P7).
+    let trimmed = input.trim_start();
+    let rest = trimmed
+        .get(..5)
+        .filter(|prefix| prefix.eq_ignore_ascii_case("data:"))
+        .map(|_| &trimmed[5..])
         .ok_or_else(|| malformed("missing the 'data:' scheme"))?;
     let (meta, payload) = rest
         .split_once(',')
         .ok_or_else(|| malformed("missing the ',' before the payload"))?;
-    let mediatype = meta
-        .strip_suffix(";base64")
+    let mediatype = strip_suffix_ci(meta, ";base64")
         .ok_or_else(|| malformed("missing the ';base64' marker"))?;
     // RFC 2397: an omitted mediatype defaults to text/plain.
     let mime = if mediatype.is_empty() {
@@ -280,6 +298,12 @@ fn sniff_jwt(input: &str) -> Option<Sniff> {
     // keeps three unrelated dot-joined Base64 strings from being read as a
     // token.
     header.get("alg")?;
+    // The signature (3rd) segment is empty for an `alg: "none"` token but must
+    // otherwise be Base64URL — a "header.payload.<punctuation>" string whose
+    // third part is not even Base64 is not a token (code review DN3).
+    if !segments[2].is_empty() && decode_bytes(segments[2]).is_err() {
+        return None;
+    }
     Some(Sniff::Jwt {
         header: serde_json::to_string_pretty(&header).ok()?,
         payload: serde_json::to_string_pretty(&payload).ok()?,
@@ -293,6 +317,18 @@ fn jwt_segment_object(segment: &str) -> Option<serde_json::Value> {
 }
 
 fn classify_bytes(bytes: Vec<u8>) -> Sniff {
+    // A magic-byte identification (PNG / PDF / gzip / zip) still outranks a
+    // plain-text reading per AC10's order — but only for payloads that are
+    // *not* also valid UTF-8. A real file of any of those types carries
+    // non-text bytes past its header, so it still classifies correctly; a
+    // plain-text note that merely opens with "%PDF" (or the zip/gzip lead
+    // bytes) is not hidden behind a false "looks like a file" reading. This
+    // is the same incidental-collision principle as AC10's `dGVzdA==` → Text
+    // regression (code review P5).
+    let bytes = match String::from_utf8(bytes) {
+        Ok(text) => return Sniff::Text { text },
+        Err(err) => err.into_bytes(),
+    };
     let byte_len = bytes.len();
     if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
         Sniff::Png { byte_len }
@@ -303,12 +339,7 @@ fn classify_bytes(bytes: Vec<u8>) -> Sniff {
     } else if bytes.starts_with(b"PK\x03\x04") || bytes.starts_with(b"PK\x05\x06") {
         Sniff::Zip { byte_len }
     } else {
-        match String::from_utf8(bytes) {
-            Ok(text) => Sniff::Text { text },
-            Err(err) => Sniff::Unknown {
-                byte_len: err.as_bytes().len(),
-            },
-        }
+        Sniff::Unknown { byte_len }
     }
 }
 
@@ -505,16 +536,38 @@ mod tests {
 
     #[test]
     fn sniff_identifies_png_pdf_gzip_and_zip_by_magic_bytes() {
+        // Fixtures carry a non-UTF-8 byte past the magic header, as every real
+        // file of these types does — a magic-byte arm only wins when the
+        // payload isn't also valid text (AC10 amendment, code review P5).
         assert_eq!(
             sniff_bytes(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]),
             Sniff::Png { byte_len: 6 }
         );
-        assert_eq!(sniff_bytes(b"%PDF-1.7"), Sniff::Pdf { byte_len: 8 });
+        assert_eq!(
+            sniff_bytes(b"%PDF-1.7\n%\xE2\xE3\xCF\xD3"),
+            Sniff::Pdf { byte_len: 14 }
+        );
         assert_eq!(
             sniff_bytes(&[0x1F, 0x8B, 0x08, 0x00]),
             Sniff::Gzip { byte_len: 4 }
         );
-        assert_eq!(sniff_bytes(b"PK\x03\x04rest"), Sniff::Zip { byte_len: 8 });
+        assert_eq!(
+            sniff_bytes(b"PK\x03\x04\x14\x00\xFF"),
+            Sniff::Zip { byte_len: 7 }
+        );
+    }
+
+    #[test]
+    fn sniff_reads_text_that_merely_starts_with_a_magic_signature_as_text() {
+        // A human-readable note opening with the literal characters "%PDF" is
+        // text, not a PDF file — the magic-byte check must not hide it
+        // (code review P5; same principle as the `dGVzdA==` regression).
+        match sniff(&encode_bytes(b"%PDF is a document format from Adobe", false, None).unwrap())
+            .unwrap()
+        {
+            Sniff::Text { text } => assert_eq!(text, "%PDF is a document format from Adobe"),
+            other => panic!("expected Text, got {other:?}"),
+        }
     }
 
     #[test]
@@ -527,6 +580,20 @@ mod tests {
                 text: "test".to_string()
             }
         );
+    }
+
+    #[test]
+    fn sniff_rejects_a_jwt_shape_whose_signature_segment_is_not_base64() {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        // Valid JOSE header + payload, but the 3rd segment is punctuation —
+        // not a token (code review DN3). Falls through to a whole-string
+        // decode, which fails on the '.'.
+        let shaped = format!(
+            "{}.{}.!!!!",
+            URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256"}"#),
+            URL_SAFE_NO_PAD.encode(r#"{"sub":"1"}"#),
+        );
+        assert_eq!(sniff(&shaped).unwrap_err().code, "base64-invalid-char");
     }
 
     #[test]
@@ -602,6 +669,25 @@ mod tests {
         assert_eq!(
             parse_data_uri("data:text/plain,hello").unwrap_err().code,
             "base64-data-uri-malformed"
+        );
+    }
+
+    #[test]
+    fn parse_data_uri_matches_the_scheme_and_base64_marker_case_insensitively() {
+        // RFC 2397 / 3986: both tokens are case-insensitive (code review P7).
+        let parsed = parse_data_uri("DATA:image/png;BASE64,iVBORw0KGgo=").unwrap();
+        assert_eq!(parsed.mime, "image/png");
+        assert_eq!(parsed.payload, "iVBORw0KGgo=");
+    }
+
+    #[test]
+    fn parse_data_uri_rejects_input_over_max_size() {
+        // The data-URI path honours the same CWE-400 ceiling as decode/sniff
+        // (code review P2).
+        let huge = format!("data:text/plain;base64,{}", "A".repeat(MAX_INPUT_BYTES));
+        assert_eq!(
+            parse_data_uri(&huge).unwrap_err().code,
+            "base64-input-too-large"
         );
     }
 

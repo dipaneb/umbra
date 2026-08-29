@@ -187,12 +187,11 @@ describe("CommandPalette", () => {
       const tool = registry.tools[index];
       const icon = option.findComponent(resolveIcon(tool.icon));
       expect(icon.exists()).toBe(true);
-      // Exact match, not `not.toContain(tool.icon)` — the icon component
-      // renders no text, so the option's only real text content is the tool
-      // name. An exact match rules out any raw icon string leaking in,
-      // regardless of case, rather than relying on today's icon/name pairs
-      // happening to differ by case.
-      expect(option.text()).toBe(tool.name);
+      // Subtract whatever the icon component renders itself (nothing, for the
+      // Phosphor SVGs; the literal "64" for Base64's deliberate typographic
+      // badge — DESIGN.md) — the rest must be exactly the tool name, still
+      // ruling out any raw icon-key string leaking in.
+      expect(option.text().replace(icon.text(), "").trim()).toBe(tool.name);
     });
   });
 

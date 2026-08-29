@@ -4,7 +4,7 @@ baseline_commit: b151314
 
 # Story 8.2: Reimagine Base64 Encode/Decode
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -40,6 +40,17 @@ implementation-discovery items and are called out as such in AC11 / AC13.
    `<button>`) is replaced with `--color-*` / `--font-code-*` / `--radius-*` / `--spacing-*`
    tokens and `AppButton`, with `src/styles/base.css`'s existing bare-`<textarea>` treatment
    left in place (not re-styled).
+   *Amended 2026-08-29 (code review, DN1): the "exactly three controls" clause holds for the
+   Decode direction but not for Encode, where the URL-safe checkbox, the output-header wrap
+   `<select>` (slice 5), the disabled Copy icon, and the "Build a data URI" disclosure (slice
+   4) are also visible with empty input. These are accepted as low-noise standing affordances
+   for the Encode direction; the clause is now read as "the Decode direction shows three; the
+   Encode direction adds the alphabet, wrap, copy and data-URI-builder affordances." The "no
+   tab bar / no `AppTabs` import / no Encode/Decode/Paste action-button row" clauses are met
+   as written. The "and `AppButton`" clause is also relaxed: the tool ships no `AppButton` —
+   its remaining `<button>`s are icon / text-link affordances (`.copy-button`, `.disclosure`,
+   `.offer-action`) for which `AppButton` would be the wrong component, following
+   `JsonTree.vue`'s bare copy-button precedent.*
 
 7. **Live conversion.** **Given** the tool with a chosen direction, **when** the user types or
    pastes into the input, **then** the output updates automatically (debounced) with no button
@@ -83,6 +94,15 @@ implementation-discovery items and are called out as such in AC11 / AC13.
     stays strict (3 segments, both header+payload are JSON objects, header has `alg`), so a
     false positive is near-impossible; and a PNG whose `<img>` fails to render falls back to
     the text note, never a broken-image icon.*
+    *Amended 2026-08-30 (code review, P5): the PNG / PDF / gzip / zip magic-byte arms still
+    outrank a plain-text reading, but only for payloads that are **not** also valid UTF-8. A
+    real file of those types carries non-text bytes past its header, so it still classifies
+    correctly; a plain-text note that merely opens with the literal characters `%PDF` (or the
+    zip/gzip lead bytes) now lands on "valid UTF-8 text" rather than being hidden behind a
+    false "looks like a file" reading — the same incidental-collision principle this AC's own
+    `dGVzdA==` regression already states. `sniff_jwt` additionally requires the signature (3rd)
+    segment to be empty (`alg: "none"`) or itself Base64URL, so `header.payload.<punctuation>`
+    is not read as a token.*
 
 11. **Data URI — build.** **Given** the Encode direction, **when** the user opens the data-URI
     builder and picks a MIME type, **then** the tool shows `data:<mime>;base64,<current encoded
@@ -129,6 +149,15 @@ implementation-discovery items and are called out as such in AC11 / AC13.
     the input box so the live decode/`sniff` pipeline runs, or, for a non-text (binary) file,
     show a transient notice — never silently encode. The 10 MB cap and the encode-a-file path
     are otherwise intact.*
+    *Amended 2026-08-29 (code review, DN4): (a) "passes without modification to its assertions"
+    could not survive AC15 (the `base64-invalid` → classified-code split) or AC6/AC7/AC8 (the
+    Encode/Decode/Paste buttons the old `Base64View.spec.ts` cases drove): core, command and FE
+    test assertions were rewritten and the Paste + AC3 alert-text cases removed. Those changes
+    are sanctioned as forced by the later ACs. (b) The provider supplies `{ url_safe, decode,
+    wrap }`, not `{ url_safe, decode }` — the `wrap` arg is AC13's (slice 5). (c) "Base64 →
+    file via the save dialog" — see DN2 below: a "Save as file" action is added to the text
+    output panel so this preserved behaviour is reachable for every decode result, not only
+    binary/JWT ones.*
 
 15. **i18n — no English-only strings.** **Given** every new user-facing string (detection
     lines, data-URI labels, wrap-selector labels, the new error messages), **when** the app
@@ -151,6 +180,13 @@ implementation-discovery items and are called out as such in AC11 / AC13.
     view renders only from `ToolError` structure (`code`, `position`), never by parsing
     `message`; **and** no other tool's files and no shared `src/shell/` / `src/stores/` file
     beyond `toolError.ts`'s `TRANSLATABLE_CODES` set are modified (AD-6).
+    *Amended 2026-08-29 (code review, DN4): four files outside that boundary were touched, all
+    mechanically forced and none a behavioural change to another tool: `src/stores/registry.ts`
+    (base64's own drop-`handler` string, `base64_encode_file` → `base64_ingest_file`);
+    `src/shell/dropZone.spec.ts` (the same rename in a shell dispatch test's fixture);
+    `crates/umbra-core/src/jwt.rs` and `src-tauri/src/commands/jwt.rs` (test helpers threading
+    the `None` `wrap` arg AC13 added to the shared `encode_bytes`). Accepted as forced by the
+    slice-3 handler rename and AC13's signature change.*
 
 ### Open items resolved by Task 2a (2026-08-29)
 
@@ -294,6 +330,8 @@ claude-sonnet-5 (Claude Code, bmad-dev-story workflow)
 
 | Date | Change |
 | --- | --- |
+| 2026-08-30 | **Icon follow-up** (raised by the developer during the code review, outside the story's own AC scope). The Base64 tool's sidebar/grid icon was `PhBinary` — an unrecorded pick from Story 7.1's bulk text→Phosphor migration that reads as base-2, a different encoding. Replaced with a typographic `64` badge (`src/shell/Base64GlyphIcon.vue`, stroked geometry so it stays a true pictogram past the AC5 "not raw text" shell tests), resolved through `icons.ts` like the pictogram entries. Recorded in `DESIGN.md`'s Card note as a deliberate one-off exception to the Phosphor set (the rest of the set stays Phosphor). Touches `src/shell/icons.ts`, `src/shell/Base64GlyphIcon.vue` (new), `DESIGN.md`; 615 FE tests / lint / vue-tsc / build green. Uncommitted. |
+| 2026-08-30 | **Code review** (`bmad-code-review`, 3 parallel adversarial layers vs. `b151314..HEAD`). 33 raw findings → 23 after dedup → **4 decision-needed, 8 patch, 6 deferred, 5 dismissed**; no layer failed. All 4 decision-needed resolved with the developer (AC6 / AC14 / AC16 amended in place; DN2 + DN3 became patches). All 10 patches applied: drop-vs-debounce race (`debouncedConvert.cancel()` in the drop watcher); `parse_data_uri` CWE-400 size guard; data-URI PNG preview uses the parsed payload not the raw input; `onSaveAsFile` TOCTOU snapshot; `classify_bytes` returns Text for valid-UTF-8 payloads before the magic-byte arms (AC10 amended, narrow fix); `DATA_URI_MIME_OPTIONS` aligned with `mime_from_path` + `octet-stream` → `bin`; case-insensitive `data:` / `;base64` / `image/`; `dropZone.spec.ts` fixture on the real `Ingest` shape; "Save as file" restored on the text output panel (`decoded.txt`); `sniff_jwt` rejects a non-Base64URL signature segment. Full verification green: `cargo test --workspace` (+4 new Rust tests), `pnpm test` 615 (+1), `cargo fmt` / `clippy --workspace` / `pnpm lint` / `vue-tsc` / `pnpm build` all clean. 6 deferred items appended to `deferred-work.md`. Story `review` → `done`. Review patches are **uncommitted working-tree changes** — not committed or pushed. |
 | 2026-08-28 | Task 0 complete: branched `feat/story-8-2-reimagine-base64-encode-decode` from `13c6942`; `baseline_commit` `b151314` verified against `origin/main`. Story moved `ready-for-dev` → `in-progress` in sprint-status.yaml. Task 1 discovery started. |
 | 2026-08-29 | Task 1 complete. `bmad-party-mode` discovery (installed roster); 3-container design canvas published as an Artifact; developer chose the single enriched view. Decision record `8-2-base64-decision-record.md` written (kept/changed/added/cut, container, FR10–FR12 revision, i18n finding, AD-1 split). 3 cut-idea GitHub issues filed: #113 (hex view), #114 (decode-as-gzip), #115 (recursive decode), `backlog-candidate` label. AC1–AC4 satisfied. |
 | 2026-08-29 | Task 2a complete. Same `bmad-party-mode` room resolved the decision record's open items and wrote AC6–AC16 (container / live conversion / Paste removed + Copy icon / one contextual slot / honest blob detection / data-URI build + decode + preview / line-wrap on encode / i18n + classified codes / architecture compliance) into the story's "Acceptance Criteria — Task 2 (Redesign)" section. Task 2b re-planned into 6 vertical slices with a developer render-review after slice 1. Awaiting developer sign-off on the AC set before 2b. Nothing committed yet (developer wants one commit covering the record + story file). |
@@ -325,3 +363,41 @@ claude-sonnet-5 (Claude Code, bmad-dev-story workflow)
 - `src/shell/toolError.ts` (slice 4 — `base64-data-uri-malformed`; slice 6 — `base64-invalid-char` / `-invalid-length` / `-invalid-padding` / `-not-utf8` added to `TRANSLATABLE_CODES`)
 - `src/stores/registry.ts` (slice 3 revision — base64 drop handler string `base64_encode_file` → `base64_ingest_file`)
 - `src/shell/dropZone.spec.ts` (slice 3 revision — base64 fixture + assertion follow the renamed handler; generic dispatch unchanged)
+
+### Review Findings
+
+Code review 2026-08-29 (`bmad-code-review`, three parallel adversarial layers — Blind Hunter,
+Edge Case Hunter, Acceptance Auditor — against `b151314..HEAD`). 33 raw findings → 23 after
+dedup → 4 decision-needed, 8 patch, 6 deferred, 5 dismissed as noise. No review layer failed.
+
+**Decision-needed** (resolved 2026-08-29 with the developer):
+
+- [x] [Review][Decision] AC6 "exactly three controls visible with empty input" is not met in the Encode direction (URL-safe checkbox, wrap `<select>`, disabled Copy, "Build a data URI" disclosure are also visible). **Resolved: accept & amend AC6** — dated `*Amended*` note added to AC6 (Decode shows three; Encode adds the alphabet / wrap / copy / data-URI-builder affordances as accepted low-noise standing controls; the "and `AppButton`" clause relaxed for the icon/link `<button>`s). No code change.
+- [x] [Review][Decision] "Base64 → file via the save dialog" is unreachable when the decoded output is text — `onSaveAsFile` (`Base64View.vue:458`) is wired only into `detectionMode === 'image'` / `'note'`. **Resolved: add "Save as file" to the text output panel** — see patch below (reuses the existing `base64_decode_to_file` flow).
+- [x] [Review][Decision] JWT detection — `sniff_jwt` (`crates/umbra-core/src/base64.rs:270`) never validates the 3rd (signature) segment, so `b64(header).b64(payload).<garbage>` reads as a JWT. **Resolved: tighten the signature check** — see patch below (require a non-empty base64url signature, still allow the empty sig for `alg:none`). The near-miss error message is left as-is.
+- [x] [Review][Decision] AC14 / AC16 clauses violated by mechanically-forced changes. **Resolved: amend the AC text** — dated `*Amended*` notes added to AC14 (rewritten test assertions, the `wrap` drop-arg, and the DN2 save-as-file follow-up) and AC16 (`registry.ts`, `dropZone.spec.ts`, `jwt.rs`×2 test-helper edits). No code change.
+
+**Patch**:
+
+- [x] [Review][Patch] (from DN2) Add a "Save as file" action to the text output panel — when a decode yields `Sniff::Text` the output panel currently offers only Copy; wire a "Save as file" action (plain text-link style, matching `.offer-action`) that reuses `onSaveAsFile` / `base64_decode_to_file` with a `decoded.txt` default name, restoring the AC14 "Base64 → file" preserved behaviour for text results. [src/tools/base64/Base64View.vue:573]
+- [x] [Review][Patch] (from DN3) Require a non-empty base64url signature segment in `sniff_jwt` — after the 3-segment / `alg` checks, reject the token unless `segments[2]` is empty (the `alg:none` case) or is itself valid base64url; keeps `b64(header).b64(payload).<garbage>` from being read as a JWT. Add a regression test. [crates/umbra-core/src/base64.rs:270]
+
+- [x] [Review][Patch] A file dropped within 200 ms of a keystroke has its result wiped ~200 ms later — the `registry.dropResult` watcher never calls `debouncedConvert.cancel()`, so a debounce scheduled by the last keystroke fires after the drop and re-runs `convert()` against the now-empty input, clearing `output` / `error` / `dropNotice`; `suppressConvertOnce` only neutralises the synchronous watcher run, not the pending timer. Fix: `debouncedConvert.cancel()` at the top of the drop watcher. [src/tools/base64/Base64View.vue:406]
+- [x] [Review][Patch] `parse_data_uri` has no size guard — a `data:`-prefixed paste bypasses `MAX_INPUT_BYTES` (100 MB, CWE-400); `sniff` → `decode_bytes` calls `check_size` but the data-URI branch (`Base64View.vue:316` → `base64_parse_data_uri` → `parse_data_uri`) does full-size `String` copies and builds a `data:` `<img src>` unbounded. Fix: `check_size(input.len())?` at the top of `parse_data_uri`. [crates/umbra-core/src/base64.rs:185]
+- [x] [Review][Patch] `imageDataUri` builds a malformed `<img src>` for a PNG delivered through a non-image data URI (`data:application/octet-stream;base64,<png>`) — `detectionMode` returns `"image"` off the bare `sniff.kind === "png"` branch, but `imageDataUri` then prefixes the whole `data:…` input string (mangling `-` → `+`), producing `data:image/png;base64,data:application/octet+stream;…`; the `<img>` errors and the UI degrades to the note. Fix: when `dataUri.value` is set use `dataUri.value.payload`, or only return `"image"` from the bare-`sniff` branch when `dataUri.value === null`. [src/tools/base64/Base64View.vue:232]
+- [x] [Review][Patch] `onSaveAsFile` reads `saveSource.value` after `await save(...)` — if a pending debounce fires while the native save dialog is open, `base64_decode_to_file` is invoked with the new input while the filename still reflects the old detection. Fix: snapshot `saveSource.value` (and the name) into locals before the `await`. [src/tools/base64/Base64View.vue:458]
+- [x] [Review][Patch] (was P5) `classify_bytes` reported *valid text* beginning `%PDF` (or `PK\x03\x04`) as `Sniff::Pdf` / `Sniff::Zip`, hiding the text behind the "looks like a … — Save as file" note. **Resolved 2026-08-30 with the developer: narrow fix (option c).** `classify_bytes` now returns `Sniff::Text` immediately when the payload is valid UTF-8; the PNG / PDF / gzip / zip magic-byte arms run only on the non-UTF-8 branch, so real files (non-text past the header) still classify correctly while `%PDF`-prefixed plain text lands on Text — AC10's own incidental-collision principle. AC10 amended in place; `sniff_identifies_png_pdf_gzip_and_zip_by_magic_bytes` fixtures updated to carry a non-UTF-8 byte (as every real file of those types does); new test `sniff_reads_text_that_merely_starts_with_a_magic_signature_as_text`. [crates/umbra-core/src/base64.rs:319]
+- [x] [Review][Patch] MIME tables are out of sync — `mime_from_path` (`src-tauri/src/commands/base64.rs:77`) can return `application/zip` / `application/gzip` / `application/wasm` / `font/woff2`, none of which are in `DATA_URI_MIME_OPTIONS`, so dropping a `.zip`/`.gz`/`.wasm`/`.woff2` file never pre-selects the builder MIME (partial AC11 miss); and `mimeToExt("application/octet-stream")` returns `"octet-stream"` → `decoded.octet-stream`. Fix: add the missing types to `DATA_URI_MIME_OPTIONS` and special-case `application/octet-stream` → `bin`. [src/tools/base64/Base64View.vue:42]
+- [x] [Review][Patch] `data:` scheme and `image/` MIME are matched case-sensitively — `parse_data_uri`'s `strip_prefix("data:")` (`base64.rs:194`), the view's `value.trim().startsWith("data:")` (`Base64View.vue:316`) and `du.mime.startsWith("image/")` (`:325`); RFC 2397 / 2045 make both case-insensitive, so `DATA:` / `IMAGE/PNG` fall through to a confusing `base64-invalid-char` error. Fix: compare case-insensitively. [crates/umbra-core/src/base64.rs:194]
+- [x] [Review][Patch] `dropZone.spec.ts:234` asserts an outdated `base64_ingest_file` contract — `toHaveBeenCalledWith("base64_ingest_file", { path, url_safe: true })` (no `decode` / `wrap`) and `dropResult` `value: "//4AAQ=="` (a bare string, not the `Ingest::Encoded { value, mime }` shape). Passes only because the mock is hand-fed. Fix: update the fixture to the real arg + `Ingest` shape. [src/shell/dropZone.spec.ts:234]
+
+**Deferred** (also recorded in `deferred-work.md`):
+
+- [x] [Review][Defer] Decode-error byte offsets are relative to the whitespace-stripped string, not the user's input [crates/umbra-core/src/base64.rs:103] — deferred, pre-existing (both the strip and the `ByteOffset` render predate this story; live rendering makes it more visible).
+- [x] [Review][Defer] `base64_sniff` runs a full decode (up to three, plus a JSON pretty-print, for dotted input) on every debounced keystroke, up to `MAX_INPUT_BYTES` (100 MB); `createLatestWinsRunner` discards stale results, not the work [src/tools/base64/Base64View.vue:342] — deferred, new with live conversion (AC7) but academic at realistic paste sizes; `spawn_blocking` keeps the UI thread free.
+- [x] [Review][Defer] `base64_decode` command + `umbra_core::base64::decode` are orphaned (nothing in `src/` invokes `base64_decode`; the live path is `base64_sniff`), so `base64-not-utf8` is never produced by the UI despite slice 6 adding its translation + `TRANSLATABLE_CODES` entry [src-tauri/src/commands/base64.rs:49] — deferred, dead-but-harmless surface; remove or record why it is kept.
+- [x] [Review][Defer] `suppressConvertOnce` is a single one-shot boolean whose correctness depends on Vue coalescing the drop handler's `input` + `direction` writes into one watcher tick [src/tools/base64/Base64View.vue:123] — deferred, no current defect; a generation/request-id counter would be sturdier.
+- [x] [Review][Defer] `convert()` resets `jwtCollapsed = false` on every run, so a "Show raw" collapse is lost on every subsequent keystroke while editing a JWT [src/tools/base64/Base64View.vue:294] — deferred, minor UX; consider preserving it while the sniff result stays a JWT.
+- [x] [Review][Defer] `useCopyFeedback` is imported cross-tool from `../json/` — a base64 → json source coupling [src/tools/base64/Base64View.vue:17] — deferred, the Dev Agent Record already flags it as "a candidate to hoist to `src/shell/`"; hoist if a third tool needs it.
+
+**Dismissed as noise** (5): French `looksLikeBinary` `{type}` interpolates a hardcoded English literal — by design, format names (PNG/PDF/gzip/ZIP) are not localized. · Unpadded Base64 in the PNG `<img>` `data:` URI relies on WKWebView leniency — the `@error` → note fallback handles the failure. · Whitespace-only decode input → empty output panel with no message — consistent with the tool's documented whitespace-tolerance; pre-existing. · AC6 "every bare `<button>` → `AppButton`" unmet — the remaining `<button>`s are icon / text-link affordances (`.copy-button`, `.disclosure`, `.offer-action`) that `AppButton` would be wrong for; `JsonTree.vue`'s bare copy buttons are the precedent. · `.drop-notice` renders as a tinted card — it sits above the input, outside AC9's "one contextual slot under the output" scope; a transient status is deliberately more prominent.
