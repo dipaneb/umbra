@@ -42,6 +42,12 @@
 
 generated: 2026-07-20
 last_updated: 2026-08-28
+# note: story 8-2 moved to in-progress 2026-08-28 (bmad-dev-story). Branched
+# feat/story-8-2-reimagine-base64-encode-decode from 13c6942 (origin/main tip b151314 + the
+# story-creation commit, so the story file travels with the branch). baseline_commit b151314
+# preserved from story frontmatter. Task 0 (branch) done; Task 1 (bmad-party-mode discovery ->
+# 8-2-base64-decision-record.md) starting -- this is the gated charter story shape, only Task 1
+# carries real ACs.
 # note: story 8-1 moved to done 2026-08-26 (code review complete via bmad-code-review,
 # three parallel adversarial layers against b357aff..HEAD: 15 real findings after
 # dedup/dismiss -- 10 patches applied (all verified: cargo fmt/clippy/test --workspace,
@@ -1174,7 +1180,7 @@ development_status:
   # (src-tauri/src/commands/base64.rs), view (src/tools/base64/Base64View.vue) and tools.base64.*
   # i18n live-read in full this session so discovery starts from confirmed fact. epic-8 already
   # in-progress (from 8-1), no epic status change.
-  8-2-reimagine-base64-encode-decode: ready-for-dev
+  8-2-reimagine-base64-encode-decode: in-progress
   8-3-reimagine-the-uuid-generator: backlog
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog
