@@ -1,0 +1,161 @@
+---
+baseline_commit: 595bb9a
+---
+
+# Story 8.3: Reimagine the UUID Generator
+
+Status: ready-for-dev
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As the developer,
+I want to reconsider the UUID Generator's feature set through open discovery before redesigning its UI,
+so that the redesign reflects a deliberately chosen scope, not a visual reskin of whatever shipped first.
+
+## Acceptance Criteria
+
+**This story ships in two gated tasks (epics.md's own shared Epic 8 shape). Task 1's ACs below are real and testable now. Task 2 (redesign) has no ACs yet — writing them before Task 1's decision record exists would be fiction, per epics.md's explicit instruction — they are added to this story file as a follow-up edit (Task 2a) once Task 1 completes, exactly as Stories 8.1 and 8.2 did.**
+
+1. **Given** open scope discovery is run for the UUID tool (`bmad-party-mode` or `bmad-forge-idea` — the developer chooses which for this story; a second, narrower pass may follow), framed explicitly as reconsidering the tool's scope from first principles, **when** discovery concludes, **then** a written decision record exists stating what is kept, cut, and added relative to today's shipped implementation (generate UUID **v4** and **v7**, single or bulk up to **1000**; per-row one-click copy and Copy-all newline-joined; version radio that clears a stale result on switch; a client-side input-shape guard plus server-side `uuid-count-zero` / `uuid-count-too-large` rejections; v7 batch monotonicity via a shared `ContextV7`), with rationale for each call — the existing implementation is reference only, not a decision to preserve by default.
+2. **Given** the decision record, **when** it is produced, **then** it states whether **FR13** remains accurate, is revised, or is expanded — Epic 8's own preamble makes this revision each story's own output, not predicted in advance.
+3. **Given** any idea considered and cut during discovery, **when** the decision record lands, **then** it is captured as a public backlog candidate (FR35) — filed as an individual, max-context GitHub issue on `dipaneb/umbra` with the `backlog-candidate` label per this project's idea-capture convention (cf. issues #113–#116), each linking back to the decision record — not folded into a PRD rewrite and not silently dropped.
+4. **Given** the chosen scope, **when** the decision record completes, **then** it states which parts of the existing `crates/umbra-core/src/uuid.rs` functional core survive as-is (AD-1: core owns every transformation) versus which need new pure functions, **and** whether the `src-tauri/src/commands/uuid.rs` wrapper layer changes, **and** whether `src/tools/uuid/uuidVersion.ts` (the hand-synced TS mirror of the Rust `UuidVersion` enum) and `crates/umbra-core/Cargo.toml`'s `uuid` feature set change — Task 2 builds directly on this split.
+5. **Given** Task 1 has not yet produced its decision record, **when** this story starts, **then** Task 2 (redesign, and its own Given/When/Then acceptance criteria) has not begun — no implementation starts before the decision record exists.
+
+## Acceptance Criteria — Task 2 (Redesign)
+
+_Deferred. Written as a Task 2a follow-up edit once `8-3-uuid-decision-record.md` exists, in the same discovery room, scoped strictly to that record. Numbering continues from AC5. Until then this section is intentionally empty — per epics.md, ACs for a scope nobody has chosen yet would be fiction._
+
+## Tasks / Subtasks
+
+- [ ] **Task 0: Branch setup (AC: all)**
+  - [ ] Confirm `baseline_commit` (`595bb9a`) is still `origin/main`'s real tip before branching (`git rev-parse origin/main` — was `595bb9a744130efac806b9999656d00ceca226ff` at story-creation, HEAD == origin/main, tree clean apart from untracked `.claude/workflows/`).
+  - [ ] `git checkout -b feat/story-8-3-reimagine-the-uuid-generator` from the story-creation commit (so the story file + decision record travel with the implementation branch — matches how 8.1 and 8.2 were branched). Every subsequent commit lands on this branch. Move the story `ready-for-dev` → `in-progress` in `sprint-status.yaml`.
+
+- [ ] **Task 1: Discovery — produce the decision record (AC1–4)**
+  - [ ] Run `bmad-party-mode` (installed roster — Mary, John, Sally, Winston, Amelia, Paige; `session` mode; party memory on, resuming the 8.1/8.2 history) **or** `bmad-forge-idea` for a narrower persona-driven pressure-test — **the developer's choice for this story**. Frame it explicitly as: *open scope discovery for the UUID Generator — the existing implementation is reference only, not a scope to preserve.* Task 1 is a facilitated session requiring the developer's cut/keep/add judgement — run interactively, not autonomously.
+  - [ ] Feed the session the current, real state so it starts from fact (re-read all four source files + i18n at session start and confirm no drift vs. the Dev Notes below):
+    - `crates/umbra-core/src/uuid.rs` (113 lines): `pub enum UuidVersion { V4, V7 }` (`#[serde(rename_all = "snake_case")]`); `const MAX_COUNT: u32 = 1000`; `pub fn generate(version: UuidVersion, count: u32) -> Result<Vec<String>, ToolError>` → `uuid-count-zero` (count 0) / `uuid-count-too-large` (count > 1000), both `position: None`; v4 = `Uuid::new_v4()` per element; v7 = one shared `ContextV7` for the whole batch so output is strictly increasing within a call (separate calls have no cross-call ordering guarantee — documented in the fn's doc comment). 9 unit tests.
+    - `src-tauri/src/commands/uuid.rs` (69 lines): `#[tauri::command] pub async fn uuid_generate(version: UuidVersion, count: u32) -> Result<Vec<String>, ToolError>` — `spawn_blocking` (AD-4); `map_join_error` → `uuid-internal` on a join panic. `src-tauri` has **no** direct `uuid` crate dependency — the transformation and its types live in `umbra-core` only (AD-1). 5 command tests assert UUID shape structurally (36 chars, hyphen positions, version nibble).
+    - `src/tools/uuid/UuidView.vue` (~230 lines): `version` ref (`"v4" | "v7"` radio `<fieldset>`); `count` ref (`<input type="number" min="1" v-model.number>`); `results: string[]`; `error: ToolError | null` + `clientError: string | null`. `MAX_COUNT = 4294967295` is a **client-side input-shape guard only** (rejects non-integer / negative / > u32::MAX before `invoke`, via `t("tools.uuid.countOutOfRange", { max })`); 0 and 1..=u32::MAX pass through to the server, which owns the real 1000 business cap. One shared `createLatestWinsRunner()` across generate + copy. `watch(version, …)` clears `results` + errors (the original AC3). Per-row `Copy` (`writeClipboardText(uuid)`) + `Copy all` (`writeClipboardText(results.join("\n"))`, shown only when `results.length > 1`). Bare `<button>` for per-row Copy; `AppButton` for Generate / Copy all.
+    - `src/tools/uuid/uuidVersion.ts`: `export type UuidVersion = "v4" | "v7"` — a **hand-synced** mirror of the Rust enum's snake_case encoding; a comment says keep the two in sync by hand.
+    - `src/tools/uuid/UuidView.spec.ts` (199 lines, 11 tests): single-gen + per-row Copy; bulk + Copy-all visible; no Copy-all for one result; `uuid-count-too-large` rendered inline (asserts the raw Rust message); cleared-count client guard never calls `invoke`; count-0 round-trips and renders the **translated** `uuid-count-zero` text (not the raw message); version switch clears results; stale in-flight response discarded after a version change; per-row copy; Copy-all newline-joined.
+    - i18n: `tools.uuid.*` in `src/locales/{en,fr}.json` (`description`, `heading`, `versionLegend`, `countLabel`, `generate`, `copyAll`, `countOutOfRange` with a `{max}` param) + `errors.uuid-count-zero` (en + fr). `src/locales/locales.spec.ts` runs every message through vue-i18n's real compiler. `src/shell/toolError.ts`'s `TRANSLATABLE_CODES` set contains `uuid-count-zero` (its historical first entry) and **not** `uuid-count-too-large` (embeds a runtime count in prose) or `uuid-internal`.
+    - Registry: `src/stores/registry.ts` line ~106 — `{ id: "uuid", name: "UUID", descriptionKey: "tools.uuid.description", aliases: ["uuid","guid","identifiant"], route: "/tools/uuid", icon: "uuid", component: … }`. **No `drop`**, **no `clipboardMatch`**, **no `shortcut`**. `icon: "uuid"` resolves to `PhFingerprint` via `src/shell/icons.ts`.
+  - [ ] Ground the session in what Epic 7 locked — read `src/styles/tokens.css`, `src/styles/base.css`, `src/components/AppButton.vue`, `src/components/AppTabs.vue`, `src/App.vue`, `src/shell/icons.ts`, and both redesign references `src/tools/json/JsonView.vue` (tabs) and `src/tools/base64/Base64View.vue` (single enriched view) to pin exact token values, component anatomy, and the main-pane frame before any design canvas.
+  - [ ] Run a competitive sweep — online generators (uuidgenerator.net, uuidtools.com, "UUID v7" microsites), CyberChef's "Generate UUID", the platform `uuidgen` CLI, Postman's dynamic `$guid`/`$randomUUID`, browser devtools' `crypto.randomUUID()` — for evidenced scope candidates.
+  - [ ] Produce the written decision record satisfying AC1–AC4 to `_bmad-output/implementation-artifacts/8-3-uuid-decision-record.md`, mirroring `8-1-json-decision-record.md` / `8-2-base64-decision-record.md`: **Kept / Changed (interaction) / Added / Cut (backlog)** with rationale each; **container shape** decision (single enriched view à la Base64, tabs à la JSON, or something smaller — and whether `AppTabs.vue` is used); **FR13 revision**; **AD-1 core-split** (what survives, what needs new pure fns, whether the command surface / `uuidVersion.ts` / `Cargo.toml` `uuid` features change); **i18n / `TRANSLATABLE_CODES` finding**; **open items Task 2 still owns**.
+  - [ ] AC3: file each cut idea as its own `gh issue create` on `dipaneb/umbra`, `backlog-candidate` label, body linking back to the decision record.
+  - [ ] Optional (8.2 precedent): build a container-shape comparison canvas matching Umbra's real token system, publish as an Artifact, let the developer choose.
+  - [ ] Developer confirms the scope decisions and open questions before Task 2 begins.
+
+- [ ] **Task 2a: Redesign ACs — write real Given/When/Then** (deferred until Task 1's record exists)
+  - [ ] In the same discovery room, resolve the decision record's open items and write real AC6+ into the "Acceptance Criteria — Task 2 (Redesign)" section above, scoped strictly to `8-3-uuid-decision-record.md`. Await the developer's sign-off on the AC set before 2b.
+
+- [ ] **Task 2b: Redesign — implementation** (deferred until the developer confirms the AC set)
+  - [ ] Follow the delivery pattern Stories 8.1 and 8.2 established: **vertical slices, developer render-review after the first slice.** Per slice: pure Rust fn + regression tests → `uuid_<verb>` command (`spawn_blocking`, `Result<T, ToolError>`, AD-3/AD-4, only if the command surface changes) → Vue → full verification pass (`pnpm lint`, `pnpm test`, `vue-tsc --noEmit`, `pnpm build`, `cargo fmt --check`, `cargo test --workspace`, `cargo clippy --workspace`) → visual check in `pnpm tauri dev` → commit, **ask before pushing**.
+  - [ ] First slice is the Epic-7 tokenization pass + restructure to the chosen container (the tool is 100% pre-Epic-7 — see Dev Notes).
+  - [ ] Preserve unchanged unless a Task 2 AC explicitly forces otherwise: v7 batch monotonicity via the shared `ContextV7`; `uuid-count-zero` translation; the client-side input-shape guard; the shared latest-wins runner discipline (AD-16); all 9 core tests + 5 command tests + 11 `UuidView.spec.ts` cases pass (or their assertions are knowingly rewritten as *forced by a later AC* and that is recorded in the AC, per 8.2's AC14 amendment precedent).
+  - [ ] Full verification pass green, then `bmad-code-review` (fresh context, different LLM), then `review` → `done`.
+
+## Dev Notes
+
+- **This is the third instance of Epic 8's "Task 1 decision record gates Task 2" shape — the first two are proven.** Stories 8.1 (`8-1-reimagine-the-json-formatter-viewer.md`) and 8.2 (`8-2-reimagine-base64-encode-decode.md`) each executed the full pattern end to end: discovery → decision record → Task 2a AC-writing in the same room → per-slice implementation with a developer render-review pass → `bmad-code-review` → done. **Use Story 8.2's story file + `8-2-base64-decision-record.md` as the working template** (8.1's too — both are complete references).
+
+- **Current implementation, read in full this drafting session — the discovery session's factual starting point, NOT this story's scope:** see Task 1's "feed the session" bullet for the full four-file breakdown. Summary: a genuinely small tool — one Vue view (~230 lines) with two controls (v4/v7 radio, count number-input), a `generate(version, count)` pure fn in core with a 1000 cap and two error codes, one thin `spawn_blocking` command, and a 6-key i18n block. Nothing about it is drop-capable, clipboard-suggestion-shaped, or file-touching.
+
+- **FR mapping. FR13** — "Generate UUIDs v4 and v7, single or in bulk (up to 1000), with one-click copy." Epic 8's preamble makes the FR13 revision this story's own output — do **not** treat the current wording (v4/v7 only, 1000 ceiling, generate-only) as fixed. Story 2.3 (`epics.md` ~554) is the original, reference-only acceptance criteria.
+
+- **Discrepancies / gotchas found this session — carry into Task 1/2, do not "fix" reflexively:**
+  1. **`UuidView.vue`'s `MAX_COUNT = 4294967295` is a client-side *input-shape* guard, not the business cap.** Its comment ("mirrors umbra-core's u32 command parameter") is about the *serialization* ceiling, not core's `MAX_COUNT: u32 = 1000` business rule. The split is deliberate: the client rejects only what can't round-trip cleanly (non-integer, negative, > u32::MAX); 0 and 1..=u32::MAX go to the server, which owns the 1000 rejection. If Task 1 changes the cap or moves it, that's a decision to record, not a silent refactor.
+  2. **`countOutOfRange` is a plain `t()` call in the view**, not a `ToolError` path — correctly **not** in `TRANSLATABLE_CODES`. Only Rust-originated `ToolError.code`s belong in that set.
+  3. **`uuidVersion.ts` must stay hand-synced** with the Rust `UuidVersion` enum's snake_case encoding. Any version added in Task 2 changes the Rust enum, the `Cargo.toml` `uuid` features, *and* this TS mirror — AC4 calls this out.
+  4. **The registry entry has no `clipboardMatch`.** UUID generates; it doesn't parse an existing value. If Task 1 proposes an "inspect/validate a pasted UUID" capability (version + variant + embedded timestamp for v1/v6/v7), that is deterministic parsing (no AD-9/AD-13 "guess" exception needed) — but adding a `clipboardMatch` to the registry entry for Story 7.8's clipboard-suggestion surface is a **shell concern** (AD-6): present it as options with trade-offs, don't decide it silently inside this story.
+  5. **`deferred-work.md` lines 74–82 already log 7 code-review items from Story 2.3's review against `UuidView.vue`** — several app-wide (no `aria-live`/`role="status"` on a successful batch render; no in-flight disable on Generate so rapid clicks stack `spawn_blocking` tasks; unguarded concurrent Copy / Copy-all). Task 2 should **fold the UUID-specific ones in rather than re-deferring**; the tokenization pass directly covers the hardcoded `#b00020` alert-colour item (line 77). Re-read that file's UUID block before Task 2b.
+
+- **Architecture boundaries Task 1 must scope against and Task 2 must obey:**
+  - **AD-1** — every transformation is a pure function in `umbra-core::uuid`; the view renders. **Presentation formatting is view-owned, never core.** This is load-bearing here: the likeliest "Added" candidates — uppercase, `{braces}`, `urn:uuid:` prefix, hyphenless — are *view-side string transforms on core's canonical lowercase-hyphenated output*, **not** new core functions. Core returns the canonical form; the view formats it. Only genuinely new *generation* logic (more versions, v3/v5 namespace hashing, a UUID *parser*) is new core work.
+  - **AD-3** — every command returns `Result<T, ToolError>`; the view renders from `ToolError` structure only (`code`, `position`), never by parsing `message`. Commands are `uuid_<verb>`.
+  - **AD-4** — anything that can exceed ~100 ms CPU runs on the blocking pool via `spawn_blocking` (`uuid_generate` already does). A materially larger bulk cap would also need a **virtualized result list** — `@tanstack/vue-virtual` is already a dependency (the JSON tree uses it); don't add a second virtualization lib.
+  - **AD-6** — tools are islands. Do not touch another tool's files. Cross-cutting state lives only in the `settings` / `registry` Pinia stores; a new `clipboardMatch` is a registry-shape change (see gotcha 4).
+  - **AD-9 / AD-13 honesty** — UUID has no natural-language grammar and no heuristic "guess" today, so no AD-13-style disclosed exception is needed and French rides the existing `vue-i18n` seam like every other tool. A UUID *inspector* (parse → version/variant/timestamp) is deterministic, not a guess — still no exception, but any "this looks like a UUID but isn't quite" state must be a precise inline error per EXPERIENCE.md's honesty bar, not a confident wrong reading.
+  - **AD-10** — if Task 2 adds a persisted preference (default version, default count, default output format), it is a `uuid.*`-namespaced key in the `settings` store, enumerated and individually clearable in the sectioned Settings pane (Story 7.6), in addition to the INV-3 all-clear.
+  - **AD-16** — one `createLatestWinsRunner()` per *independent* piece of state. Today one shared runner backs generate + both copies (all write `results` / `error`), which is correct as-is. If Task 2 splits the tool into genuinely independent panels (e.g. a Generate panel and an independent Inspect panel), scope **one runner per group** — `CronView.vue`'s two-section split is the cautionary precedent (a tool-wide runner falsely supersedes an unrelated section); `HashView.vue`'s `registry.getLatestWinsRunner(toolId)` is the reference when a drop plus an in-view invoke write the same surface (UUID has no drop, so this is unlikely to apply).
+  - **AD-2 / AD-11** — `umbra-core` imports no `tauri` crate and has zero `#[cfg(target_os)]`; CI runs `cargo test --workspace` on all three OSes. Any new `uuid` feature flag must build clean cross-platform.
+
+- **Dependency note (standing verification discipline — Consistency Conventions table).** `uuid` is pinned `1.24` in `crates/umbra-core/Cargo.toml` (`features = ["v4", "v7", "std"]`), resolved `1.24.0` in `Cargo.lock`. Verified current this session via Context7 (`/uuid-rs/uuid`, docs reference `version = "1.24"`). Post-1.0, stable. The crate supports **v1, v3, v4, v5, v6, v7, v8** — each behind its own Cargo feature — plus `Uuid::nil()` and `Uuid::max()` constants. If Task 1 decides to add versions:
+  - **v6** (reordered-v1, sortable) and **v1** (timestamp + 6-byte node id) need a `ContextV1` and a node-id decision (random vs. fixed) — a small config surface, not a new UI shape.
+  - **v3** (MD5) and **v5** (SHA-1) are deterministic namespace+name hashes — they need **two text inputs (namespace + name)** and a namespace picker (`NAMESPACE_DNS`/`URL`/`OID`/`X500` or a custom UUID), a genuinely different UI shape from the current radio+count, not just another radio.
+  - **v8** is free-form vendor bytes; **nil / max** are constants.
+  - Each added version = a Cargo feature flip + a `UuidVersion` enum arm + the `uuidVersion.ts` mirror + i18n. Record the exact feature list in the decision record's AD-1 split (AC4) and in the Stack table if it changes.
+
+- **Design system (Epic 7, locked — consume, don't reinvent):**
+  - Tokens from `src/styles/tokens.css`: `--color-*`, `--font-<role>-*` (`display`/`heading`/`body`/`label`/`caption`/`code`), `--radius-*` (`sm` 2 / default 4 / `lg` 8 / `full`), `--spacing-*` (4px base), `--shadow-*`. `src/styles/base.css` already gives a bare `<input>` / `<textarea>` a token border + focus-visible ring — **don't re-style what it covers.**
+  - `AppButton` variants: **`primary`** (orange fill — DESIGN.md's "budget of one": at most one per screen, the single signature action; Story 8.1's lesson is *don't apply it reflexively* by copying another tool's shape — it's a deliberate call, likely "Generate" here but confirm), **`default`** (black workhorse — most buttons), **`destructive`** (red — high-consequence, hard-to-reverse only; not for delete-shaped icons).
+  - **`AppTabs.vue`** exists (built in 8.1). Use it **only** if Task 1 yields multiple genuinely distinct named jobs (e.g. Generate / Inspect). 8.1 + 8.2 discipline: **do not add tabs to a single-view tool** — Base64 stayed a single enriched view for exactly this reason.
+  - **Copy affordance:** `JsonTree.vue`'s bare ~24 px icon copy-buttons + `useCopyFeedback` (signature-accent "copied" state, **no separate success colour**). Story 8.2 imports `useCopyFeedback` from `../json/` (cross-tool import, flagged in a comment as a candidate to hoist to `src/shell/` — not done speculatively). The current per-row bare `<button>` "Copy" is a candidate to restyle to this pattern.
+  - **Voice** (EXPERIENCE.md): precision-instrument register — short, factual, no exclamation marks, no cheerleading. Errors read like an instrument reporting state.
+  - **Icon:** `icon: "uuid"` → `PhFingerprint` (a Phosphor pictogram — no change needed; `Base64GlyphIcon.vue` is the precedent *only if* a typographic mark is ever argued for, and that's a DESIGN.md-recorded one-off).
+  - **Accessibility floor:** full WCAG 2.1 AA, every flow keyboard-drivable, every control has an SR label + role, visible focus on every tab stop. A successful batch render should get a `role="status"`/`aria-live` announcement (the deferred-work item) — errors already get `role="alert"`.
+
+- **Reusable patterns from 8.1 / 8.2 — follow, don't reinvent:**
+  - **Live-conversion pattern** (if Task 1 moves off the explicit Generate button — note UUID *generation* is non-idempotent, so "as-you-type" may not even make sense; a button likely stays): `src/shell/debounce.ts`'s `debounce(fn, ms)` (has `.cancel()`), a `watch([...sources], …)` that debounces text edits but re-runs immediately on a discrete control change, `debouncedX.cancel()` in `onUnmounted`. `JsonView.vue` lines ~85–160 and `Base64View.vue` are the references.
+  - **`createLatestWinsRunner()`** from `src/shell/invoke.ts` returns `runLatestWins(task)` → `{ superseded: false, value } | { superseded: true }`; a stale rejection is swallowed, a stale success is dropped. Already used here.
+  - **vue-i18n treats a literal `{` / `}` as interpolation syntax** — any new locale string showing `{braces}` UUID syntax or `urn:uuid:` needs the `{'{'}` / `{'}'}` escape. `locales.spec.ts` guards it; reach for the escape proactively.
+  - **Never rely on incidental template whitespace for spacing** between adjacent Vue elements — it collapses silently; give a spaced element its own node with real CSS `margin`.
+  - **When tightening a loose test threshold** (a latency ceiling on a new command), calibrate against a real `cargo test --workspace` run under parallel contention, not an isolated measurement — 8.1's first 2 s ceiling was flaky and settled at 10 s.
+  - **Classified-error-code + `TRANSLATABLE_CODES` pattern** (8.1 `json-*`, 8.2 `base64-*`): a code that carries no runtime value in its `message` (offsets ride the structured `position` field) can join `TRANSLATABLE_CODES` and translate via `t(errors.<code>)`; a code that embeds a count/limit in prose stays out. `uuid-count-too-large` embeds the count → stays out; `uuid-count-zero` is a fixed sentence → already in.
+
+- **Performance.** No UUID-specific performance profile exists (unlike JSON's Story 1.9 10 MB baseline). `uuid` crate generation is trivially fast; the practical ceiling is rendering the result list — which is why the 1000 cap exists. Any Task 2 change raising the cap must be sanity-checked for render cost and use `@tanstack/vue-virtual`, not exempt itself.
+
+- **Styling status.** `UuidView.vue` is **100% pre-Epic-7** — Task 2 is the first tokenization pass this tool gets. `base.css` covers the bare number-input's border + focus ring; still hardcoded and Task 2's real work: `p[role="alert"]`'s `#b00020` (→ `--color-accent-destructive`, matching `JsonView.vue` / `Base64View.vue`), the bare per-row Copy `<button>`, and all layout margins/gaps (→ `--spacing-*`).
+
+- **No inter-story dependency.** Epic 8's preamble states 8.1–8.9 are mutually independent once Epic 7 is done; 8.3 runs now because the developer chose it, and can be created and implemented without waiting on 8.4–8.9.
+
+### Project Structure Notes
+
+- **Likely touched (contingent on Task 1's decision — confirm during Task 2):** `src/tools/uuid/UuidView.vue`, `src/tools/uuid/UuidView.spec.ts`; `crates/umbra-core/src/uuid.rs` and its tests only if Task 1 decides new core transformations are needed (more versions, a parser); `src/tools/uuid/uuidVersion.ts` and `crates/umbra-core/Cargo.toml` (`uuid` features) if the version set changes; `src-tauri/src/commands/uuid.rs` only if the command surface changes; `src/locales/en.json` + `src/locales/fr.json` for any new strings; `src/shell/toolError.ts`'s `TRANSLATABLE_CODES` only if new classified codes are introduced; `src/stores/registry.ts` only if a `clipboardMatch` is added (governance-flagged); `src/components/AppButton.vue` / `AppTabs.vue` as *consumers* (imported, not modified).
+- **New:** Task 1's decision-record artifact — `_bmad-output/implementation-artifacts/8-3-uuid-decision-record.md`.
+- **Out of scope regardless of Task 1's outcome:** any other tool's files (AD-6, tools are islands) and any shared `src/shell/` / `src/stores/` file beyond what Epic 7 already generalized (`tokens.css`, `icons.ts`, `AppTabs.vue`, `AppButton.vue`) plus `toolError.ts`'s `TRANSLATABLE_CODES` — unless the decision record explicitly justifies a shared-infrastructure change, in which case this project's CLAUDE.md governance-check discipline applies: present it as options with trade-offs to the developer, and check it against the project's established governance patterns (branch protection, LICENSE, CI gates, the `type(scope): subject` commit convention) rather than assuming they travel with the change.
+
+### References
+
+- [Source: `_bmad-output/planning-artifacts/epics.md` — Epic 8 preamble + shared story shape (~231–243, ~1318–1337); Story 8.3 charter (~1346–1348); Story 2.3 "Generate UUIDs" as reference-only prior acceptance criteria (~554–572); FR13 (~55, ~65, ~161)]
+- [Source: `_bmad-output/planning-artifacts/prds/prd-Umbra-2026-07-19/prd.md` — F4 / FR13 (63–65)]
+- [Source: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-08-16.md` — Epic 8's "chartered, not fully spec'd" charter and rationale (§3, §4.3)]
+- [Source: `_bmad-output/implementation-artifacts/8-2-reimagine-base64-encode-decode.md` — the working template: Task 1 AC shape, Task 2a/2b gating, per-slice delivery with a developer render-review, the i18n / template-whitespace / test-threshold Dev Notes lessons, and the code-review Change Log]
+- [Source: `_bmad-output/implementation-artifacts/8-1-reimagine-the-json-formatter-viewer.md` + `8-1-json-decision-record.md` — the decision-record format to mirror: Kept / Changed / Added / Cut (backlog) / FR revision / AD-1 core-split / i18n-`TRANSLATABLE_CODES` finding / "open items Task 2 still owns"; `8-2-base64-decision-record.md` is the second worked example]
+- [Source: `_bmad-output/implementation-artifacts/deferred-work.md` — lines 74–82: seven `UuidView.vue` items deferred from Story 2.3's code review (2026-07-30), several app-wide]
+- [Source: `_bmad-output/planning-artifacts/architecture/architecture-Umbra-2026-07-20/ARCHITECTURE-SPINE.md` — AD-1 (45–49), AD-2 (51–55), AD-3 (57–61), AD-4 (63–67), AD-6 (75–79), AD-9 (93–97), AD-10 (99–103), AD-11 (105–109), AD-13 + 2026-08-23 amendment (117–150), AD-16 + 2026-08-04 runner-scoping amendment (164–175); Consistency Conventions table incl. the dependency version/API-drift rule (179–189)]
+- [Source: `_bmad-output/planning-artifacts/ux-designs/ux-umbra-2026-08-15/DESIGN.md` — token frontmatter (6–120); the four-tier colour system + "budget of one" orange rule (142–153); Components (178–192); Do's and Don'ts incl. the two scoped colour exceptions (194–203)]
+- [Source: `_bmad-output/planning-artifacts/ux-designs/ux-umbra-2026-08-15/EXPERIENCE.md` — Information Architecture three-views table (16–33); Voice and Tone + error-message quality bar (35–50); State Patterns Error / Loading rows (64–77); Interaction Primitives — one-click copy-as-text (79–84); Accessibility Floor (86–94)]
+- [Source: `_bmad-output/implementation-artifacts/7-1-design-tokens-and-icon-system-land-in-the-shell.md` — the token naming convention (`--color-*`, `--font-<role>-*`, `--radius-*`, `--shadow-*`) and the `@phosphor-icons/vue` + `src/shell/icons.ts` resolver Task 2 must consume]
+- [Source: Context7 `/uuid-rs/uuid` (fetched 2026-08-30) — `uuid` crate `1.24`, per-version Cargo feature flags (`v1`/`v3`/`v4`/`v5`/`v6`/`v7`/`v8`), `Uuid::nil()` / `Uuid::max()`, `ContextV1`/`ContextV7` + `Timestamp` generation APIs]
+- Live-read this drafting session, full contents: `crates/umbra-core/src/uuid.rs`, `src-tauri/src/commands/uuid.rs`, `src/tools/uuid/UuidView.vue`, `src/tools/uuid/uuidVersion.ts`, `src/tools/uuid/UuidView.spec.ts`, the `tools.uuid.*` + `errors.uuid-count-zero` i18n blocks in `src/locales/{en,fr}.json`, `src/shell/toolError.ts`, `src/shell/invoke.ts`, `src/shell/debounce.ts`, the `uuid` registry entry, `src/shell/icons.ts`, `crates/umbra-core/Cargo.toml` — confirming the current feature set and guards before discovery reconsiders them.
+
+## Dev Agent Record
+
+### Agent Model Used
+
+claude-sonnet-5 (Claude Code, bmad-create-story workflow)
+
+### Debug Log References
+
+- 2026-08-30 — Story context created via `bmad-create-story`. `baseline_commit` `595bb9a` verified as `origin/main`'s tip (HEAD == origin/main, working tree clean apart from untracked `.claude/workflows/`). All four UUID source files + i18n + `toolError.ts` + registry entry + `Cargo.toml` live-read in full; `uuid` crate `1.24` re-verified current via Context7. Discrepancies noted in Dev Notes (client `MAX_COUNT` vs core `MAX_COUNT`; `uuidVersion.ts` hand-sync; no `clipboardMatch`; 7 open `deferred-work.md` items). No same-epic drift — 8.1 and 8.2 are both `done`, epic-8 already `in-progress`, no epic status change.
+
+### Completion Notes List
+
+- Story context created via `bmad-create-story` (2026-08-30) — comprehensive developer guide for a Task-1-gated Epic 8 charter story, the third instance of the shape 8.1 and 8.2 proved end to end. Only Task 1 (discovery) carries real, testable acceptance criteria; Task 2's ACs are deferred to a Task 2a follow-up edit once `8-3-uuid-decision-record.md` exists, per epics.md's explicit instruction that Task 2 ACs would be fiction before the decision record is made. `baseline_commit` set to `595bb9a` (origin/main tip: Story 8.2 merged as PR #117). Current UUID implementation (core, command wrapper, view, TS enum mirror, spec, i18n, registry) live-read in full so discovery starts from confirmed fact.
+
+### File List
+
+- `_bmad-output/implementation-artifacts/8-3-reimagine-the-uuid-generator.md` (this story — NEW)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (status `backlog` → `ready-for-dev`)
+
+### Change Log
+
+| Date | Change |
+| --- | --- |
+| 2026-08-30 | Story created via `bmad-create-story`. Task-1-gated Epic 8 charter story scoped to the UUID Generator (`src/tools/uuid/UuidView.vue` + `crates/umbra-core/src/uuid.rs` + `src-tauri/src/commands/uuid.rs` + `uuidVersion.ts` + i18n). Only Task 1's AC1–5 are real; Task 2 ACs deferred to Task 2a. `sprint-status.yaml`: `8-3-reimagine-the-uuid-generator` `backlog` → `ready-for-dev`. Not committed. |

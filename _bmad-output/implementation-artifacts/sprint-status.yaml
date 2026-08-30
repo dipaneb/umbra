@@ -1212,7 +1212,16 @@ development_status:
   # feat/story-8-2-reimagine-base64-encode-decode. Next: bmad-code-review (fresh context,
   # different LLM), then review -> done.
   8-2-reimagine-base64-encode-decode: done
-  8-3-reimagine-the-uuid-generator: backlog
+  # note: story 8-3 created 2026-08-30 (bmad-create-story) -- third Epic 8 charter story,
+  # following the pattern Stories 8-1 and 8-2 proved end to end. Task-1-gated: only Task 1
+  # (discovery -> 8-3-uuid-decision-record.md) carries real ACs; Task 2's ACs are deferred to
+  # a Task 2a follow-up edit once that record exists, per epics.md. baseline_commit 595bb9a
+  # confirmed as origin/main's tip (8-2 merged as PR #117). Current UUID core
+  # (crates/umbra-core/src/uuid.rs), command wrapper (src-tauri/src/commands/uuid.rs), view
+  # (src/tools/uuid/UuidView.vue), TS enum mirror (uuidVersion.ts), spec, tools.uuid.* i18n
+  # and the registry entry live-read in full this session; uuid crate 1.24 re-verified via
+  # Context7. epic-8 already in-progress (from 8-1), no epic status change.
+  8-3-reimagine-the-uuid-generator: ready-for-dev
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog
   8-6-reimagine-nl-cron: backlog
