@@ -1221,7 +1221,13 @@ development_status:
   # (src/tools/uuid/UuidView.vue), TS enum mirror (uuidVersion.ts), spec, tools.uuid.* i18n
   # and the registry entry live-read in full this session; uuid crate 1.24 re-verified via
   # Context7. epic-8 already in-progress (from 8-1), no epic status change.
-  8-3-reimagine-the-uuid-generator: ready-for-dev
+  # note: story 8-3 moved to in-progress 2026-08-30 (bmad-dev-story). Branched
+  # feat/story-8-3-reimagine-the-uuid-generator from bf7762d (the story-creation commit; origin/main
+  # tip 595bb9a == baseline_commit, verified this session; working tree clean apart from untracked
+  # .claude/workflows/). Task-1-gated charter story: only Task 1 (discovery -> 8-3-uuid-decision-record.md)
+  # carries real ACs. Task 1 discovery method (bmad-party-mode vs bmad-forge-idea) is the developer's
+  # choice -- pending. Not committed.
+  8-3-reimagine-the-uuid-generator: in-progress
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog
   8-6-reimagine-nl-cron: backlog
