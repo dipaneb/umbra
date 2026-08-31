@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-30
+last_updated: 2026-08-31
 # note: story 8-2 code review 2026-08-30 (bmad-code-review, status "review" -> "done") --
 # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor)
 # against b151314..HEAD. 33 raw findings -> 23 after dedup -> 4 decision-needed, 8 patch,
@@ -1227,7 +1227,24 @@ development_status:
   # .claude/workflows/). Task-1-gated charter story: only Task 1 (discovery -> 8-3-uuid-decision-record.md)
   # carries real ACs. Task 1 discovery method (bmad-party-mode vs bmad-forge-idea) is the developer's
   # choice -- pending. Not committed.
-  8-3-reimagine-the-uuid-generator: in-progress
+  # note: story 8-3 moved to review 2026-08-31 (bmad-dev-story). Task 1 (bmad-party-mode discovery
+  # -> 8-3-uuid-decision-record.md; 4 cut ideas -- v1/v6, v3/v5, UUID inspector, ULID/nanoid/CUID --
+  # captured in the developer's personal backlog rather than as GitHub issues, their explicit call,
+  # logged as an AC3 deviation) and Task 2a (AC6-AC18, from a design-canvas artifact:
+  # container A enriched toolbar / format affordance F1 / download .txt+.csv+.json) done earlier
+  # this session. Task 2b implemented as 6 vertical slices, each with a developer render-review pass
+  # (several picked up mid-slice fixes -- see the story's Debug Log): (1) container A + full Epic-7
+  # tokenization + a11y fold-ins; (2) per-row Copy -> icon-button + useCopyFeedback; (3) new shared
+  # src/components/AppPopover.vue (first floating surface) + ?-on-legend v4/v7 explainer, + zebra
+  # striping; (4) format toggles (case/braces/hyphens, view-side, composing) + uuid.* persistence
+  # ("B1" -- settings store keys only, no new Settings section); (5) uuid_export command + Download
+  # format menu (.txt/.csv/.json via AppPopover). crates/umbra-core UNTOUCHED (cleanest AD-1 split
+  # in Epic 8); uuidVersion.ts + Cargo.toml uuid features untouched; TRANSLATABLE_CODES not
+  # extended. Full verification green (636 FE / 98 src-tauri + 252 + 96-ish core Rust; lint,
+  # vue-tsc, build, cargo fmt, cargo clippy --workspace --all-targets). Committed on
+  # feat/story-8-3-reimagine-the-uuid-generator (pending). Next: bmad-code-review (fresh context,
+  # different LLM), then review -> done.
+  8-3-reimagine-the-uuid-generator: review
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog
   8-6-reimagine-nl-cron: backlog

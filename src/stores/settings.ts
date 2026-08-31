@@ -56,6 +56,21 @@ function isDateTimeFormat(value: unknown): value is DateTimeFormat {
   );
 }
 
+// Story 8.3 (AC18): the first non-`shell.` namespace in this store. A tool
+// preference (the UUID output format) persisted at minimal depth — the keys
+// ride the generic "stored data → reset" list in SettingsView.vue, no
+// dedicated settings section.
+export type UuidFormatCase = "lower" | "upper";
+
+const UUID_FORMAT_CASES: readonly UuidFormatCase[] = ["lower", "upper"];
+
+function isUuidFormatCase(value: unknown): value is UuidFormatCase {
+  return (
+    typeof value === "string" &&
+    (UUID_FORMAT_CASES as readonly string[]).includes(value)
+  );
+}
+
 function toStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? [...new Set(value.filter((v): v is string => typeof v === "string"))]
@@ -80,6 +95,9 @@ const DEFAULTS = {
   clipboardSuggestionMaxCount: 3 as number,
   locale: "system" as LocaleOverride,
   dateTimeFormat: "auto" as DateTimeFormat,
+  uuidFormatCase: "lower" as UuidFormatCase,
+  uuidFormatBraces: false,
+  uuidFormatHyphens: true,
 };
 
 // This store's first numeric `shell.*` key (Story 7.8) — every prior key is a plain
@@ -121,6 +139,9 @@ export const useSettingsStore = defineStore("settings", () => {
   const clipboardSuggestionMaxCount = ref<number>(DEFAULTS.clipboardSuggestionMaxCount);
   const locale = ref<LocaleOverride>(DEFAULTS.locale);
   const dateTimeFormat = ref<DateTimeFormat>(DEFAULTS.dateTimeFormat);
+  const uuidFormatCase = ref<UuidFormatCase>(DEFAULTS.uuidFormatCase);
+  const uuidFormatBraces = ref<boolean>(DEFAULTS.uuidFormatBraces);
+  const uuidFormatHyphens = ref<boolean>(DEFAULTS.uuidFormatHyphens);
 
   async function init(): Promise<void> {
     try {
@@ -169,6 +190,16 @@ export const useSettingsStore = defineStore("settings", () => {
       dateTimeFormat.value = isDateTimeFormat(storedDateTimeFormat)
         ? storedDateTimeFormat
         : DEFAULTS.dateTimeFormat;
+      const storedUuidFormatCase = await store.get<string>("uuid.formatCase");
+      uuidFormatCase.value = isUuidFormatCase(storedUuidFormatCase)
+        ? storedUuidFormatCase
+        : DEFAULTS.uuidFormatCase;
+      uuidFormatBraces.value =
+        (await store.get<boolean>("uuid.formatBraces")) ??
+        DEFAULTS.uuidFormatBraces;
+      uuidFormatHyphens.value =
+        (await store.get<boolean>("uuid.formatHyphens")) ??
+        DEFAULTS.uuidFormatHyphens;
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -246,6 +277,30 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!backingStore) return;
     const store = backingStore;
     await store.set("shell.dateTimeFormat", value);
+    await store.save();
+  }
+
+  // One setter for the three uuid.* format keys — the view toggles them one
+  // at a time, but a single entry point keeps the write/save in one place.
+  async function setUuidFormat(patch: {
+    case?: UuidFormatCase;
+    braces?: boolean;
+    hyphens?: boolean;
+  }): Promise<void> {
+    if (patch.case !== undefined) uuidFormatCase.value = patch.case;
+    if (patch.braces !== undefined) uuidFormatBraces.value = patch.braces;
+    if (patch.hyphens !== undefined) uuidFormatHyphens.value = patch.hyphens;
+    if (!backingStore) return;
+    const store = backingStore;
+    if (patch.case !== undefined) {
+      await store.set("uuid.formatCase", uuidFormatCase.value);
+    }
+    if (patch.braces !== undefined) {
+      await store.set("uuid.formatBraces", uuidFormatBraces.value);
+    }
+    if (patch.hyphens !== undefined) {
+      await store.set("uuid.formatHyphens", uuidFormatHyphens.value);
+    }
     await store.save();
   }
 
@@ -348,6 +403,15 @@ export const useSettingsStore = defineStore("settings", () => {
       case "shell.dateTimeFormat":
         dateTimeFormat.value = DEFAULTS.dateTimeFormat;
         break;
+      case "uuid.formatCase":
+        uuidFormatCase.value = DEFAULTS.uuidFormatCase;
+        break;
+      case "uuid.formatBraces":
+        uuidFormatBraces.value = DEFAULTS.uuidFormatBraces;
+        break;
+      case "uuid.formatHyphens":
+        uuidFormatHyphens.value = DEFAULTS.uuidFormatHyphens;
+        break;
     }
     if (!backingStore) return;
     const store = backingStore;
@@ -370,6 +434,9 @@ export const useSettingsStore = defineStore("settings", () => {
     clipboardSuggestionMaxCount.value = DEFAULTS.clipboardSuggestionMaxCount;
     locale.value = DEFAULTS.locale;
     dateTimeFormat.value = DEFAULTS.dateTimeFormat;
+    uuidFormatCase.value = DEFAULTS.uuidFormatCase;
+    uuidFormatBraces.value = DEFAULTS.uuidFormatBraces;
+    uuidFormatHyphens.value = DEFAULTS.uuidFormatHyphens;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -390,6 +457,9 @@ export const useSettingsStore = defineStore("settings", () => {
     clipboardSuggestionMaxCount,
     locale,
     dateTimeFormat,
+    uuidFormatCase,
+    uuidFormatBraces,
+    uuidFormatHyphens,
     init,
     setRestoreEnabled,
     setThemeOverride,
@@ -400,6 +470,7 @@ export const useSettingsStore = defineStore("settings", () => {
     setClipboardSuggestionMaxCount,
     setLocale,
     setDateTimeFormat,
+    setUuidFormat,
     togglePinned,
     recordRecentTool,
     recordLastTool,

@@ -775,4 +775,69 @@ describe("useSettingsStore", () => {
     await expect(settings.entries()).resolves.toEqual([]);
     expect(fakeStore.set).not.toHaveBeenCalled();
   });
+
+  // Story 8.3 (AC18): the uuid.* format keys — the first non-shell.* namespace.
+  it("defaults the uuid.* format keys to lowercase / no braces / hyphens kept", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.uuidFormatCase).toBe("lower");
+    expect(settings.uuidFormatBraces).toBe(false);
+    expect(settings.uuidFormatHyphens).toBe(true);
+  });
+
+  it("setUuidFormat persists only the touched keys and updates the refs", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setUuidFormat({ case: "upper", braces: true });
+
+    expect(settings.uuidFormatCase).toBe("upper");
+    expect(settings.uuidFormatBraces).toBe(true);
+    expect(settings.uuidFormatHyphens).toBe(true);
+    expect(fakeStore.set).toHaveBeenCalledWith("uuid.formatCase", "upper");
+    expect(fakeStore.set).toHaveBeenCalledWith("uuid.formatBraces", true);
+    expect(fakeStore.set).not.toHaveBeenCalledWith(
+      "uuid.formatHyphens",
+      expect.anything(),
+    );
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("falls back to the default when a persisted uuid.formatCase value is invalid", async () => {
+    fakeStore.set("uuid.formatCase", "TitleCase");
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.uuidFormatCase).toBe("lower");
+  });
+
+  it("resetKey resets a uuid.* format key and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setUuidFormat({ hyphens: false });
+
+    await settings.resetKey("uuid.formatHyphens");
+
+    expect(settings.uuidFormatHyphens).toBe(true);
+    expect(fakeStore.delete).toHaveBeenCalledWith("uuid.formatHyphens");
+    await expect(settings.entries()).resolves.not.toContainEqual([
+      "uuid.formatHyphens",
+      false,
+    ]);
+  });
+
+  it("clearAll resets the uuid.* format keys to their defaults", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setUuidFormat({ case: "upper", braces: true, hyphens: false });
+
+    await settings.clearAll();
+
+    expect(settings.uuidFormatCase).toBe("lower");
+    expect(settings.uuidFormatBraces).toBe(false);
+    expect(settings.uuidFormatHyphens).toBe(true);
+  });
 });
