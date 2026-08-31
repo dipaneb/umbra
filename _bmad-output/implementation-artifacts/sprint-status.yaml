@@ -1244,7 +1244,28 @@ development_status:
   # vue-tsc, build, cargo fmt, cargo clippy --workspace --all-targets). Committed on
   # feat/story-8-3-reimagine-the-uuid-generator (pending). Next: bmad-code-review (fresh context,
   # different LLM), then review -> done.
-  8-3-reimagine-the-uuid-generator: review
+  # note: story 8-3 code review 2026-08-31 (bmad-code-review, "review" -> "done"). Three parallel
+  # adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) vs git diff main...HEAD
+  # (merge-base 595bb9a == baseline_commit). ~28 raw -> 18 deduped -> 6 decision-needed (resolved
+  # with the developer: 5 patch, 1 defer), 15 patches total, 2 dismissed. No layer failed. AC
+  # verdicts: AC6/8/11-14/16-18 SATISFIED; AC7/9/15 were PARTIAL and AC10 VIOLATED ("first and only
+  # consumer" -- AppPopover wired twice) -- all resolved by amending the AC text in place (Amended
+  # discipline) plus code. Patches applied + verified (FE lint/vue-tsc/test 640 (+4)/build; Rust
+  # fmt/clippy/test 98 + 252 + core, untouched): AppPopover Escape now panel-scoped not a
+  # capture-phase document listener (was swallowing Escape app-wide); AppPopover slot bool open->
+  # isOpen + close({returnFocus}) + focusTrigger wrapper fallback; UuidView clientError cleared on
+  # Download/Copy paths; role=status announcement moved to an always-present .sr-only clear-then-set
+  # region; download blob snapshotted before await save(); h4->h2 in the explainer; .help-dot hit
+  # area 16->24px; result count digit-grouped; stale per-row "copied" cleared on regenerate/format
+  # toggle; .results overflow:hidden dropped (was clipping the Download popover) w/ last-row corner
+  # rounding; settings.ts uuid.formatBraces/Hyphens type-guarded on load; AC7 tokenisation --
+  # --spacing-0-5 (2px) + --spacing-1-5 (6px) added to tokens.css + DESIGN.md, control paddings +
+  # 6px radius switched to tokens, two untokenised box-shadow lifts dropped. 1 DEFERRED to
+  # deferred-work.md: AppPopover light/dark --shadow-floating validation needs the developer's own
+  # render-review. Still deferred + unaddressed: the two pre-existing deferred-work app-wide items
+  # (concurrent Copy/Copy-all guard; CommandPalette.spec.ts coupling). All review patches are
+  # UNCOMMITTED working-tree changes on feat/story-8-3-reimagine-the-uuid-generator.
+  8-3-reimagine-the-uuid-generator: done
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog
   8-6-reimagine-nl-cron: backlog

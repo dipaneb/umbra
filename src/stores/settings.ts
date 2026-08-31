@@ -71,6 +71,13 @@ function isUuidFormatCase(value: unknown): value is UuidFormatCase {
   );
 }
 
+// The two uuid.* boolean keys — like every enum/numeric key in this store,
+// validated on load rather than trusted, so a hand-edited settings.json
+// holding "false" / 0 for a boolean can't reach applyFormat() or :aria-pressed.
+function asBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 function toStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? [...new Set(value.filter((v): v is string => typeof v === "string"))]
@@ -194,12 +201,14 @@ export const useSettingsStore = defineStore("settings", () => {
       uuidFormatCase.value = isUuidFormatCase(storedUuidFormatCase)
         ? storedUuidFormatCase
         : DEFAULTS.uuidFormatCase;
-      uuidFormatBraces.value =
-        (await store.get<boolean>("uuid.formatBraces")) ??
-        DEFAULTS.uuidFormatBraces;
-      uuidFormatHyphens.value =
-        (await store.get<boolean>("uuid.formatHyphens")) ??
-        DEFAULTS.uuidFormatHyphens;
+      uuidFormatBraces.value = asBoolean(
+        await store.get("uuid.formatBraces"),
+        DEFAULTS.uuidFormatBraces,
+      );
+      uuidFormatHyphens.value = asBoolean(
+        await store.get("uuid.formatHyphens"),
+        DEFAULTS.uuidFormatHyphens,
+      );
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);

@@ -68,17 +68,36 @@ describe("AppPopover", () => {
     expect(panel(wrapper!).exists()).toBe(false);
   });
 
-  it("closes on Escape and returns focus to the trigger", async () => {
+  it("closes on Escape from within the panel and returns focus to the trigger", async () => {
     mountHarness();
 
     await trigger(wrapper!).trigger("click");
     await flushPromises();
 
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    // Escape is handled by a listener on the panel (which holds focus while
+    // open), not a document listener — so it never swallows Escape app-wide.
+    await panel(wrapper!).trigger("keydown", { key: "Escape" });
     await flushPromises();
 
     expect(panel(wrapper!).exists()).toBe(false);
     expect(document.activeElement).toBe(trigger(wrapper!).element);
+  });
+
+  it("does not consume Escape at the document level while open", async () => {
+    mountHarness();
+    await trigger(wrapper!).trigger("click");
+    await flushPromises();
+
+    let sawEscape = false;
+    const spy = () => {
+      sawEscape = true;
+    };
+    document.addEventListener("keydown", spy);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    document.removeEventListener("keydown", spy);
+
+    expect(sawEscape).toBe(true);
+    expect(panel(wrapper!).exists()).toBe(true);
   });
 
   it("closes on an outside pointer press without stealing focus back", async () => {
@@ -93,7 +112,7 @@ describe("AppPopover", () => {
     expect(panel(wrapper!).exists()).toBe(false);
   });
 
-  it("stops listening on unmount", async () => {
+  it("tears down the outside-pointerdown listener on unmount", async () => {
     mountHarness();
     await trigger(wrapper!).trigger("click");
     await flushPromises();
@@ -101,9 +120,9 @@ describe("AppPopover", () => {
     wrapper!.unmount();
     wrapper = undefined;
 
-    // No throw from a late Escape now that the listener is gone.
+    // No throw from a late outside press now that the listener is gone.
     expect(() =>
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })),
+      document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })),
     ).not.toThrow();
   });
 });

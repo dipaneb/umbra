@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -48,15 +48,30 @@ const alertMessage = computed(() =>
   clientError.value ?? (error.value ? toolErrorMessage(error.value, t) : null),
 );
 
-// AC15: a successful batch render is announced to assistive tech via the
-// role="status" region below — errors already get role="alert". Manual
-// one/other selection, matching the JSON tool's `treeItemsCountOther`
-// convention (the codebase doesn't use vue-i18n's `|` plural syntax).
+// The visible count in the results-panel header. Manual one/other selection,
+// matching the JSON tool's `treeItemsCountOther` convention (the codebase
+// doesn't use vue-i18n's `|` plural syntax). Digit-grouped like every other
+// number the view renders (cf. `countOutOfRange`).
 const resultCountLabel = computed(() =>
   results.value.length === 1
     ? t("tools.uuid.resultCountOne")
-    : t("tools.uuid.resultCountOther", { count: results.value.length }),
+    : t("tools.uuid.resultCountOther", {
+        count: n(results.value.length, "grouped"),
+      }),
 );
+
+// AC15: a successful batch render is announced to assistive tech. The live
+// region below is ALWAYS in the DOM (a live region added together with its
+// text is not reliably announced by NVDA/JAWS), and this clears-then-sets it
+// so an identical count two runs in a row still produces a text change and
+// re-announces.
+const resultsAnnouncement = ref("");
+
+async function announceResults(): Promise<void> {
+  resultsAnnouncement.value = "";
+  await nextTick();
+  resultsAnnouncement.value = resultCountLabel.value;
+}
 
 // AC11 / AC12: the format toggles are pure view-side string transforms over
 // umbra-core's canonical lowercase-hyphenated output — no core function, no
@@ -81,7 +96,9 @@ type DownloadFormat = "txt" | "csv" | "json";
 
 const DOWNLOAD_FORMATS: readonly DownloadFormat[] = ["txt", "csv", "json"];
 const downloading = ref(false);
-const downloadMenu = ref<{ close: () => void } | null>(null);
+const downloadMenu = ref<{
+  close: (opts?: { returnFocus?: boolean }) => void;
+} | null>(null);
 
 function buildExport(format: DownloadFormat): string {
   const rows = formattedResults.value;
@@ -97,9 +114,15 @@ function buildExport(format: DownloadFormat): string {
 }
 
 async function onDownload(format: DownloadFormat) {
-  downloadMenu.value?.close();
+  downloadMenu.value?.close(); // returns focus to the Download trigger
   if (downloading.value) return;
   error.value = null;
+  clientError.value = null;
+  // Snapshot the blob up front: a non-modal save dialog on some platform
+  // could let the list or the format settings change while it is open, and
+  // the bytes written must match what the user asked for (cf. Base64View's
+  // onSaveAsFile / code-review P4).
+  const content = buildExport(format);
   downloading.value = true;
   try {
     const path = await save({
@@ -107,7 +130,7 @@ async function onDownload(format: DownloadFormat) {
       filters: [{ name: format.toUpperCase(), extensions: [format] }],
     });
     if (path === null) return; // user cancelled — not an error
-    await invoke("uuid_export", { content: buildExport(format), path });
+    await invoke("uuid_export", { content, path });
   } catch (err) {
     error.value = toToolError(err);
   } finally {
@@ -122,7 +145,14 @@ watch(version, () => {
   results.value = [];
   error.value = null;
   clientError.value = null;
+  resultsAnnouncement.value = "";
 });
+
+// A per-row "copied" confirmation is keyed by row index, so once the string
+// at that index changes — a new batch, or a format toggle — the lingering
+// check icon would sit on a value the user never copied. Drop it whenever
+// the rendered list changes.
+watch(formattedResults, cancelCopyFeedback);
 
 async function onGenerate() {
   error.value = null;
@@ -147,6 +177,7 @@ async function onGenerate() {
     );
     if (!result.superseded && version.value === requestedVersion) {
       results.value = result.value;
+      void announceResults();
     }
   } catch (err) {
     if (version.value === requestedVersion) {
@@ -160,6 +191,7 @@ async function onGenerate() {
 
 async function onCopyOne(uuid: string, index: number) {
   error.value = null;
+  clientError.value = null;
   try {
     await writeClipboardText(uuid);
     // Confirm only after the write actually succeeds — a failed write has
@@ -172,6 +204,7 @@ async function onCopyOne(uuid: string, index: number) {
 
 async function onCopyAll() {
   error.value = null;
+  clientError.value = null;
   try {
     await writeClipboardText(formattedResults.value.join("\n"));
   } catch (err) {
@@ -212,9 +245,9 @@ async function onCopyAll() {
                 ?
               </button>
             </template>
-            <h4 class="popover-heading">
+            <h2 class="popover-heading">
               {{ t('tools.uuid.versionHelpHeading') }}
-            </h4>
+            </h2>
             <dl class="version-help">
               <dt>v4</dt>
               <dd>{{ t('tools.uuid.versionHelpV4') }}</dd>
@@ -281,16 +314,22 @@ async function onCopyAll() {
       {{ alertMessage }}
     </p>
 
+    <!-- AC15: always-present polite live region — a region inserted together
+         with its text is not reliably announced. -->
+    <p
+      class="sr-only"
+      role="status"
+      aria-live="polite"
+    >
+      {{ resultsAnnouncement }}
+    </p>
+
     <div
       v-if="results.length"
       class="results"
     >
       <div class="results-head">
-        <span
-          class="results-count"
-          role="status"
-          aria-live="polite"
-        >{{ resultCountLabel }}</span>
+        <span class="results-count">{{ resultCountLabel }}</span>
 
         <!-- AC11: output-format controls live on the results-panel header
              (they transform what's already generated, not the generation).
@@ -437,13 +476,23 @@ h1 {
 }
 
 /* AC6: the enriched toolbar. align-items:flex-end so the Generate button and
-   the count input sit on the same baseline as the segmented control. */
+   the count input sit on the same bottom edge as the segmented control.
+   --control-h unifies the height of the three inline controls (segmented /
+   number input / Generate) — a UI-review fix, they were 37.5 / 33.5 / 29.5px.
+   34px is the number input's natural height at the system's standard input
+   padding; the other two are matched to it. */
 .toolbar {
+  --control-h: 34px;
   display: flex;
   align-items: flex-end;
   gap: var(--spacing-4);
   flex-wrap: wrap;
   margin-bottom: var(--spacing-4);
+}
+
+.toolbar .count-field input,
+.toolbar :deep(.app-button) {
+  min-height: var(--control-h);
 }
 
 .version-field {
@@ -467,31 +516,45 @@ h1 {
   color: var(--color-text-secondary);
 }
 
+/* 24x24 hit area (matches .row-copy) with a 16px visible ring inset inside
+   it — an inline help affordance shouldn't be a sub-target-size tap. */
 .help-dot {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border: 1px solid var(--color-border-hairline);
-  border-radius: var(--radius-full);
+  border: none;
   background: none;
   color: var(--color-text-secondary);
-  font-size: 10px;
+  font-size: var(--font-caption-size);
   font-weight: var(--font-label-weight);
   line-height: 1;
   cursor: pointer;
 }
 
+.help-dot::before {
+  content: "";
+  position: absolute;
+  inset: var(--spacing-1);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-full);
+}
+
 .help-dot:hover {
   color: var(--color-text-primary);
+}
+
+.help-dot:hover::before {
   border-color: var(--color-text-secondary);
 }
 
 .help-dot:focus-visible {
   outline: 2px solid var(--color-accent-signature);
   outline-offset: 1px;
+  border-radius: var(--radius-full);
 }
 
 .popover-heading {
@@ -520,21 +583,28 @@ h1 {
   color: var(--color-text-secondary);
 }
 
+/* Concentric radii: inner = outer − padding. Track radius --radius-lg (8px)
+   with --spacing-1 (4px) padding → inner label radius --radius-default (4px).
+   The 4px track padding also brings the control's height in line with the
+   number input / Generate button (all --control-h). */
 .segmented {
   display: inline-flex;
-  gap: 3px;
-  padding: 3px;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1);
+  min-height: var(--control-h);
   background: var(--color-accent-neutral-chip);
   border-radius: var(--radius-lg);
 }
 
 .segmented label {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
+  align-self: stretch;
   gap: 0.35em;
-  padding: 6px 14px;
+  padding: 0 var(--spacing-4);
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-default);
   font-family: var(--font-label-family);
   font-size: var(--font-label-size);
   font-weight: var(--font-label-weight);
@@ -549,12 +619,13 @@ h1 {
 }
 
 /* The raised "card" is the active label itself — its bounds are just its
-   own text plus padding, so it grows with the label in any language. */
+   own text plus padding, so it grows with the label in any language. The
+   surface + hairline border carry the lift (DESIGN.md: persistent surfaces
+   use a border, not a shadow). */
 .segmented label.active {
   color: var(--color-text-primary);
   background: var(--color-bg-surface);
   border-color: var(--color-border-hairline);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .segmented label:focus-within {
@@ -608,13 +679,28 @@ h1 {
   margin: 0 0 var(--spacing-4);
 }
 
+/* Announce-only live region (AC15) — present in the DOM at all times, never
+   shown. Standard clip pattern (cf. AppSidebar's `.visually-hidden`). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 /* AC6: a bordered results panel with a header (count + Copy all) over the
-   list. Persistent surface → hairline border, no shadow (DESIGN.md). */
+   list. Persistent surface → hairline border, no shadow (DESIGN.md).
+   No `overflow: hidden` — it would clip the Download menu's popover when the
+   result list is short; the last row rounds its own bottom corners instead. */
 .results {
   border: 1px solid var(--color-border-hairline);
   border-radius: var(--radius-default);
   background: var(--color-bg-surface);
-  overflow: hidden;
 }
 
 .results-head {
@@ -643,8 +729,8 @@ h1 {
 
 .case-toggle {
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
+  gap: var(--spacing-0-5);
+  padding: var(--spacing-0-5);
   background: var(--color-accent-neutral-chip);
   border-radius: var(--radius-default);
 }
@@ -653,7 +739,8 @@ h1 {
   position: relative;
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: var(--spacing-0-5) var(--spacing-2);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font-family: var(--font-label-family);
   font-size: var(--font-caption-size);
@@ -666,7 +753,7 @@ h1 {
 .case-toggle label.active {
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  border-color: var(--color-border-hairline);
 }
 
 .case-toggle label:focus-within {
@@ -686,7 +773,7 @@ h1 {
 .fmt-chip {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
+  padding: var(--spacing-0-5) var(--spacing-2);
   border: 1px solid var(--color-border-hairline);
   border-radius: var(--radius-full);
   background: none;
@@ -757,13 +844,13 @@ h1 {
 .download-menu-item {
   display: block;
   width: 100%;
-  padding: 4px 8px;
+  padding: var(--spacing-1) var(--spacing-2);
   border: none;
   border-radius: var(--radius-sm);
   background: none;
   font-family: var(--font-code-family);
   font-size: var(--font-body-size);
-  line-height: 1.3;
+  line-height: var(--font-code-line-height);
   color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
@@ -789,6 +876,13 @@ h1 {
   align-items: center;
   gap: var(--spacing-3);
   padding: var(--spacing-1) var(--spacing-3);
+}
+
+/* Round the last row's bottom corners itself, since .results no longer
+   clips (so the Download popover isn't clipped when the list is short). */
+.results-list li:last-child {
+  border-bottom-right-radius: var(--radius-default);
+  border-bottom-left-radius: var(--radius-default);
 }
 
 /* Zebra striping: on a wide pane the per-row Copy button sits far from its

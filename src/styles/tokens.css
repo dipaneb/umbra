@@ -60,6 +60,11 @@
 
   /* Spacing (DESIGN.md `spacing`) */
   --spacing-unit: 4px;
+  /* Half-step (Story 8.3 code review): the 4px base has no room for the
+     internal padding of genuinely compact controls — the case toggle, a
+     chip. One fractional step on the same 4px unit (0.5×) rather than a
+     scatter of freehand px. */
+  --spacing-0-5: 2px;
   --spacing-1: 4px;
   --spacing-2: 8px;
   --spacing-3: 12px;

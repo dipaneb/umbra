@@ -8,6 +8,16 @@
 //    placement clips in some layout, the consumer picks another.
 // A `v-model:open` escape hatch is intentionally not added until a second
 // consumer needs it.
+//
+// Story 8.3 code review (2026-08-31):
+//  - the #trigger slot exposes the open state as `isOpen` (not `open`) so it
+//    can't be confused with the imperative `open()` on the instance;
+//  - `close()` on the instance takes `{ returnFocus }` (default true) so a
+//    consumer that closes the popover programmatically — e.g. after picking a
+//    menu item — restores focus to the trigger instead of dropping it to
+//    <body>;
+//  - Escape is handled by a listener on the panel, not a capture-phase
+//    document listener, so an open popover never swallows Escape app-wide.
 import { computed, nextTick, onBeforeUnmount, ref, useId } from "vue";
 
 type Placement =
@@ -42,42 +52,46 @@ const triggerProps = computed(() => ({
 }));
 
 function focusTrigger() {
-  triggerWrapEl.value
-    ?.querySelector<HTMLElement>('button, a[href], input, [tabindex]')
-    ?.focus();
+  const wrap = triggerWrapEl.value;
+  if (!wrap) return;
+  // Prefer a natively focusable descendant (every consumer today wires a
+  // <button>); fall back to the wrapper itself so focus is never dropped to
+  // <body> even for a non-focusable custom trigger.
+  const focusable = wrap.querySelector<HTMLElement>(
+    "button, a[href], input, select, textarea, [tabindex]",
+  );
+  (focusable ?? wrap).focus();
 }
 
 function onDocPointerDown(event: PointerEvent) {
-  if (!rootEl.value?.contains(event.target as Node)) close(false);
+  if (!rootEl.value?.contains(event.target as Node)) close({ returnFocus: false });
 }
 
-function onDocKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape") {
-    event.stopPropagation();
-    close(true);
-  }
+// Scoped to the panel (which holds focus while open, directly or via a
+// focused descendant) — NOT a capture-phase document listener, so an open
+// popover never consumes Escape for the rest of the app.
+function onPanelKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") close({ returnFocus: true });
 }
 
 function openPopover() {
   if (open.value) return;
   open.value = true;
-  // Capture phase so an outside pointerdown / Escape is caught before other
-  // handlers act on it.
+  // Capture phase so an outside pointerdown is seen before other handlers
+  // act on it. pointerdown only — no stopPropagation, no keyboard.
   document.addEventListener("pointerdown", onDocPointerDown, true);
-  document.addEventListener("keydown", onDocKeydown, true);
   void nextTick(() => panelEl.value?.focus());
 }
 
-function close(returnFocus: boolean) {
+function close(opts: { returnFocus?: boolean } = {}) {
   if (!open.value) return;
   open.value = false;
   document.removeEventListener("pointerdown", onDocPointerDown, true);
-  document.removeEventListener("keydown", onDocKeydown, true);
-  if (returnFocus) focusTrigger();
+  if (opts.returnFocus) focusTrigger();
 }
 
 function toggle() {
-  if (open.value) close(true);
+  if (open.value) close({ returnFocus: true });
   else openPopover();
 }
 
@@ -87,15 +101,19 @@ function toggle() {
 function onPanelFocusOut(event: FocusEvent) {
   const next = event.relatedTarget as Node | null;
   if (next && rootEl.value?.contains(next)) return;
-  close(false);
+  close({ returnFocus: false });
 }
 
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDocPointerDown, true);
-  document.removeEventListener("keydown", onDocKeydown, true);
 });
 
-defineExpose({ open: openPopover, close: () => close(false), toggle });
+defineExpose({
+  open: openPopover,
+  close: (opts: { returnFocus?: boolean } = {}) =>
+    close({ returnFocus: opts.returnFocus ?? true }),
+  toggle,
+});
 </script>
 
 <template>
@@ -110,8 +128,8 @@ defineExpose({ open: openPopover, close: () => close(false), toggle });
       <slot
         name="trigger"
         :toggle="toggle"
-        :open="open"
-        :close="() => close(true)"
+        :is-open="open"
+        :close="() => close({ returnFocus: true })"
         :trigger-props="triggerProps"
       />
     </span>
@@ -126,6 +144,7 @@ defineExpose({ open: openPopover, close: () => close(false), toggle });
         role="dialog"
         :aria-label="props.label"
         tabindex="-1"
+        @keydown="onPanelKeydown"
         @focusout="onPanelFocusOut"
       >
         <slot />

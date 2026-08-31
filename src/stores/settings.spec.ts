@@ -814,6 +814,17 @@ describe("useSettingsStore", () => {
     expect(settings.uuidFormatCase).toBe("lower");
   });
 
+  it("falls back to the default when a persisted uuid.* boolean is not a boolean", async () => {
+    fakeStore.set("uuid.formatBraces", "false"); // hand-edited string, not a bool
+    fakeStore.set("uuid.formatHyphens", 0);
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.uuidFormatBraces).toBe(false);
+    expect(settings.uuidFormatHyphens).toBe(true);
+  });
+
   it("resetKey resets a uuid.* format key and deletes it from disk", async () => {
     const settings = useSettingsStore();
     await settings.init();

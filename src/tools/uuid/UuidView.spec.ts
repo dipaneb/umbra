@@ -252,6 +252,54 @@ describe("UuidView", () => {
     );
   });
 
+  it("drops a stale per-row copied confirmation when a format toggle changes the row (code review F14)", async () => {
+    invokeMock.mockResolvedValueOnce(["a-b", "c-d"]);
+    writeTextMock.mockResolvedValue(undefined);
+    mountView();
+
+    await countInput(wrapper!).setValue(2);
+    await clickButton(wrapper!, "Generate");
+    await flushPromises();
+
+    const firstCopy = () => resultRows(wrapper!)[0].find("button.row-copy");
+    await firstCopy().trigger("click");
+    await flushPromises();
+    expect(firstCopy().attributes("aria-label")).toBe("Copied");
+
+    // Toggling a format re-renders row 0 to a different string — the lingering
+    // check must clear rather than sit on a value the user never copied.
+    await wrapper!
+      .find('input[name="uuid-format-case"][aria-label="Uppercase"]')
+      .setValue();
+    expect(firstCopy().attributes("aria-label")).toBe("Copy to clipboard");
+  });
+
+  it("surfaces a failed download's error even when a prior client-guard error is still on screen (code review F1)", async () => {
+    invokeMock.mockResolvedValueOnce(["a-b", "c-d"]);
+    mountView();
+
+    await countInput(wrapper!).setValue(2);
+    await clickButton(wrapper!, "Generate");
+    await flushPromises();
+
+    // Client-guard failure: leaves the result list up, shows a client error.
+    await countInput(wrapper!).setValue("");
+    await clickButton(wrapper!, "Generate");
+    await flushPromises();
+    expect(wrapper!.find(".alert").text()).toContain("Enter");
+
+    // A failed download must replace that stale message, not hide behind it.
+    saveMock.mockResolvedValueOnce("/tmp/uuids.txt");
+    invokeMock.mockRejectedValueOnce({
+      code: "file-write-error",
+      message: "disk full",
+      position: null,
+    });
+    await chooseDownload(wrapper!, "txt");
+
+    expect(wrapper!.find(".alert").text()).toContain("disk full");
+  });
+
   it("copies all results newline-joined via Copy all", async () => {
     invokeMock.mockResolvedValueOnce(["a", "b", "c"]);
     writeTextMock.mockResolvedValueOnce(undefined);
