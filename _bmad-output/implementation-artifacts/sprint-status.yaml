@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-31
+last_updated: 2026-08-31  # story 8-4 moved to in-progress (bmad-dev-story)
 # note: story 8-2 code review 2026-08-30 (bmad-code-review, status "review" -> "done") --
 # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor)
 # against b151314..HEAD. 33 raw findings -> 23 after dedup -> 4 decision-needed, 8 patch,
@@ -1266,7 +1266,60 @@ development_status:
   # (concurrent Copy/Copy-all guard; CommandPalette.spec.ts coupling). All review patches are
   # UNCOMMITTED working-tree changes on feat/story-8-3-reimagine-the-uuid-generator.
   8-3-reimagine-the-uuid-generator: done
-  8-4-reimagine-the-hash-generator: backlog
+  # note: story 8-4 created 2026-08-31 (bmad-create-story) -- fourth Epic 8 charter story,
+  # following the pattern Stories 8-1/8-2/8-3 proved end to end. Task-1-gated: only Task 1
+  # (discovery -> 8-4-hash-decision-record.md) carries real ACs; Task 2's ACs are deferred to
+  # a Task 2a follow-up edit once that record exists, per epics.md. baseline_commit d428db9
+  # confirmed as origin/main's tip (8-3 merged as PR #118; 42 stale local branches pruned same
+  # session). Current Hash core (crates/umbra-core/src/hash.rs, 9 tests), both command wrappers
+  # (src-tauri/src/commands/hash.rs -- hash_compute + hash_compute_file, 6 tests), view
+  # (src/tools/hash/HashView.vue, 100% pre-Epic-7), TS struct mirror (hashDigests.ts), spec
+  # (10 tests), tools.hash.* i18n, the registry drop entry, and lib.rs handler registration
+  # live-read in full this session. Distinctive vs 8-3: Hash already has a file/drop path
+  # (AD-14/AD-16 shared runner), already touches the filesystem (AD-15 read side), and already
+  # ships the case toggle 8-3 had to add. epic-8 already in-progress (from 8-1), no epic status
+  # change. hash crates sha2/sha1/md-5 0.11 to re-verify via Context7 at discovery start.
+  # note: story 8-4 moved to in-progress 2026-08-31 (bmad-dev-story). Branched
+  # feat/story-8-4-reimagine-the-hash-generator from d428db9 (origin/main tip == baseline_commit,
+  # verified this session: HEAD == origin/main, tree clean apart from the untracked story file,
+  # the sprint-status edit, and the pre-existing untracked .claude/workflows/). The story file
+  # was never committed at creation (unlike 8-3's bf7762d) -- it and this sprint-status edit ride
+  # the working tree onto the new branch. Task-1-gated charter story: only Task 1 (discovery ->
+  # 8-4-hash-decision-record.md) carries real ACs. Task 0 (branch) done. Task 1 discovery method
+  # (bmad-party-mode vs bmad-forge-idea) is the developer's choice -- pending, halted here for it.
+  # Not committed.
+  # note: story 8-4 Task 1 done 2026-08-31 (bmad-dev-story). Developer chose bmad-party-mode
+  # (installed roster, party memory resumed the 8.1/8.2/8.3 history). No drift found vs the story
+  # Dev Notes (stated in the record). Published a container-shape design canvas as an Artifact
+  # (claude.ai/code/artifact/c928d06d-a86d-4e32-8ad5-a8764fd3af67, 6 artboards / 3 pages).
+  # Developer decided: enriched single view (Option 1) + smart paste-detection that MOVES a
+  # bare-hash input into a persistent Verify field with a VISIBLE acknowledgement (no silent
+  # swap, AD-9); Verify/compare mode (mismatch = role=status result, not a role=alert error, no
+  # new error codes); SHA3-256 + SHA3-512 added via the sha3 crate; user-selects algorithms via
+  # checkboxes (default SHA-256+SHA-512, persisted hash.* per the 8.3 uuid.* pattern) -> core
+  # HashDigests{4 named fields} reshaped to an Algorithm enum + Vec<DigestEntry>, hash_compute/
+  # hash_compute_file signatures gain an algorithm list, hash_compute_file gains a
+  # dropArgsProvider; hex + Base64 output encoding (both view-side transforms); live
+  # as-you-type hashing (debounced + length ceiling) replaces the Compute button; MD5/SHA-1
+  # relabelled "not collision-resistant". FR14 revised+expanded, FR15 kept+extended.
+  # TRANSLATABLE_CODES NOT extended (no new umbra-core error paths). AC3 deviation logged
+  # (developer: nothing filed to GitHub / a tracked backlog -- 8.3 precedent; cut ideas
+  # [BLAKE2b/BLAKE3, byte-grouped hex, 0x prefix, HMAC, a signature tool, digest-export]
+  # documented in the record's Cut section only). Cross-tool fs_helper TOCTOU + multi-file-drop
+  # flagged as governance/shell follow-ups, not folded. Decision record:
+  # 8-4-hash-decision-record.md. Next: Task 2a (real AC6+, same room, scoped to the record + a
+  # polished UUID-8.3-fidelity canvas), then developer sign-off before Task 2b. Not committed.
+  # note: story 8-4 Task 2a done 2026-09-01 (bmad-dev-story). Design canvas re-seeded to
+  # delivery fidelity (4 artboards: Default / Verify active / Smart-detection offer / After
+  # "Move it to Verify" -- the acknowledgement is two-ended: a note where the value left + a
+  # tinted Verify panel where it landed + Undo). AC6-AC20 (15 ACs) written into the story file's
+  # "Acceptance Criteria -- Task 2 (Redesign)" section. Open items resolved: Verify checks
+  # against EVERY selected algorithm (no disambiguation needed); case+encoding = two composing
+  # persisted segmented controls; digest export CONFIRMED OUT. Algorithm serde naming + sha3
+  # patch pin -> Task 2b. Developer signed off on the AC set 2026-09-01. Story stays in-progress
+  # -- Task 2b (per-slice implementation, developer render-review each slice, commit per slice,
+  # ask before pushing) is the remaining work, not yet started. Not committed.
+  8-4-reimagine-the-hash-generator: in-progress
   8-5-reimagine-the-jwt-inspector: backlog
   8-6-reimagine-nl-cron: backlog
   8-7-reimagine-the-bucket-ocr: backlog
