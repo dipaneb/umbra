@@ -19,7 +19,7 @@ use commands::json::{
 };
 use commands::jwt::jwt_decode;
 use commands::pdf::{bucket_extract_pdf_pages, bucket_extract_pdf_text, bucket_merge_pdfs};
-use commands::uuid::uuid_generate;
+use commands::uuid::{uuid_export, uuid_generate};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -59,6 +59,7 @@ pub fn run() {
             base64_ingest_file,
             base64_decode_to_file,
             uuid_generate,
+            uuid_export,
             hash_compute,
             hash_compute_file,
             bucket_extract_text,

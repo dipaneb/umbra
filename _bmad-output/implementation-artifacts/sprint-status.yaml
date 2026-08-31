@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-30
+last_updated: 2026-08-31
 # note: story 8-2 code review 2026-08-30 (bmad-code-review, status "review" -> "done") --
 # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor)
 # against b151314..HEAD. 33 raw findings -> 23 after dedup -> 4 decision-needed, 8 patch,
@@ -1212,7 +1212,60 @@ development_status:
   # feat/story-8-2-reimagine-base64-encode-decode. Next: bmad-code-review (fresh context,
   # different LLM), then review -> done.
   8-2-reimagine-base64-encode-decode: done
-  8-3-reimagine-the-uuid-generator: backlog
+  # note: story 8-3 created 2026-08-30 (bmad-create-story) -- third Epic 8 charter story,
+  # following the pattern Stories 8-1 and 8-2 proved end to end. Task-1-gated: only Task 1
+  # (discovery -> 8-3-uuid-decision-record.md) carries real ACs; Task 2's ACs are deferred to
+  # a Task 2a follow-up edit once that record exists, per epics.md. baseline_commit 595bb9a
+  # confirmed as origin/main's tip (8-2 merged as PR #117). Current UUID core
+  # (crates/umbra-core/src/uuid.rs), command wrapper (src-tauri/src/commands/uuid.rs), view
+  # (src/tools/uuid/UuidView.vue), TS enum mirror (uuidVersion.ts), spec, tools.uuid.* i18n
+  # and the registry entry live-read in full this session; uuid crate 1.24 re-verified via
+  # Context7. epic-8 already in-progress (from 8-1), no epic status change.
+  # note: story 8-3 moved to in-progress 2026-08-30 (bmad-dev-story). Branched
+  # feat/story-8-3-reimagine-the-uuid-generator from bf7762d (the story-creation commit; origin/main
+  # tip 595bb9a == baseline_commit, verified this session; working tree clean apart from untracked
+  # .claude/workflows/). Task-1-gated charter story: only Task 1 (discovery -> 8-3-uuid-decision-record.md)
+  # carries real ACs. Task 1 discovery method (bmad-party-mode vs bmad-forge-idea) is the developer's
+  # choice -- pending. Not committed.
+  # note: story 8-3 moved to review 2026-08-31 (bmad-dev-story). Task 1 (bmad-party-mode discovery
+  # -> 8-3-uuid-decision-record.md; 4 cut ideas -- v1/v6, v3/v5, UUID inspector, ULID/nanoid/CUID --
+  # captured in the developer's personal backlog rather than as GitHub issues, their explicit call,
+  # logged as an AC3 deviation) and Task 2a (AC6-AC18, from a design-canvas artifact:
+  # container A enriched toolbar / format affordance F1 / download .txt+.csv+.json) done earlier
+  # this session. Task 2b implemented as 6 vertical slices, each with a developer render-review pass
+  # (several picked up mid-slice fixes -- see the story's Debug Log): (1) container A + full Epic-7
+  # tokenization + a11y fold-ins; (2) per-row Copy -> icon-button + useCopyFeedback; (3) new shared
+  # src/components/AppPopover.vue (first floating surface) + ?-on-legend v4/v7 explainer, + zebra
+  # striping; (4) format toggles (case/braces/hyphens, view-side, composing) + uuid.* persistence
+  # ("B1" -- settings store keys only, no new Settings section); (5) uuid_export command + Download
+  # format menu (.txt/.csv/.json via AppPopover). crates/umbra-core UNTOUCHED (cleanest AD-1 split
+  # in Epic 8); uuidVersion.ts + Cargo.toml uuid features untouched; TRANSLATABLE_CODES not
+  # extended. Full verification green (636 FE / 98 src-tauri + 252 + 96-ish core Rust; lint,
+  # vue-tsc, build, cargo fmt, cargo clippy --workspace --all-targets). Committed on
+  # feat/story-8-3-reimagine-the-uuid-generator (pending). Next: bmad-code-review (fresh context,
+  # different LLM), then review -> done.
+  # note: story 8-3 code review 2026-08-31 (bmad-code-review, "review" -> "done"). Three parallel
+  # adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) vs git diff main...HEAD
+  # (merge-base 595bb9a == baseline_commit). ~28 raw -> 18 deduped -> 6 decision-needed (resolved
+  # with the developer: 5 patch, 1 defer), 15 patches total, 2 dismissed. No layer failed. AC
+  # verdicts: AC6/8/11-14/16-18 SATISFIED; AC7/9/15 were PARTIAL and AC10 VIOLATED ("first and only
+  # consumer" -- AppPopover wired twice) -- all resolved by amending the AC text in place (Amended
+  # discipline) plus code. Patches applied + verified (FE lint/vue-tsc/test 640 (+4)/build; Rust
+  # fmt/clippy/test 98 + 252 + core, untouched): AppPopover Escape now panel-scoped not a
+  # capture-phase document listener (was swallowing Escape app-wide); AppPopover slot bool open->
+  # isOpen + close({returnFocus}) + focusTrigger wrapper fallback; UuidView clientError cleared on
+  # Download/Copy paths; role=status announcement moved to an always-present .sr-only clear-then-set
+  # region; download blob snapshotted before await save(); h4->h2 in the explainer; .help-dot hit
+  # area 16->24px; result count digit-grouped; stale per-row "copied" cleared on regenerate/format
+  # toggle; .results overflow:hidden dropped (was clipping the Download popover) w/ last-row corner
+  # rounding; settings.ts uuid.formatBraces/Hyphens type-guarded on load; AC7 tokenisation --
+  # --spacing-0-5 (2px) + --spacing-1-5 (6px) added to tokens.css + DESIGN.md, control paddings +
+  # 6px radius switched to tokens, two untokenised box-shadow lifts dropped. 1 DEFERRED to
+  # deferred-work.md: AppPopover light/dark --shadow-floating validation needs the developer's own
+  # render-review. Still deferred + unaddressed: the two pre-existing deferred-work app-wide items
+  # (concurrent Copy/Copy-all guard; CommandPalette.spec.ts coupling). All review patches are
+  # UNCOMMITTED working-tree changes on feat/story-8-3-reimagine-the-uuid-generator.
+  8-3-reimagine-the-uuid-generator: done
   8-4-reimagine-the-hash-generator: backlog
   8-5-reimagine-the-jwt-inspector: backlog
   8-6-reimagine-nl-cron: backlog

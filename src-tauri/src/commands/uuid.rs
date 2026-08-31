@@ -8,6 +8,20 @@ pub async fn uuid_generate(version: UuidVersion, count: u32) -> Result<Vec<Strin
         .map_err(map_join_error)?
 }
 
+/// Story 8.3 (AC14): write an already-built export blob (`.txt` / `.csv` /
+/// `.json` — the serialisation is view-side, AD-1) to a user-chosen path.
+/// The only work that must cross into Rust is the filesystem write, routed
+/// through the shared atomic helper (AD-15). AD-3 `Result<_, ToolError>`,
+/// AD-4 `spawn_blocking`.
+#[tauri::command]
+pub async fn uuid_export(content: String, path: String) -> Result<(), ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::fs_helper::write_file_bytes(&path, content.as_bytes())
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
 fn map_join_error(err: tauri::Error) -> ToolError {
     ToolError {
         code: "uuid-internal".to_string(),
@@ -65,5 +79,29 @@ mod tests {
     async fn uuid_generate_command_returns_tool_error_over_1000_count() {
         let err = uuid_generate(UuidVersion::V4, 1001).await.unwrap_err();
         assert_eq!(err.code, "uuid-count-too-large");
+    }
+
+    #[tokio::test]
+    async fn uuid_export_command_writes_the_blob_verbatim() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("umbra-uuid-export-{}.txt", std::process::id()));
+        let path = path.to_str().unwrap().to_string();
+        let blob = "550e8400-e29b-41d4-a716-446655440000\n9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d\n";
+
+        uuid_export(blob.to_string(), path.clone()).await.unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), blob);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn uuid_export_command_maps_an_unwritable_path_to_file_write_error() {
+        let err = uuid_export(
+            "x".to_string(),
+            "/nonexistent-dir-umbra/uuids.txt".to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.code, "file-write-error");
     }
 }

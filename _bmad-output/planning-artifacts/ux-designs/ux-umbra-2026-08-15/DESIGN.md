@@ -77,6 +77,7 @@ rounded:
   full: 9999px
 spacing:
   unit: 4px
+  '0-5': 2px   # half-step — internal padding of compact controls only (Story 8.3 code review); not for layout rhythm
   '1': 4px
   '2': 8px
   '3': 12px
