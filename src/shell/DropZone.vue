@@ -104,9 +104,13 @@ onMounted(async () => {
         );
         if (!result.superseded && isStillActive()) {
           registry.dropResult = { toolId, value: result.value };
+          registry.dropSourcePath = { toolId, path };
         }
       } catch (err) {
-        if (isStillActive()) registry.dropResult = { toolId, error: toToolError(err) };
+        if (isStillActive()) {
+          registry.dropResult = { toolId, error: toToolError(err) };
+          registry.dropSourcePath = null;
+        }
       }
     });
   } catch (error: unknown) {

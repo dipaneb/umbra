@@ -851,4 +851,119 @@ describe("useSettingsStore", () => {
     expect(settings.uuidFormatBraces).toBe(false);
     expect(settings.uuidFormatHyphens).toBe(true);
   });
+
+  // Story 8.4 (AC7): the hash.algorithms selected-set key.
+  it("defaults hash.algorithms to SHA-256 + SHA-512 when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.hashAlgorithms).toEqual(["sha256", "sha512"]);
+  });
+
+  it("preserves a persisted hash.algorithms selection", async () => {
+    fakeStore.set("hash.algorithms", ["sha3-512", "md5"]);
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.hashAlgorithms).toEqual(["sha3-512", "md5"]);
+  });
+
+  it("honours a persisted empty hash.algorithms array rather than falling back to the default", async () => {
+    fakeStore.set("hash.algorithms", []);
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.hashAlgorithms).toEqual([]);
+  });
+
+  it("drops unknown algorithm ids and duplicates from a hand-edited hash.algorithms value", async () => {
+    fakeStore.set("hash.algorithms", ["sha256", "sha256", "rot13", 7, "sha3-256"]);
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.hashAlgorithms).toEqual(["sha256", "sha3-256"]);
+  });
+
+  it("setHashAlgorithms persists the validated set and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setHashAlgorithms(["sha512", "sha3-256", "bogus"]);
+
+    expect(settings.hashAlgorithms).toEqual(["sha512", "sha3-256"]);
+    expect(fakeStore.set).toHaveBeenCalledWith("hash.algorithms", ["sha512", "sha3-256"]);
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("resetKey resets hash.algorithms to its default and deletes it from disk", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setHashAlgorithms(["md5"]);
+
+    await settings.resetKey("hash.algorithms");
+
+    expect(settings.hashAlgorithms).toEqual(["sha256", "sha512"]);
+    expect(fakeStore.delete).toHaveBeenCalledWith("hash.algorithms");
+  });
+
+  it("clearAll resets hash.algorithms to its default", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setHashAlgorithms(["sha1"]);
+
+    await settings.clearAll();
+
+    expect(settings.hashAlgorithms).toEqual(["sha256", "sha512"]);
+  });
+
+  // Story 8.4 (AC11): the hash.case / hash.encoding output-format keys.
+  it("defaults hash.case / hash.encoding to lower / hex when the keys are absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.hashCase).toBe("lower");
+    expect(settings.hashEncoding).toBe("hex");
+  });
+
+  it("setHashFormat persists only the touched key and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setHashFormat({ encoding: "base64" });
+
+    expect(settings.hashEncoding).toBe("base64");
+    expect(settings.hashCase).toBe("lower");
+    expect(fakeStore.set).toHaveBeenCalledWith("hash.encoding", "base64");
+    expect(fakeStore.set).not.toHaveBeenCalledWith("hash.case", expect.anything());
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("falls back to defaults when persisted hash.case / hash.encoding values are invalid", async () => {
+    fakeStore.set("hash.case", "Title");
+    fakeStore.set("hash.encoding", "base32");
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.hashCase).toBe("lower");
+    expect(settings.hashEncoding).toBe("hex");
+  });
+
+  it("resetKey and clearAll restore hash.case / hash.encoding to their defaults", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+    await settings.setHashFormat({ case: "upper", encoding: "base64" });
+
+    await settings.resetKey("hash.encoding");
+    expect(settings.hashEncoding).toBe("hex");
+    expect(fakeStore.delete).toHaveBeenCalledWith("hash.encoding");
+
+    await settings.clearAll();
+    expect(settings.hashCase).toBe("lower");
+  });
 });

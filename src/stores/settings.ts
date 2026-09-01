@@ -84,6 +84,52 @@ function toStringArray(value: unknown): string[] {
     : [];
 }
 
+// Story 8.4 (AC7): the Hash tool's selected algorithm set — another minimal-
+// depth `hash.*` key, same pattern as `uuid.*`. Members are validated against
+// the known algorithm ids (the serde `rename` on umbra-core's `Algorithm`
+// enum) so a hand-edited settings.json can't smuggle an unknown string
+// through to `invoke("hash_compute", …)`. An empty array is a legitimate
+// user choice (every algorithm unchecked) and is preserved; only an
+// absent key falls back to the default in `init()`.
+const HASH_ALGORITHM_IDS: readonly string[] = [
+  "sha256",
+  "sha512",
+  "sha3-256",
+  "sha3-512",
+  "md5",
+  "sha1",
+];
+
+function toHashAlgorithms(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [
+        ...new Set(
+          value.filter(
+            (v): v is string =>
+              typeof v === "string" && HASH_ALGORITHM_IDS.includes(v),
+          ),
+        ),
+      ]
+    : [];
+}
+
+// Story 8.4 (AC11): the Hash tool's two output-presentation controls — case
+// (Hex only) and encoding — each a `hash.*` key, validated on load like every
+// other enum key here.
+export type HashCase = "lower" | "upper";
+export type HashEncoding = "hex" | "base64";
+
+const HASH_CASES: readonly HashCase[] = ["lower", "upper"];
+const HASH_ENCODINGS: readonly HashEncoding[] = ["hex", "base64"];
+
+function isHashCase(value: unknown): value is HashCase {
+  return typeof value === "string" && (HASH_CASES as readonly string[]).includes(value);
+}
+
+function isHashEncoding(value: unknown): value is HashEncoding {
+  return typeof value === "string" && (HASH_ENCODINGS as readonly string[]).includes(value);
+}
+
 // Single source of truth for every shell.* key's default value — read by
 // init()'s absent-key fallback, clearAll(), and resetKey() alike, so the
 // three can't drift apart the way clearAll()'s hardcoded restoreEnabled
@@ -105,6 +151,9 @@ const DEFAULTS = {
   uuidFormatCase: "lower" as UuidFormatCase,
   uuidFormatBraces: false,
   uuidFormatHyphens: true,
+  hashAlgorithms: ["sha256", "sha512"] as string[],
+  hashCase: "lower" as HashCase,
+  hashEncoding: "hex" as HashEncoding,
 };
 
 // This store's first numeric `shell.*` key (Story 7.8) — every prior key is a plain
@@ -149,6 +198,9 @@ export const useSettingsStore = defineStore("settings", () => {
   const uuidFormatCase = ref<UuidFormatCase>(DEFAULTS.uuidFormatCase);
   const uuidFormatBraces = ref<boolean>(DEFAULTS.uuidFormatBraces);
   const uuidFormatHyphens = ref<boolean>(DEFAULTS.uuidFormatHyphens);
+  const hashAlgorithms = ref<string[]>([...DEFAULTS.hashAlgorithms]);
+  const hashCase = ref<HashCase>(DEFAULTS.hashCase);
+  const hashEncoding = ref<HashEncoding>(DEFAULTS.hashEncoding);
 
   async function init(): Promise<void> {
     try {
@@ -209,6 +261,17 @@ export const useSettingsStore = defineStore("settings", () => {
         await store.get("uuid.formatHyphens"),
         DEFAULTS.uuidFormatHyphens,
       );
+      const storedHashAlgorithms = await store.get<unknown>("hash.algorithms");
+      hashAlgorithms.value =
+        storedHashAlgorithms === undefined
+          ? [...DEFAULTS.hashAlgorithms]
+          : toHashAlgorithms(storedHashAlgorithms);
+      const storedHashCase = await store.get<string>("hash.case");
+      hashCase.value = isHashCase(storedHashCase) ? storedHashCase : DEFAULTS.hashCase;
+      const storedHashEncoding = await store.get<string>("hash.encoding");
+      hashEncoding.value = isHashEncoding(storedHashEncoding)
+        ? storedHashEncoding
+        : DEFAULTS.hashEncoding;
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -310,6 +373,32 @@ export const useSettingsStore = defineStore("settings", () => {
     if (patch.hyphens !== undefined) {
       await store.set("uuid.formatHyphens", uuidFormatHyphens.value);
     }
+    await store.save();
+  }
+
+  // Story 8.4 (AC7): the whole selected set is written on every checkbox
+  // toggle — a discrete, non-debounced `set` + `save`, like `setUuidFormat`.
+  async function setHashAlgorithms(value: string[]): Promise<void> {
+    const next = toHashAlgorithms(value);
+    hashAlgorithms.value = next;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("hash.algorithms", next);
+    await store.save();
+  }
+
+  // Story 8.4 (AC11): case + encoding, one setter for both `hash.*` keys —
+  // the view toggles them one at a time, mirrors `setUuidFormat`.
+  async function setHashFormat(patch: {
+    case?: HashCase;
+    encoding?: HashEncoding;
+  }): Promise<void> {
+    if (patch.case !== undefined) hashCase.value = patch.case;
+    if (patch.encoding !== undefined) hashEncoding.value = patch.encoding;
+    if (!backingStore) return;
+    const store = backingStore;
+    if (patch.case !== undefined) await store.set("hash.case", hashCase.value);
+    if (patch.encoding !== undefined) await store.set("hash.encoding", hashEncoding.value);
     await store.save();
   }
 
@@ -421,6 +510,15 @@ export const useSettingsStore = defineStore("settings", () => {
       case "uuid.formatHyphens":
         uuidFormatHyphens.value = DEFAULTS.uuidFormatHyphens;
         break;
+      case "hash.algorithms":
+        hashAlgorithms.value = [...DEFAULTS.hashAlgorithms];
+        break;
+      case "hash.case":
+        hashCase.value = DEFAULTS.hashCase;
+        break;
+      case "hash.encoding":
+        hashEncoding.value = DEFAULTS.hashEncoding;
+        break;
     }
     if (!backingStore) return;
     const store = backingStore;
@@ -446,6 +544,9 @@ export const useSettingsStore = defineStore("settings", () => {
     uuidFormatCase.value = DEFAULTS.uuidFormatCase;
     uuidFormatBraces.value = DEFAULTS.uuidFormatBraces;
     uuidFormatHyphens.value = DEFAULTS.uuidFormatHyphens;
+    hashAlgorithms.value = [...DEFAULTS.hashAlgorithms];
+    hashCase.value = DEFAULTS.hashCase;
+    hashEncoding.value = DEFAULTS.hashEncoding;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -469,6 +570,9 @@ export const useSettingsStore = defineStore("settings", () => {
     uuidFormatCase,
     uuidFormatBraces,
     uuidFormatHyphens,
+    hashAlgorithms,
+    hashCase,
+    hashEncoding,
     init,
     setRestoreEnabled,
     setThemeOverride,
@@ -480,6 +584,8 @@ export const useSettingsStore = defineStore("settings", () => {
     setLocale,
     setDateTimeFormat,
     setUuidFormat,
+    setHashAlgorithms,
+    setHashFormat,
     togglePinned,
     recordRecentTool,
     recordLastTool,
