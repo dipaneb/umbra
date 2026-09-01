@@ -41,7 +41,31 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-01  # story 8-4 code review complete, moved to done (bmad-code-review)
+last_updated: 2026-09-01  # story 8-5 created (bmad-create-story), backlog -> ready-for-dev
+# note: story 8-5 created 2026-09-01 (bmad-create-story). Developer explicitly chose to
+# continue Epic 8 top-to-bottom (8-5-reimagine-the-jwt-inspector) over strict
+# sprint-status.yaml auto-discovery, which would have picked 6-3 next -- the same
+# explicit-continuation pattern every Epic 7 and Epic 8 story has followed; 6-3/6-4 stay
+# deliberately deferred. epic-8 already in-progress, 8.1-8.4 all done, not the first story
+# in the epic so no epic-status transition. baseline_commit d7bb977 confirmed as origin/main's
+# real tip directly (git rev-parse HEAD == origin/main == main == d7bb977782ff...); working
+# tree clean apart from the pre-existing untracked .claude/workflows/. Fifth instance of
+# Epic 8's "Task 1 decision record gates Task 2" charter shape (8.1-8.4 all proved it end to
+# end) -- only Task 1's AC1-5 are real Given/When/Then; Task 2's redesign ACs are deferred to
+# a Task 2a follow-up edit of the same story file once 8-5-jwt-decision-record.md lands, per
+# epics.md's explicit instruction. Live-read the full current JWT implementation
+# (crates/umbra-core/src/jwt.rs decode(), src-tauri/src/commands/jwt.rs jwt_decode,
+# src/tools/jwt/JwtView.vue [100% pre-Epic-7], jwtDecoded.ts hand-synced mirror,
+# JwtView.spec.ts, tools.jwt.* i18n, the jwt registry entry incl. its Story-7.8 clipboardMatch,
+# toolError.ts TRANSLATABLE_CODES, matchesJwt/isJwtShaped) so discovery starts from confirmed
+# fact. Distinctive framing captured in Dev Notes: JWT has no drop/file path (plain local
+# latest-wins runner, unlike Hash); it already participates in the clipboard-suggestion surface
+# via a registry clipboardMatch (Hash/UUID have none); it already renders structured JSON as a
+# raw <pre> (JsonTree.vue reuse is the obvious "Changed" candidate, an AD-6 decision); and its
+# signature segment is discarded entirely -- making "add offline signature verification" the
+# central keep/cut/add question, the first Epic 8 tool where AppTabs.vue (Decode / Verify)
+# could genuinely be justified, under hard AD-2/AD-7/AD-11 constraints on any crypto dependency
+# (no network, no JWKS-by-kid fetch, ever). Story file not committed.
 # note: story 8-2 code review 2026-08-30 (bmad-code-review, status "review" -> "done") --
 # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor)
 # against b151314..HEAD. 33 raw findings -> 23 after dedup -> 4 decision-needed, 8 patch,
@@ -1347,7 +1371,7 @@ development_status:
   # Not committed -- all review changes are UNCOMMITTED working-tree changes on
   # feat/story-8-4-reimagine-the-hash-generator.
   8-4-reimagine-the-hash-generator: done
-  8-5-reimagine-the-jwt-inspector: backlog
+  8-5-reimagine-the-jwt-inspector: ready-for-dev
   8-6-reimagine-nl-cron: backlog
   8-7-reimagine-the-bucket-ocr: backlog
   8-8-reimagine-the-bucket-pdf: backlog
