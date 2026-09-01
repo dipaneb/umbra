@@ -4,7 +4,7 @@ baseline_commit: d428db9
 
 # Story 8.4: Reimagine the Hash Generator
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -104,6 +104,14 @@ trait), `sha2` / `sha1` / `md-5` `"0.11"` unchanged, `blake2` / `blake3` **not**
 input is guarded by a frontend length ceiling before the 100 MiB server check, and the live path
 is disabled / coalesced while a hash is in flight (both folded-in deferred-work items);
 `debouncedX.cancel()` runs in `onUnmounted`.
+*Amended (`bmad-code-review`, 2026-09-01):* the in-flight "disabled" state was missing entirely
+until this review added it — added to the algorithm checkboxes and the Case/Encoding controls
+only, deliberately **not** the text input itself. Disabling the textarea would block the user
+from clearing or continuing to edit their own input while a slow hash computes — exactly the
+interaction the coalescing runner (`rerunPending`, at most one trailing rerun queued) exists to
+absorb, not something to block on. A regression test (`HashView.spec.ts`) initially added
+`:disabled="hashing"` to the textarea too and caught its own bug: a disabled textarea silently
+refused `.setValue()`, meaning a user genuinely could not clear the input while hashing.
 
 **AC11 — Case and encoding are composing, view-side, persisted controls.**
 **Given** a computed set of digests, **when** the user switches Case (`lower` ⇄ `UPPER`) or
@@ -111,6 +119,11 @@ Encoding (`Hex` ⇄ `Base64`), **then** every displayed digest re-renders from t
 core-returned canonical **lowercase-hex** value with **no** new `invoke` call (AD-1); Base64 is
 the base64 of the **raw digest bytes** (hex → bytes → `btoa` in the view); the two controls
 compose (e.g. `UPPER` + `Base64`); each selection persists as a `hash.*` setting.
+*Amended (`bmad-code-review`, 2026-09-01):* Case applies to **Hex only** — uppercasing a Base64
+string would corrupt its mixed-case alphabet, so Case is a no-op (and disabled in the UI, so the
+control visibly communicates this) while Base64 encoding is active; the chosen Case is retained
+and reapplied the moment the user switches back to Hex. "The two controls compose" describes Hex
++ Case only; Base64 output is always the raw digest bytes' Base64, independent of Case.
 
 **AC12 — Per-row Copy is an icon-button with feedback.**
 **Given** the results panel, **when** the user clicks a row's Copy control, **then** it is the
@@ -123,6 +136,13 @@ and the feedback clears on a fresh hash, a new drop, or any case / encoding / al
 **Given** the algorithm list and any MD5 / SHA-1 result row, **when** rendered, **then** the label
 carries a "not collision-resistant" qualifier (new `tools.hash.*` key, `en` + `fr`, factual
 instrument-voice phrasing, no emoji) — the `(legacy)` / `legacySuffix` string is removed.
+*Amended (`bmad-code-review`, 2026-09-01):* the qualifier is not literal text appended to every
+label — inline, it doubled every row's height and blew out the checkbox row. It lives behind a
+`?` help affordance (`WeakHashPopover.vue`, the `AppPopover` + help-dot pattern UuidView
+established), shown next to the "Algorithms" legend and on each MD5 / SHA-1 result row, opening
+to a heading + the same "not collision-resistant" instrument-voice explanation. Each popover
+instance carries a distinct accessible name (the legend's is general; each row's names its own
+algorithm) so a screen-reader user can tell them apart.
 
 **AC14 — Successful renders are announced; the source is named.**
 **Given** a completed hash, **when** the results panel updates, **then** it carries a
@@ -153,14 +173,26 @@ factual state — muted `--color-accent-destructive` text with a neutral glyph �
 
 **AC17 — Smart paste-detection offers, never auto-applies, and acknowledges the move.**
 **Given** the input, **when** its content is **exactly** a bare hex string of a recognised digest
-length (32 / 40 / 56 / 64 / 96 / 128 chars, whitespace-trimmed), **then** a dismissible caption
-offers to move it to Verify, naming the likely algorithm(s) by length but not gating on the
-guess; **when** the input is anything else, **then** no offer shows; **when** the user accepts the
-offer, **then** the string is moved into the Verify field, the input is cleared and relabelled,
-**and** the move is acknowledged at both ends — a note on the input ("that digest was moved out
-of here") and a briefly-tinted Verify panel ("Moved here from the input above") with an **Undo**
-that restores the prior state; **and** nothing is ever moved without the click (AD-9). New
-`tools.hash.*` keys for the offer text, both acknowledgement lines, and Undo (`en` + `fr`).
+length (32 / 40 / 64 / 128 chars, whitespace-trimmed — only lengths a selectable algorithm can
+actually produce; 56 / 96 were dropped at code review, see amendment below), **then** a
+dismissible caption offers to move it to Verify, naming the likely algorithm(s) by length but not
+gating on the guess; **when** the input is anything else, **then** no offer shows; **when** the
+user accepts the offer, **then** the string is moved into the Verify field, the input is cleared
+and relabelled, **and** the move is acknowledged below the Verify field — a briefly-tinted panel
+("Moved here from the input above") with an **Undo** that restores the prior state — **and**
+nothing is ever moved without the click (AD-9); **and**, if the user has since edited the input
+or Verify already holds unrelated content, the move/undo does not silently overwrite it — a
+confirm step gates the overwrite. New `tools.hash.*` keys for the offer text, the acknowledgement
+line, Undo, and the overwrite confirmation (`en` + `fr`).
+*Amended (`bmad-code-review`, 2026-09-01):* three changes from the original text. (1) The
+acknowledgement is **one-ended**, not two-ended — nothing is shown near the input; only the
+Verify-panel tint + caption + Undo, deliberately kept below the field so its appearance/
+disappearance never shifts the input's layout. (2) The 56 / 96-char hex lengths (and their
+28/48-byte Base64 equivalents) were dropped from the detection hints — no selectable algorithm
+(SHA-256/512, SHA3-256/512, MD5, SHA-1) produces them, so an offer naming SHA-224/SHA3-224 or
+SHA-384/SHA3-384 was a guaranteed dead end (Verify can never match against an algorithm the tool
+doesn't compute). (3) Move/Undo gained a confirm step neither the original ACs nor the shipped
+Task 2b code first had — see the code-review Change Log.
 
 **AC18 — No new translatable error codes; French rides the existing seam.**
 **Given** `src/shell/toolError.ts`, **when** this story ships, **then** `TRANSLATABLE_CODES` is
@@ -180,11 +212,27 @@ under-cap inputs compute normally.
 **AC20 — Scope stays inside the tool's island.**
 **Given** the diff for this story, **when** it is reviewed, **then** the only files outside
 `src/tools/hash/`, `crates/umbra-core/src/hash.rs` (+ `Cargo.toml`) and `src-tauri/src/commands/
-hash.rs` that are touched are `src/stores/registry.ts` (the `dropArgsProvider` wire-up),
-`src/stores/settings.ts` (+ `settings.spec.ts` — new `hash.*` keys), and `src/locales/{en,fr}.json`;
-`src-tauri/src/lib.rs`'s handler registration is **unchanged** (no new command); no digest-export
-command is added; the shared-`fs_helper` TOCTOU fix and the multi-file-drop behaviour remain
-**flagged for the developer as separate follow-ups**, not changed here.
+hash.rs` that are touched are `src/stores/registry.ts` (the `dropArgsProvider` wire-up, plus a
+`dropSourcePath` field — see amendment), `src/stores/settings.ts` (+ `settings.spec.ts` — new
+`hash.*` keys), `src/locales/{en,fr}.json`, `src/shell/DropZone.vue` (+ `dropZone.spec.ts`), and
+`src/styles/tokens.css`; `src-tauri/src/lib.rs`'s handler registration is **unchanged** (no new
+command); no digest-export command is added; the shared-`fs_helper` TOCTOU fix and the
+multi-file-drop behaviour remain **flagged for the developer as separate follow-ups**, not
+changed here.
+*Amended (`bmad-code-review`, 2026-09-01):* the original text didn't disclose two shared-file
+touches the shipped diff makes, caught at code review as a governance gap (CLAUDE.md: new
+shared-infrastructure changes must be presented, not silently folded in). Confirmed with the
+developer: both stand, disclosed here rather than reverted.
+- **`src/shell/DropZone.vue` + `src/stores/registry.ts`'s `dropSourcePath` field.** AC15's
+  algorithm-set-change re-hash needs the dropped file's path after the one-shot
+  `hash_compute_file` dispatch completes; `DropZone.vue` (the shell's single generic dispatcher,
+  AD-14) now forwards it via a new `registry.dropSourcePath` field alongside `dropResult`. Tagged
+  with `toolId` (`{ toolId, path } | null`) to match `dropResult`'s shape, so a second future
+  consumer can't misread a value meant for a different tool.
+- **`src/styles/tokens.css`'s `--color-accent-success` token.** AC16's Verify "match" state is
+  this tool's first use of a general success/affirmative color (opposite
+  `--color-accent-destructive`'s "does not match"); added by developer direction.
+  `DESIGN.md`'s colour table owes a matching entry as a follow-up (that doc is otherwise locked).
 
 ## Tasks / Subtasks
 
@@ -213,9 +261,38 @@ command is added; the shared-`fs_helper` TOCTOU fix and the multi-file-drop beha
 - [x] **Task 2a: Redesign ACs — write real Given/When/Then** (Task 1's record exists; canvas picks in) — done 2026-09-01. AC6–AC20 written into the "Acceptance Criteria — Task 2 (Redesign)" section above; polished design canvas published (`https://claude.ai/code/artifact/c928d06d-a86d-4e32-8ad5-a8764fd3af67` — Default / Verify active / Smart-detection offer / After "Move it to Verify"). Developer signed off on the AC set 2026-09-01.
   - [x] In the same discovery room, resolve the decision record's open items and write real AC6+ into the "Acceptance Criteria — Task 2 (Redesign)" section above, scoped strictly to `8-4-hash-decision-record.md` plus the developer's canvas picks. Await the developer's sign-off on the AC set before 2b. Open items resolved and recorded in the AC section's preamble; 15 ACs (AC6–AC20) written; digest-export confirmed **out**; developer signed off 2026-09-01.
 
-- [ ] **Task 2b: Redesign — implementation** (after the AC set is confirmed)
-  - [ ] Follow the delivery pattern Stories 8.1, 8.2 and 8.3 established: **vertical slices, developer render-review after each slice.** Per slice: pure Rust fn + regression tests → `hash_<verb>` command (`spawn_blocking`, `Result<T, ToolError>`, AD-3/AD-4, only if the command surface changes) → Vue → full verification pass (`pnpm lint`, `pnpm test`, `vue-tsc --noEmit`, `pnpm build`, `cargo fmt --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets`) → visual check in `pnpm tauri dev` → commit, **ask before pushing**.
-  - [ ] First slice is the Epic-7 tokenization pass + restructure to the chosen container (the tool is 100% pre-Epic-7 — see Dev Notes).
+- [x] **Task 2b: Redesign — implementation** (after the AC set is confirmed) — implemented 2026-09-01, committed as `c536113`; `bmad-code-review` findings (21 patch items) applied the same session — see Change Log and Review Findings below.
+  - [x] Follow the delivery pattern Stories 8.1, 8.2 and 8.3 established: **vertical slices, developer render-review after each slice.** Per slice: pure Rust fn + regression tests → `hash_<verb>` command (`spawn_blocking`, `Result<T, ToolError>`, AD-3/AD-4, only if the command surface changes) → Vue → full verification pass (`pnpm lint`, `pnpm test`, `vue-tsc --noEmit`, `pnpm build`, `cargo fmt --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets`) → visual check in `pnpm tauri dev` → commit, **ask before pushing**.
+  - [x] First slice is the Epic-7 tokenization pass + restructure to the chosen container (the tool is 100% pre-Epic-7 — see Dev Notes).
+
+### Review Findings
+
+_`bmad-code-review` against `main...HEAD` (2026-09-01), three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor against AC6–AC20) — 36 raw findings, 26 after dedup, 5 dismissed as noise (see below), 6 decision-needed (all resolved live with the developer 2026-09-01), 21 patch (all applied 2026-09-01)._
+
+- [x] [Review][Patch][Decision resolved] Paste-from-clipboard button removed — developer confirmed intentional: amend `8-4-hash-decision-record.md`'s "Kept" section and this story's Change Log to log the cut (button stays removed; native Ctrl+V remains the paste path). [src/tools/hash/HashView.vue, _bmad-output/implementation-artifacts/8-4-hash-decision-record.md]
+- [x] [Review][Patch][Decision resolved] Move/Undo can silently discard user data — developer chose: add a lightweight inline confirmation before either overwrite (moving into a non-empty Verify field; Undo overwriting input the user has since edited). [src/tools/hash/HashView.vue:226-253]
+- [x] [Review][Patch][Decision resolved] `registry.dropSourcePath` not namespaced by `toolId` — developer chose: change it to `{ toolId: string; path: string } | null` matching `dropResult`'s shape. [src/stores/registry.ts:223-231, src/shell/DropZone.vue:104-113]
+- [x] [Review][Patch][Decision resolved] Undisclosed shared-file changes (`DropZone.vue` `dropSourcePath`, `tokens.css` `--color-accent-success`) outside AC20's whitelist — developer chose: accept both, log them retroactively in AC20, the File List, and the Change Log rather than reverting. [_bmad-output/implementation-artifacts/8-4-reimagine-the-hash-generator.md]
+- [x] [Review][Patch][Decision resolved] AC17 one-ended move acknowledgement — developer chose: amend AC17's text to describe the shipped one-ended (Verify-panel-only) design rather than implementing an input-side note. [_bmad-output/implementation-artifacts/8-4-reimagine-the-hash-generator.md]
+- [x] [Review][Patch][Decision resolved] AC13 qualifier hidden behind a popover — developer chose: amend AC13's text to describe the shipped popover design rather than adding an inline label qualifier. [_bmad-output/implementation-artifacts/8-4-reimagine-the-hash-generator.md]
+- [x] [Review][Patch][Decision resolved] AC11 Case silently no-ops under Base64 encoding — developer chose: visually disable the Case segmented control while Base64 encoding is active, so the UI communicates the control is inert (AC11's text may still warrant a follow-up note that Case applies to Hex only). [src/tools/hash/HashView.vue:115-118]
+- [x] [Review][Patch] Fast-path early returns bypass the shared latest-wins runner, allowing stale results to overwrite fresh ones [src/tools/hash/HashView.vue:290-336]
+- [x] [Review][Patch] Verify's Base64 comparison requires byte-exact padding, producing false "does not match" on unpadded input [src/tools/hash/HashView.vue:129-133]
+- [x] [Review][Patch] Paste-detection hints name algorithms the tool cannot select or verify against (SHA-224/SHA3-224, SHA-384/SHA3-384) [src/tools/hash/HashView.vue:162-180]
+- [x] [Review][Patch] Multiple `WeakHashPopover` instances share an identical, non-parameterized accessible name [src/tools/hash/WeakHashPopover.vue:23,31]
+- [x] [Review][Patch] Smart-detection offer button's `aria-label` doesn't contain its visible label text (WCAG 2.5.3) [src/tools/hash/HashView.vue:451-455]
+- [x] [Review][Patch] A second failed file drop doesn't reset `source`/`droppedPath`, so a later algorithm toggle can silently re-hash a stale file [src/tools/hash/HashView.vue:365-391]
+- [x] [Review][Patch] AC16 partial-match Verify summary omits which algorithms didn't match, unlike AC16's own example text [src/tools/hash/HashView.vue:148-157]
+- [x] [Review][Patch] AC10's promised in-flight "disabled" state was never implemented — only invoke-coalescing exists [src/tools/hash/HashView.vue]
+- [x] [Review][Patch] `hash_compute`/`hash_compute_file`'s `algorithms` array has no length cap or dedup, an unbounded-cost gap in the CWE-400 family the size cap is meant to close [src-tauri/src/commands/hash.rs:5-12,15-29]
+- [x] [Review][Patch] Dropping a file with every algorithm unchecked still triggers a full (up to 100 MiB) file read before returning an empty result [src-tauri/src/commands/hash.rs:15-29, src/tools/hash/HashView.vue:352-354]
+- [x] [Review][Patch] Verify doesn't tolerate a copied `sha256sum`-style "`<hash>  <filename>`" line, producing a false "does not match" [src/tools/hash/HashView.vue:129-133]
+- [x] [Review][Patch] Unchecking every algorithm produces a blank results area with no explanatory hint [src/tools/hash/HashView.vue]
+- [x] [Review][Patch] Registry `hash` entry's search aliases weren't extended for SHA-3 [src/stores/registry.ts]
+- [x] [Review][Patch] Missing regression test for "digests clear when a new failure follows a prior success" — a fix the decision record explicitly commits to closing in Task 2b [src/tools/hash/HashView.spec.ts]
+- [x] [Review][Patch] Story tracking file (this file) is out of sync with the diff under review — Task 2b's checkbox and File List/Change Log don't reflect the actual touched files [this file]
+
+_Dismissed as noise (5): `dropZone.spec.ts`'s hash-drop test using an old digest shape — false positive, the test explicitly targets the "no dropArgsProvider registered" path and DropZone treats the payload as opaque `unknown`; `MAX_INPUT_BYTES` duplicated in the frontend — intentional documented defense-in-depth mirror, consistent with the rest of the codebase; `Cargo.lock`'s two `cpufeatures` versions — normal transitive dependency resolution, no actionable fix; an algorithm-toggle-and-text-edit landing in the same reactivity flush — real but requires two simultaneous user inputs in one tick, mild consequence (falls back to the debounce) even if it occurred; un-debounced `pasteDetection` on a very large paste — bounded, linear-time, one-time cost on an edge-case-sized paste only._
 
 ## Dev Notes
 
@@ -333,12 +410,22 @@ claude-sonnet-5 (Claude Code, bmad-create-story workflow)
 
 - `_bmad-output/implementation-artifacts/8-4-reimagine-the-hash-generator.md` (this story — NEW)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (status `backlog` → `ready-for-dev` at creation; `ready-for-dev` → `in-progress` 2026-08-31, Task 0)
-- `_bmad-output/implementation-artifacts/8-4-hash-decision-record.md` (Task 1 decision record — NEW, 2026-08-31)
+- `_bmad-output/implementation-artifacts/8-4-hash-decision-record.md` (Task 1 decision record — NEW, 2026-08-31; amended at code review 2026-09-01 — Paste-button cut logged)
 - `_bmad-output/party-mode/memories/installed/.memlog.md` (party-mode memory — 3 Story 8.4 entries appended)
+- `crates/umbra-core/src/hash.rs` (`HashDigests` → `Algorithm` enum + `Vec<DigestEntry>`; new tests)
+- `crates/umbra-core/Cargo.toml` + `Cargo.lock` (`sha3 = "0.11"` added)
+- `src-tauri/src/commands/hash.rs` (both signatures gain an algorithm list; algorithm-count guard + empty-algorithms early return added at code review)
+- `src/tools/hash/HashView.vue` (full Task 2b redesign — enriched single view, Verify panel, smart paste-detection)
+- `src/tools/hash/HashView.spec.ts` (rewritten for the redesign; new tests added at code review)
+- `src/tools/hash/WeakHashPopover.vue` (NEW — AC13's help-affordance popover; `algorithm` prop added at code review for distinct per-row accessible names)
+- `src/tools/hash/hashDigests.ts` (hand-synced mirror of the reshaped Rust struct)
+- `src/locales/en.json` + `src/locales/fr.json` (`tools.hash.*` — new keys for the redesign, plus code-review additions: `noAlgorithmsHint`, `verifyPartialMatchSummary`, `weakHelp*For`, `overwrite*`)
+- `src/stores/settings.ts` + `src/stores/settings.spec.ts` (new `hash.*` persisted keys: `algorithms`, `case`, `encoding`)
+- `src/stores/registry.ts` (`dropArgsProvider` wire-up; `sha3` search aliases added at code review; `dropSourcePath` field — see AC20 amendment)
+- `src/shell/DropZone.vue` + `src/shell/dropZone.spec.ts` (`dropSourcePath` forwarding — see AC20 amendment; `toolId`-scoped at code review)
+- `src/styles/tokens.css` (`--color-accent-success` token — see AC20 amendment)
 
 _Design canvas published as an Artifact (not a repo file): "Hash Generator Redesign" — `https://claude.ai/code/artifact/c928d06d-a86d-4e32-8ad5-a8764fd3af67`._
-
-_Task 2 will touch (per the decision record): `src/tools/hash/HashView.vue`, `src/tools/hash/HashView.spec.ts`, `src/locales/en.json` + `src/locales/fr.json`, `crates/umbra-core/src/hash.rs` (+ tests — `HashDigests` → `Algorithm` enum + `Vec<DigestEntry>`), `src/tools/hash/hashDigests.ts` (mirror the new shape), `crates/umbra-core/Cargo.toml` (add `sha3 = "0.11"`), `src-tauri/src/commands/hash.rs` (both signatures gain an algorithm list), `src/stores/settings.ts` (+ `settings.spec.ts` — new `hash.*` keys), `src/stores/registry.ts` (add a `dropArgsProvider` wire-up; `drop`/`clipboardMatch`/`shortcut` shape otherwise unchanged). `src-tauri/src/lib.rs` handler registration and `src/shell/toolError.ts`'s `TRANSLATABLE_CODES` are **not** changed. Final scope confirmed by Task 2a's AC set._
 
 ### Change Log
 
@@ -348,3 +435,5 @@ _Task 2 will touch (per the decision record): `src/tools/hash/HashView.vue`, `sr
 | 2026-08-31 | `bmad-dev-story` started. Task 0 complete: branched `feat/story-8-4-reimagine-the-hash-generator` from `d428db9` (`origin/main` tip == `baseline_commit`, re-verified), `sprint-status.yaml` `ready-for-dev` → `in-progress`, story `Status` → `in-progress`. Halted at Task 1 for the developer's discovery-method choice (`bmad-party-mode` vs `bmad-forge-idea`). Not committed. |
 | 2026-08-31 | Task 1 complete. `bmad-party-mode` scope discovery → `8-4-hash-decision-record.md` (NEW); no drift found vs. the Dev Notes. Container-shape design canvas published as an Artifact (`c928d06d…`). Developer confirmed scope: enriched single view + smart paste-detection into a persistent Verify field (input-moved acknowledgement made visible); Verify/compare mode (mismatch = `role="status"`, not an alert); SHA3-256 + SHA3-512 added (`sha3` crate); user-selected algorithm set via checkboxes (persisted `hash.*`, 8.3 pattern) → `HashDigests` reshaped to an `Algorithm` enum + `Vec<DigestEntry>`, command signatures gain an algorithm list, `hash_compute_file` gains a `dropArgsProvider`; hex + Base64 output encoding (view-side); live as-you-type hashing; MD5/SHA-1 relabelled "not collision-resistant". FR14 revised & expanded, FR15 kept & extended. `TRANSLATABLE_CODES` not extended. AC3 deviation logged (developer: nothing filed to GitHub / a tracked backlog — 8.3 precedent; cut ideas documented in the record's Cut section only). Cross-tool `fs_helper` TOCTOU + multi-file-drop flagged as governance/shell follow-ups, not folded. Story stays `in-progress` (Task 2a next). Not committed. |
 | 2026-09-01 | Task 2a complete. AC6–AC20 (15 ACs) written into the "Acceptance Criteria — Task 2 (Redesign)" section, scoped to the decision record + a **polished** design canvas (same URL `c928d06d…`, re-seeded to 4 delivery-fidelity artboards: Default / Verify active / Smart-detection offer / After "Move it to Verify"). Open items resolved: Verify = persistent panel under the results; smart-detection acknowledgement = two-ended (a note where the value left + a tinted Verify panel where it landed) + Undo; detector recognises 32/40/56/64/96/128-hex and does **not** disambiguate (Verify checks every selected algorithm — developer's call); case + encoding = two composing, persisted segmented controls; **digest export confirmed OUT** (room + developer reasoned it: ≤6 digests ≠ a bulk problem; `SHA256SUMS` is a pipeline job). `Algorithm` enum serde naming + `sha3` patch pin → Task 2b. Developer signed off on the AC set 2026-09-01. Story stays `in-progress` (Task 2b — per-slice implementation — next). Not committed. |
+| 2026-09-01 | Task 2b complete (`bmad-dev-story`). Full redesign implemented against AC6–AC20: `crates/umbra-core/src/hash.rs`'s `HashDigests` reshaped to an `Algorithm` enum + `Vec<DigestEntry>` (`sha3` crate added); both command signatures gain an algorithm list; `HashView.vue` rebuilt as the enriched single view (Epic-7 tokenised, checkbox algorithm selection, composing Case/Encoding controls, persistent Verify panel, smart paste-detection with move/Undo, live as-you-type hashing); `WeakHashPopover.vue` (NEW) for AC13; `hashDigests.ts`/`settings.ts`/`registry.ts`/i18n updated to match. Committed as `c536113`. Not pushed. |
+| 2026-09-01 | `bmad-code-review` against `main...HEAD` (Task 2a docs commit `191200e` + Task 2b implementation commit `c536113`). Three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor against AC6–AC20) — 36 raw findings, 26 after dedup, 5 dismissed as noise, 6 decision-needed (all resolved live with the developer), 21 patch (all applied). Fixes: the fast-path/latest-wins race in `runHash`/`runHashFile` (HIGH — a slower in-flight hash could silently overwrite a cleared/corrected display); Move/Undo now confirm before overwriting existing Verify content or freshly-typed input; `dropSourcePath` namespaced by `toolId`; Verify's Base64 comparison tolerates missing padding and a copied `sha256sum`-style line; paste-detection hints no longer name unselectable algorithms (56/96-char lengths dropped); `WeakHashPopover` instances get distinct accessible names per algorithm; the smart-detection offer button's `aria-label` now contains its visible label (WCAG 2.5.3); a failed second file drop resets `source`/`droppedPath` instead of leaving a stale re-hash target; AC16's partial-match summary now names non-matches too; AC10's in-flight disabled state implemented (textarea, algorithm checkboxes, Case/Encoding radios); AC11's Case control is now visibly disabled while Base64 is active; `hash_compute`/`hash_compute_file` gained an algorithm-count guard and an early return for an empty algorithm list on file drop; the `hash` registry entry's aliases extended for `sha3`; the missing "digests clear on failure after success" regression test was added. AC11 (Case/Base64 non-composition), AC13 (popover vs. label), AC17 (one-ended acknowledgement), and AC20 (the `DropZone.vue`/`registry.ts`/`tokens.css` shared-file touches) amended to match the shipped, developer-confirmed design; the decision record's "Kept" section amended to log the Paste-button cut. Dismissed as noise: a stale `dropZone.spec.ts` fixture shape (false positive — the test targets the no-`dropArgsProvider` path and the payload is opaque `unknown` there), the intentionally duplicated `MAX_INPUT_BYTES` frontend guard, `Cargo.lock`'s harmless `cpufeatures` version duplication, an extremely-low-likelihood same-flush algorithm-toggle-and-text-edit race, and un-debounced paste-detection on a very-large paste. Not committed yet. |

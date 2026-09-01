@@ -118,7 +118,7 @@ async function dropFile(
   entries = digestEntries("sha256", "sha512"),
 ) {
   const registry = useRegistryStore(pinia);
-  registry.dropSourcePath = path;
+  registry.dropSourcePath = { toolId: "hash", path };
   registry.dropResult = { toolId: "hash", value: entries };
   await flushPromises();
 }
@@ -199,6 +199,34 @@ describe("HashView", () => {
 
     await setInput(wrapper!, "");
     await settle();
+
+    expect(resultRows(wrapper!)).toHaveLength(0);
+  });
+
+  it("a slower in-flight hash resolving late does not overwrite the input being cleared (AD-16)", async () => {
+    mountView();
+    let resolveInvoke!: (value: unknown) => void;
+    invokeMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveInvoke = resolve;
+      }),
+    );
+
+    // A hash for "abc" starts and is still in flight (hashing.value is true).
+    await setInput(wrapper!, "abc");
+    await settle();
+
+    // The user clears the input before that hash resolves. Previously this
+    // set digests.value = [] directly, bypassing the latest-wins runner, so
+    // the still-in-flight "abc" result could resolve afterward and silently
+    // overwrite the correctly-cleared display (code review, Story 8.4).
+    await setInput(wrapper!, "");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    resolveInvoke(digestEntries("sha256", "sha512"));
+    await flushPromises();
+    await flushPromises();
 
     expect(resultRows(wrapper!)).toHaveLength(0);
   });
@@ -723,18 +751,252 @@ describe("HashView", () => {
     expect(offerButton(wrapper!).exists()).toBe(true);
   });
 
-  it("Undo leaves Verify empty even when an earlier move had left content there", async () => {
+  // --- Move/Undo overwrite confirmation (code review, Story 8.4) ---
+
+  function overwriteConfirm(w: VueWrapper) {
+    return w.find(".overwrite-confirm");
+  }
+  function overwriteAccept(w: VueWrapper) {
+    return overwriteConfirm(w).findAll(".offer-action")[0];
+  }
+  function overwriteCancel(w: VueWrapper) {
+    return overwriteConfirm(w).findAll(".offer-action")[1];
+  }
+
+  it("does not move without confirmation when Verify already holds content, and Undo still leaves Verify empty after", async () => {
     mountView();
     await wrapper!.find("#hash-verify").setValue(HEX.md5);
     await setInput(wrapper!, HEX.sha512);
     await flushPromises();
+
     await offerButton(wrapper!).trigger("click");
     await flushPromises();
+    // Not moved yet — Verify still holds the earlier, unrelated value.
+    expect((wrapper!.find("#hash-verify").element as HTMLInputElement).value).toBe(HEX.md5);
+    expect(overwriteConfirm(wrapper!).exists()).toBe(true);
+
+    await overwriteAccept(wrapper!).trigger("click");
+    await flushPromises();
+
+    expect((wrapper!.find("#hash-verify").element as HTMLInputElement).value).toBe(HEX.sha512);
+    expect((wrapper!.find("#hash-input").element as HTMLTextAreaElement).value).toBe("");
+    expect(overwriteConfirm(wrapper!).exists()).toBe(false);
 
     await undoButton(wrapper!).trigger("click");
     await flushPromises();
 
     expect((wrapper!.find("#hash-input").element as HTMLTextAreaElement).value).toBe(HEX.sha512);
+    // Undo restores the input, but never the earlier Verify content.
     expect((wrapper!.find("#hash-verify").element as HTMLInputElement).value).toBe("");
+  });
+
+  it("cancelling the move-overwrite confirmation leaves both fields untouched", async () => {
+    mountView();
+    await wrapper!.find("#hash-verify").setValue(HEX.md5);
+    await setInput(wrapper!, HEX.sha512);
+    await flushPromises();
+
+    await offerButton(wrapper!).trigger("click");
+    await flushPromises();
+    await overwriteCancel(wrapper!).trigger("click");
+    await flushPromises();
+
+    expect(overwriteConfirm(wrapper!).exists()).toBe(false);
+    expect((wrapper!.find("#hash-verify").element as HTMLInputElement).value).toBe(HEX.md5);
+    expect((wrapper!.find("#hash-input").element as HTMLTextAreaElement).value).toBe(HEX.sha512);
+  });
+
+  it("does not undo without confirmation when the input has changed since the move", async () => {
+    mountView();
+    await setInput(wrapper!, HEX.sha256);
+    await flushPromises();
+    await offerButton(wrapper!).trigger("click");
+    await flushPromises();
+    expect((wrapper!.find("#hash-input").element as HTMLTextAreaElement).value).toBe("");
+
+    await setInput(wrapper!, "something new");
+    await flushPromises();
+
+    await undoButton(wrapper!).trigger("click");
+    await flushPromises();
+    // Not undone yet — the newly typed input stands.
+    expect((wrapper!.find("#hash-input").element as HTMLTextAreaElement).value).toBe("something new");
+    expect(overwriteConfirm(wrapper!).exists()).toBe(true);
+
+    await overwriteAccept(wrapper!).trigger("click");
+    await flushPromises();
+
+    expect((wrapper!.find("#hash-input").element as HTMLTextAreaElement).value).toBe(HEX.sha256);
+    expect((wrapper!.find("#hash-verify").element as HTMLInputElement).value).toBe("");
+  });
+
+  // --- In-flight disabled state (AC10) ---
+
+  it("disables the algorithm/case/encoding controls, but not the text input, while a hash is in flight", async () => {
+    mountView();
+    let resolveInvoke!: (value: unknown) => void;
+    invokeMock.mockReturnValueOnce(new Promise((resolve) => { resolveInvoke = resolve; }));
+
+    await setInput(wrapper!, "abc");
+    await settle();
+
+    expect((algoCheckbox(wrapper!, "SHA-256").element as HTMLInputElement).disabled).toBe(true);
+    // The text input stays interactive — the user must always be able to
+    // keep typing or clear the box; the coalescing runner (AC10) absorbs
+    // whatever they do meanwhile, rather than blocking them.
+    expect((wrapper!.find("#hash-input").element as HTMLTextAreaElement).disabled).toBe(false);
+
+    resolveInvoke(digestEntries("sha256", "sha512"));
+    await flushPromises();
+
+    expect((algoCheckbox(wrapper!, "SHA-256").element as HTMLInputElement).disabled).toBe(false);
+  });
+
+  // --- AC11: Case is inert (and disabled) while Base64 encoding is active ---
+
+  it("disables the Case control while Base64 encoding is selected", async () => {
+    mountView();
+    expect((caseRadio(wrapper!, "upper").element as HTMLInputElement).disabled).toBe(false);
+
+    await encodingRadio(wrapper!, "Base64").setValue();
+    await flushPromises();
+
+    expect((caseRadio(wrapper!, "upper").element as HTMLInputElement).disabled).toBe(true);
+
+    await encodingRadio(wrapper!, "Hex").setValue();
+    await flushPromises();
+
+    expect((caseRadio(wrapper!, "upper").element as HTMLInputElement).disabled).toBe(false);
+  });
+
+  // --- All-unchecked hint ---
+
+  it("shows an explanatory hint, not a blank area, when every algorithm is unchecked", async () => {
+    mountView();
+    await algoCheckbox(wrapper!, "SHA-256").trigger("change");
+    await algoCheckbox(wrapper!, "SHA-512").trigger("change");
+    await flushPromises();
+
+    await setInput(wrapper!, "abc");
+    await settle();
+
+    expect(wrapper!.find(".no-algo-hint").exists()).toBe(true);
+  });
+
+  // --- WeakHashPopover: distinct accessible names per row (a11y) ---
+
+  it("gives the legend and each weak row's help popover a distinct accessible name", async () => {
+    mountView();
+    await algoCheckbox(wrapper!, "MD5").trigger("change");
+    await algoCheckbox(wrapper!, "SHA-1").trigger("change");
+    await flushPromises();
+    await hashInput(wrapper!, "abc", digestEntries("sha256", "sha512", "md5", "sha1"));
+
+    const legendLabel = wrapper!.find(".algo-field legend .help-dot").attributes("aria-label");
+    const rowLabels = resultRows(wrapper!)
+      .map((r) => r.find(".help-dot"))
+      .filter((d) => d.exists())
+      .map((d) => d.attributes("aria-label"));
+
+    expect(rowLabels).toHaveLength(2);
+    expect(rowLabels[0]).not.toBe(rowLabels[1]);
+    expect(rowLabels).not.toContain(legendLabel);
+  });
+
+  // --- Paste-detection hints only name selectable algorithms ---
+
+  it("shows no offer for a length only an unselectable algorithm produces (SHA-224/384)", async () => {
+    mountView();
+    await setInput(wrapper!, "a".repeat(56)); // SHA-224/SHA3-224 hex length
+    await flushPromises();
+    expect(offerButton(wrapper!).exists()).toBe(false);
+
+    await setInput(wrapper!, "a".repeat(96)); // SHA-384/SHA3-384 hex length
+    await flushPromises();
+    expect(offerButton(wrapper!).exists()).toBe(false);
+  });
+
+  // --- Verify: tolerant matching (code review, Story 8.4) ---
+
+  it("matches a Base64 digest pasted without its padding", async () => {
+    mountView();
+    await hashInput(wrapper!, "abc", digestEntries("sha256"));
+
+    const unpadded = b64(HEX.sha256).replace(/=+$/, "");
+    await wrapper!.find("#hash-verify").setValue(unpadded);
+    await flushPromises();
+
+    expect(resultRows(wrapper!)[0].find(".verify-indicator.match").exists()).toBe(true);
+  });
+
+  it("matches a copied sha256sum-style line, ignoring the trailing filename", async () => {
+    mountView();
+    await hashInput(wrapper!, "abc", digestEntries("sha256"));
+
+    await wrapper!.find("#hash-verify").setValue(`${HEX.sha256}  report.txt`);
+    await flushPromises();
+
+    expect(resultRows(wrapper!)[0].find(".verify-indicator.match").exists()).toBe(true);
+  });
+
+  it("names both matches and non-matches in the summary on a partial match (AC16)", async () => {
+    mountView();
+    await hashInput(wrapper!, "abc", digestEntries("sha256", "sha512"));
+
+    await wrapper!.find("#hash-verify").setValue(HEX.sha256);
+    await flushPromises();
+
+    const summary = wrapper!.find(".verify-summary").text();
+    expect(summary).toContain("SHA-256");
+    expect(summary).toContain("SHA-512");
+  });
+
+  // --- Failed second drop must not leave a stale re-hash target ---
+
+  it("does not re-hash a stale dropped file after a later drop on the same tool fails", async () => {
+    mountView();
+    const registry = useRegistryStore(pinia);
+    await flushPromises();
+    await dropFile("/tmp/a.bin", digestEntries("sha256", "sha512"));
+    expect(resultRows(wrapper!)).toHaveLength(2);
+
+    registry.dropResult = {
+      toolId: "hash",
+      error: {
+        code: "file-read-error",
+        message: "/tmp/gone.bin: No such file or directory (os error 2)",
+        position: null,
+        context: null,
+      },
+    };
+    await flushPromises();
+    invokeMock.mockClear();
+
+    await algoCheckbox(wrapper!, "MD5").trigger("change");
+    await flushPromises();
+
+    // Must not silently re-hash the earlier /tmp/a.bin.
+    expect(invokeMock).not.toHaveBeenCalledWith("hash_compute_file", expect.anything());
+  });
+
+  // --- Deferred-work fold-in: digests clear when a new failure follows a
+  // prior success (decision record commitment, code review, Story 8.4) ---
+
+  it("clears digests when a hash that fails follows one that succeeded", async () => {
+    mountView();
+    await hashInput(wrapper!, "abc", digestEntries("sha256", "sha512"));
+    expect(resultRows(wrapper!)).toHaveLength(2);
+
+    invokeMock.mockRejectedValueOnce({
+      code: "hash-internal",
+      message: "background task failed",
+      position: null,
+      context: null,
+    });
+    await setInput(wrapper!, "xyz");
+    await settle();
+
+    expect(resultRows(wrapper!)).toHaveLength(0);
+    expect(wrapper!.find("[role='alert']").exists()).toBe(true);
   });
 });

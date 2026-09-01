@@ -60,12 +60,18 @@ every `json-*`, every `base64-*`, **no** `hash-*`.
   generic dispatcher; it invokes `hash_compute_file` and publishes `registry.dropResult`; the
   view **consumes** the outcome, it does not re-dispatch. (The dispatch call gains an argument —
   see the AD-1 split — but the ownership boundary is unchanged.)
-- **One shared `registry.getLatestWinsRunner("hash")` (AD-16)** across manual hashing, Paste, and
-  an in-flight file drop — all three write the same digest/error surface, so they participate in
-  one latest-wins sequence. This is **correct as-is and remains the reference implementation** for
-  "a drop plus an in-view invoke write the same surface" (cited in Story 8.3's Dev Notes). If
-  Task 2 splits Hash into genuinely independent panels, scope one runner per group — but the
-  chosen single enriched view does not.
+- **One shared `registry.getLatestWinsRunner("hash")` (AD-16)** across manual hashing, live
+  as-you-type input, and an in-flight file drop — all three write the same digest/error surface,
+  so they participate in one latest-wins sequence. This is **correct as-is and remains the
+  reference implementation** for "a drop plus an in-view invoke write the same surface" (cited in
+  Story 8.3's Dev Notes). If Task 2 splits Hash into genuinely independent panels, scope one
+  runner per group — but the chosen single enriched view does not.
+  *Amended (`bmad-code-review`, 2026-09-01): this entry originally also named the dedicated
+  Paste button as a third latest-wins participant. Task 2b's live as-you-type hashing made a
+  separate Paste affordance redundant — typing (including via paste) already triggers hashing
+  automatically — so the button was dropped without updating this record. Confirmed with the
+  developer at code review: the removal stands; native platform paste (Ctrl/Cmd+V) into the
+  textarea remains fully functional. See the **Cut** section below.*
 - **The error model** — `hash-input-too-large`, `hash-internal` (join panic), `file-read-error`
   (missing/unreadable dropped file). All `ToolError`, all rendered raw via `toolErrorMessage`,
   **none** in `TRANSLATABLE_CODES`.
@@ -213,6 +219,20 @@ the story file so the ideas remain traceable, not silently dropped.
    compare, there is no "list of digests" worth writing and no write side. If Task 2a decides it
    is wanted it is a new `hash_export` command via `fs_helper::write_file_bytes` (AD-15). Listed
    as an open item, not scope.
+
+**Removed at Task 2b implementation, logged retroactively at code review (2026-09-01).** Unlike
+items 1–6 above (candidate additions never built), this is an *existing* affordance the shipped
+diff dropped without a corresponding record entry:
+
+7. **The dedicated Paste-from-clipboard button.** The pre-redesign `HashView.vue` had an explicit
+   Paste button (`readClipboardText()`) as a third participant in the shared `getLatestWinsRunner`
+   (see **Kept**, which still named it until this amendment). Task 2b's live as-you-type hashing —
+   confirmed in this record's own **Changed** section — made a separate Paste affordance
+   redundant: pasting into the textarea now triggers hashing automatically, the same as typing.
+   The button was dropped as part of that change but the record was never updated to say so.
+   *Confirmed with the developer at code review: the removal stands.* Native platform paste
+   (Ctrl/Cmd+V) into the textarea remains fully functional — only the dedicated button affordance
+   is gone.
 
 ## FR14 + FR15 revision
 

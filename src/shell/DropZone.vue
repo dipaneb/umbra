@@ -104,7 +104,7 @@ onMounted(async () => {
         );
         if (!result.superseded && isStillActive()) {
           registry.dropResult = { toolId, value: result.value };
-          registry.dropSourcePath = path;
+          registry.dropSourcePath = { toolId, path };
         }
       } catch (err) {
         if (isStillActive()) {

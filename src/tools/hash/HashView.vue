@@ -104,12 +104,38 @@ function toggleAlgorithm(id: Algorithm) {
 // digest bytes; case applies to Hex only (uppercasing a Base64 string would
 // corrupt its mixed-case alphabet), but both settings persist independently
 // so switching Base64 → Hex restores the chosen case.
-function hexToBase64(hex: string): string {
+function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   }
-  return btoa(String.fromCharCode(...bytes));
+  return bytes;
+}
+
+function hexToBase64(hex: string): string {
+  return btoa(String.fromCharCode(...hexToBytes(hex)));
+}
+
+function padBase64(value: string): string {
+  const remainder = value.length % 4;
+  return remainder === 0 ? value : value + "=".repeat(4 - remainder);
+}
+
+// Accepts Base64 missing its `=` padding (a common convention this tool's
+// own encoding toggle doesn't produce, but other tools/URLs do) — code
+// review, Story 8.4.
+function base64ToBytesOrNull(value: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return null;
+  try {
+    const decoded = atob(padBase64(value));
+    return Uint8Array.from(decoded, (c) => c.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, i) => byte === b[i]);
 }
 
 function formatDigest(hexLower: string): string {
@@ -127,9 +153,14 @@ const verifyActive = computed(
 );
 
 function matchesExpected(hexLower: string): boolean {
-  const expected = verifyValue.value.trim();
-  if (expected === "") return false;
-  return expected.toLowerCase() === hexLower || expected === hexToBase64(hexLower);
+  const raw = verifyValue.value.trim();
+  if (raw === "") return false;
+  // Tolerate a copied `sha256sum`-style "<hash>  <filename>" line — compare
+  // only the leading whitespace-delimited token (code review, Story 8.4).
+  const expected = raw.split(/\s+/)[0];
+  if (expected.toLowerCase() === hexLower) return true;
+  const expectedBytes = base64ToBytesOrNull(expected);
+  return expectedBytes !== null && bytesEqual(expectedBytes, hexToBytes(hexLower));
 }
 
 const rows = computed(() =>
@@ -148,23 +179,35 @@ const rows = computed(() =>
 const verifyMatchedLabels = computed(() =>
   rows.value.filter((r) => r.verified === "match").map((r) => r.label),
 );
+const verifyMismatchedLabels = computed(() =>
+  rows.value.filter((r) => r.verified === "mismatch").map((r) => r.label),
+);
 
+// AC16's own example names both sides of a partial match ("SHA-256
+// matches; SHA-512 and SHA3-256 do not") — the summary must too, not just
+// the matches (code review, Story 8.4).
 const verifySummary = computed(() => {
   if (!verifyActive.value) return "";
-  return verifyMatchedLabels.value.length
-    ? t("tools.hash.verifyMatchSummary", { names: verifyMatchedLabels.value.join(", ") })
-    : t("tools.hash.verifyNoMatchSummary");
+  if (verifyMatchedLabels.value.length === 0) return t("tools.hash.verifyNoMatchSummary");
+  if (verifyMismatchedLabels.value.length === 0) {
+    return t("tools.hash.verifyMatchSummary", { names: verifyMatchedLabels.value.join(", ") });
+  }
+  return t("tools.hash.verifyPartialMatchSummary", {
+    matched: verifyMatchedLabels.value.join(", "),
+    unmatched: verifyMismatchedLabels.value.join(", "),
+  });
 });
 
 // AC17: when the input is *exactly* a bare hex string of a recognised digest
 // length, offer to move it into Verify. The offer never acts on its own
 // (AD-9) — only the click moves anything.
+// Only lengths a selectable algorithm can actually produce (code review,
+// Story 8.4 — the tool has no SHA-224/SHA3-224/SHA-384/SHA3-384, so a hint
+// naming one of those was a guaranteed dead end for the user).
 const HEX_LENGTH_HINTS: Record<number, string> = {
   32: "MD5",
   40: "SHA-1",
-  56: "SHA-224 / SHA3-224",
   64: "SHA-256 / SHA3-256",
-  96: "SHA-384 / SHA3-384",
   128: "SHA-512 / SHA3-512",
 };
 
@@ -173,9 +216,7 @@ const HEX_LENGTH_HINTS: Record<number, string> = {
 const BASE64_BYTE_LENGTH_HINTS: Record<number, string> = {
   16: "MD5",
   20: "SHA-1",
-  28: "SHA-224 / SHA3-224",
   32: "SHA-256 / SHA3-256",
-  48: "SHA-384 / SHA3-384",
   64: "SHA-512 / SHA3-512",
 };
 
@@ -223,14 +264,18 @@ let tintTimer: ReturnType<typeof setTimeout> | undefined;
 let ackTimer: ReturnType<typeof setTimeout> | undefined;
 let movedFromInput: string | null = null;
 
-function acceptPasteOffer() {
-  const detected = pasteDetection.value;
-  if (!detected) return;
+// Neither the move nor Undo may silently discard data the user already
+// typed — a confirm step gates the overwrite instead (code review, Story
+// 8.4). `null` = no pending confirmation.
+const pendingOverwrite = ref<"move" | "undo" | null>(null);
+
+function doMove(value: string) {
   movedFromInput = input.value;
-  verifyValue.value = detected.value;
+  verifyValue.value = value;
   input.value = "";
   verifyTinted.value = true;
   movedAck.value = true;
+  pendingOverwrite.value = null;
   clearTimeout(tintTimer);
   clearTimeout(ackTimer);
   tintTimer = setTimeout(() => {
@@ -241,15 +286,51 @@ function acceptPasteOffer() {
   }, 5000);
 }
 
-function undoMove() {
-  if (movedFromInput === null) return;
+function acceptPasteOffer() {
+  const detected = pasteDetection.value;
+  if (!detected) return;
+  if (verifyValue.value.trim() !== "") {
+    pendingOverwrite.value = "move";
+    return;
+  }
+  doMove(detected.value);
+}
+
+function confirmMove() {
+  const detected = pasteDetection.value;
+  if (!detected) {
+    pendingOverwrite.value = null;
+    return;
+  }
+  doMove(detected.value);
+}
+
+function doUndo() {
   verifyValue.value = "";
-  input.value = movedFromInput;
+  input.value = movedFromInput ?? "";
   movedFromInput = null;
   verifyTinted.value = false;
   movedAck.value = false;
+  pendingOverwrite.value = null;
   clearTimeout(tintTimer);
   clearTimeout(ackTimer);
+}
+
+function undoMove() {
+  if (movedFromInput === null) return;
+  if (input.value.trim() !== "") {
+    pendingOverwrite.value = "undo";
+    return;
+  }
+  doUndo();
+}
+
+function confirmUndo() {
+  doUndo();
+}
+
+function cancelOverwrite() {
+  pendingOverwrite.value = null;
 }
 
 async function announce() {
@@ -260,9 +341,38 @@ async function announce() {
   }
 }
 
-// Runs one `invoke` on the shared latest-wins runner, applying the in-flight
-// coalesce and the standard result/error handling. `task` is the actual
-// command call (`hash_compute` for text, `hash_compute_file` for a drop).
+// A cleared/oversized/no-algorithm state resolves instantly (no backend
+// work), so it bypasses the `hashing` coalescing flag entirely — routing it
+// through `runInvoke` below made every such state change disable the
+// controls for a tick, which could itself swallow a second rapid toggle
+// (caught by this story's own test suite). It still runs through the
+// *same* shared `runLatestWins` sequence as a real invoke, so a slower
+// in-flight backend call can never resolve afterward and silently
+// overwrite it with stale data (code review, Story 8.4) — AD-16 still
+// holds; only the disabled-state coupling is removed.
+async function applyInstant(task: () => Promise<DigestEntry[]>) {
+  try {
+    const result = await runLatestWins(task);
+    if (!result.superseded) {
+      digests.value = result.value;
+      void announce();
+    }
+  } catch (err) {
+    // runLatestWins only rethrows a rejection when it belongs to the
+    // latest call — a stale rejection is swallowed as `{ superseded: true }`
+    // above, never reaching this catch.
+    digests.value = [];
+    error.value = toToolError(err);
+  }
+}
+
+// Runs one real backend `invoke` on the shared latest-wins runner, applying
+// the in-flight coalesce (AC10 — at most one trailing rerun queued while a
+// spawn_blocking computation is out) and the standard result/error
+// handling. `task` is the actual command call (`hash_compute` for text,
+// `hash_compute_file` for a drop) — the only case that drives the
+// in-flight-disabled UI state, since it's the only case with real,
+// non-instant backend cost.
 async function runInvoke(task: () => Promise<DigestEntry[]>) {
   if (hashing.value) {
     rerunPending = true;
@@ -291,22 +401,22 @@ async function runHash() {
   error.value = null;
 
   if (input.value === "") {
-    digests.value = [];
+    await applyInstant(() => Promise.resolve([]));
     return;
   }
   if (input.value.length > MAX_INPUT_BYTES) {
-    digests.value = [];
-    error.value = {
+    const tooLarge: ToolError = {
       code: "hash-input-too-large",
       message: `the text input exceeds the ${MAX_INPUT_BYTES}-byte limit`,
       position: null,
       context: null,
     };
+    await applyInstant(() => Promise.reject(tooLarge));
     return;
   }
   const algorithms = selectedAlgorithms.value;
   if (algorithms.length === 0) {
-    digests.value = [];
+    await applyInstant(() => Promise.resolve([]));
     return;
   }
   const value = input.value;
@@ -329,7 +439,7 @@ async function runHashFile() {
   }
   const algorithms = selectedAlgorithms.value;
   if (algorithms.length === 0) {
-    digests.value = [];
+    await applyInstant(() => Promise.resolve([]));
     return;
   }
   await runInvoke(() => invoke<DigestEntry[]>("hash_compute_file", { path, algorithms }));
@@ -374,6 +484,11 @@ watch(
       // Keep the user's text on a failed drop — nothing was hashed from it.
       digests.value = [];
       error.value = result.error;
+      // A prior successful drop's path must not survive a later failed one —
+      // otherwise an algorithm-set change after the failure silently
+      // re-hashes the earlier, unrelated file (code review, Story 8.4).
+      source.value = "text";
+      droppedPath.value = null;
     } else {
       error.value = null;
       if (input.value !== "") {
@@ -383,7 +498,8 @@ watch(
       source.value = "drop";
       // The shell forwards the file's path alongside the outcome so an
       // algorithm-set change can re-hash the file (AC15).
-      droppedPath.value = registry.dropSourcePath;
+      droppedPath.value =
+        registry.dropSourcePath?.toolId === "hash" ? registry.dropSourcePath.path : null;
       digests.value = result.value as DigestEntry[];
       void announce();
     }
@@ -473,6 +589,32 @@ async function onCopyOne(value: string, key: string) {
           {{ t('tools.hash.pasteOfferAccept') }}
         </button>
       </div>
+      <!-- Verify already holds something unrelated — confirm before the
+           move overwrites it (code review, Story 8.4). -->
+      <p
+        v-if="pendingOverwrite === 'move'"
+        class="overwrite-confirm"
+        role="status"
+      >
+        <span>{{ t('tools.hash.overwriteVerifyConfirm') }}</span>
+        <button
+          type="button"
+          class="offer-action"
+          @click="confirmMove"
+        >
+          {{ t('tools.hash.overwriteConfirmAccept') }}
+        </button>
+        <button
+          type="button"
+          class="offer-action"
+          @click="cancelOverwrite"
+        >
+          {{ t('tools.hash.overwriteConfirmCancel') }}
+        </button>
+      </p>
+      <!-- Never disabled while hashing — the user must always be able to
+           keep typing or clear the box; that's what the coalescing runner
+           (AC10) exists to absorb, not something to block on. -->
       <textarea
         id="hash-input"
         v-model="input"
@@ -502,6 +644,7 @@ async function onCopyOne(value: string, key: string) {
             <input
               type="checkbox"
               :checked="settings.hashAlgorithms.includes(a.id)"
+              :disabled="hashing"
               @change="toggleAlgorithm(a.id)"
             >
             <span class="algo-name">{{ a.label }}</span>
@@ -528,6 +671,7 @@ async function onCopyOne(value: string, key: string) {
                 name="hash-case"
                 :checked="settings.hashCase === 'lower'"
                 :aria-label="t('tools.hash.caseLower')"
+                :disabled="hashing || settings.hashEncoding === 'base64'"
                 @change="settings.setHashFormat({ case: 'lower' })"
               >
               abc
@@ -538,6 +682,7 @@ async function onCopyOne(value: string, key: string) {
                 name="hash-case"
                 :checked="settings.hashCase === 'upper'"
                 :aria-label="t('tools.hash.caseUpper')"
+                :disabled="hashing || settings.hashEncoding === 'base64'"
                 @change="settings.setHashFormat({ case: 'upper' })"
               >
               ABC
@@ -560,6 +705,7 @@ async function onCopyOne(value: string, key: string) {
                 type="radio"
                 name="hash-encoding"
                 :checked="settings.hashEncoding === 'hex'"
+                :disabled="hashing"
                 @change="settings.setHashFormat({ encoding: 'hex' })"
               >
               {{ t('tools.hash.encodingHex') }}
@@ -569,6 +715,7 @@ async function onCopyOne(value: string, key: string) {
                 type="radio"
                 name="hash-encoding"
                 :checked="settings.hashEncoding === 'base64'"
+                :disabled="hashing"
                 @change="settings.setHashFormat({ encoding: 'base64' })"
               >
               {{ t('tools.hash.encodingBase64') }}
@@ -608,7 +755,10 @@ async function onCopyOne(value: string, key: string) {
         >
           <span class="row-algo">
             <span class="algo-name">{{ row.label }}</span>
-            <WeakHashPopover v-if="row.weak" />
+            <WeakHashPopover
+              v-if="row.weak"
+              :algorithm="row.label"
+            />
           </span>
           <code>{{ row.value }}</code>
           <span
@@ -646,6 +796,15 @@ async function onCopyOne(value: string, key: string) {
         </li>
       </ul>
     </div>
+    <!-- Distinguishes "nothing typed/dropped yet" from "everything is
+         unchecked" — both previously rendered as the same blank space
+         (code review, Story 8.4). -->
+    <p
+      v-else-if="selectedAlgorithms.length === 0 && (input || source === 'drop')"
+      class="no-algo-hint"
+    >
+      {{ t('tools.hash.noAlgorithmsHint') }}
+    </p>
 
     <!-- AC16: a persistent panel under the results. Empty → inert, the tool
          is a plain calculator. A pasted value is checked against every
@@ -680,6 +839,29 @@ async function onCopyOne(value: string, key: string) {
           @click="undoMove"
         >
           {{ t('tools.hash.undoMove') }}
+        </button>
+      </p>
+      <!-- The input holds something typed since the move — confirm before
+           Undo overwrites it (code review, Story 8.4). -->
+      <p
+        v-if="pendingOverwrite === 'undo'"
+        class="overwrite-confirm"
+        role="status"
+      >
+        <span>{{ t('tools.hash.overwriteInputConfirm') }}</span>
+        <button
+          type="button"
+          class="offer-action"
+          @click="confirmUndo"
+        >
+          {{ t('tools.hash.overwriteConfirmAccept') }}
+        </button>
+        <button
+          type="button"
+          class="offer-action"
+          @click="cancelOverwrite"
+        >
+          {{ t('tools.hash.overwriteConfirmCancel') }}
         </button>
       </p>
       <p
@@ -927,9 +1109,41 @@ textarea {
   pointer-events: none;
 }
 
+/* AC10 (in-flight) / AC11 (Case while Base64 is active) — a disabled
+   control reads as inert, not just non-interactive (code review, Story
+   8.4). */
+.segmented label:has(input:disabled),
+.algo-check:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .alert {
   color: var(--color-accent-destructive);
   margin: 0 0 var(--spacing-4);
+}
+
+/* Replaces the results panel when nothing is selected — same restrained
+   caption styling as .results-source, not an error. */
+.no-algo-hint {
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px dashed var(--color-border-hairline);
+  border-radius: var(--radius-default);
+  font-family: var(--font-caption-family);
+  font-size: var(--font-caption-size);
+  color: var(--color-text-secondary);
+}
+
+/* A confirm step before Move/Undo overwrites existing data — same caption
+   weight + inline text-action pattern as .moved-into. */
+.overwrite-confirm {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-2);
+  margin: var(--spacing-1) 0 0;
+  font-family: var(--font-caption-family);
+  font-size: var(--font-caption-size);
+  color: var(--color-text-secondary);
 }
 
 /* Announce-only live region (AC14) — present in the DOM at all times, never

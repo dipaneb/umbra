@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-08-31  # story 8-4 moved to in-progress (bmad-dev-story)
+last_updated: 2026-09-01  # story 8-4 code review complete, moved to done (bmad-code-review)
 # note: story 8-2 code review 2026-08-30 (bmad-code-review, status "review" -> "done") --
 # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor)
 # against b151314..HEAD. 33 raw findings -> 23 after dedup -> 4 decision-needed, 8 patch,
@@ -1319,7 +1319,34 @@ development_status:
   # patch pin -> Task 2b. Developer signed off on the AC set 2026-09-01. Story stays in-progress
   # -- Task 2b (per-slice implementation, developer render-review each slice, commit per slice,
   # ask before pushing) is the remaining work, not yet started. Not committed.
-  8-4-reimagine-the-hash-generator: in-progress
+  # note: story 8-4 code review 2026-09-01 (bmad-code-review, status "in-progress" -> "done") --
+  # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor against
+  # AC6-AC20) against main...HEAD (191200e docs commit + c536113 Task 2b implementation). 36 raw
+  # findings -> 26 after dedup -> 6 decision-needed, 21 patch, 0 deferred, 5 dismissed. All 6
+  # decision-needed items resolved live with the developer: Paste-button removal confirmed
+  # intentional (decision record amended); Move/Undo gained a confirm-before-overwrite step;
+  # registry.dropSourcePath namespaced by toolId; the DropZone.vue/tokens.css shared-file touches
+  # disclosed retroactively in AC20; AC17's one-ended acknowledgement and AC13's popover-not-label
+  # design both amended into their AC text; AC11's Case control now visibly disabled under Base64.
+  # All 21 patches applied + verified (cargo fmt/clippy/test --workspace 263 tests, pnpm lint/test
+  # 698 tests/vue-tsc/build all green): the fast-path/latest-wins race in runHash/runHashFile
+  # (HIGH -- a slower in-flight hash could silently overwrite a cleared display) fixed via a new
+  # applyInstant() helper that keeps the AD-16 sequencing without coupling to the in-flight
+  # disabled state (a first attempt disabling the textarea itself broke clearing input mid-hash,
+  # caught by the new regression test); Verify's Base64 comparison now tolerates missing padding
+  # and a copied sha256sum-style line; paste-detection hints no longer name unselectable
+  # algorithms; WeakHashPopover instances get distinct accessible names; the smart-detection
+  # offer button's aria-label now contains its visible label (WCAG 2.5.3); a failed second file
+  # drop resets source/droppedPath; AC16's partial-match summary now names non-matches;  AC10's
+  # in-flight disabled state added to algorithm/case/encoding controls only; hash_compute(_file)
+  # gained an algorithm-count guard + an empty-algorithms early return; registry aliases extended
+  # for sha3; the missing "digests clear after a failure following success" test was added.
+  # Dismissed as noise: a stale dropZone.spec.ts fixture (false positive), the intentionally
+  # duplicated MAX_INPUT_BYTES frontend guard, Cargo.lock's harmless cpufeatures duplication, an
+  # extremely-low-likelihood same-flush race, and un-debounced paste-detection on a huge paste.
+  # Not committed -- all review changes are UNCOMMITTED working-tree changes on
+  # feat/story-8-4-reimagine-the-hash-generator.
+  8-4-reimagine-the-hash-generator: done
   8-5-reimagine-the-jwt-inspector: backlog
   8-6-reimagine-nl-cron: backlog
   8-7-reimagine-the-bucket-ocr: backlog

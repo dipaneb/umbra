@@ -5,22 +5,45 @@
 // AppPopover + help-dot pattern UuidView established for its v4-vs-v7
 // explainer. One shared trigger component, used on the "Algorithms" legend
 // and on each weak result row.
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import AppPopover from "../../components/AppPopover.vue";
 
-withDefaults(
+// `algorithm` names the one row this instance sits on (e.g. "MD5"), giving
+// it a distinct accessible name from the legend's general instance and from
+// a sibling row's instance — without it, every WeakHashPopover on the page
+// shared the exact same aria-label/dialog-label (code review, Story 8.4).
+// Omitted on the legend, which covers both flagged algorithms generally.
+const props = withDefaults(
   defineProps<{
     placement?: "bottom-start" | "bottom-end" | "top-start" | "top-end";
+    algorithm?: string;
   }>(),
-  { placement: "bottom-start" },
+  { placement: "bottom-start", algorithm: undefined },
 );
 
 const { t } = useI18n();
+
+const dialogLabel = computed(() =>
+  props.algorithm
+    ? t("tools.hash.weakHelpLabelFor", { algorithm: props.algorithm })
+    : t("tools.hash.weakHelpLabel"),
+);
+const triggerLabel = computed(() =>
+  props.algorithm
+    ? t("tools.hash.weakHelpTriggerFor", { algorithm: props.algorithm })
+    : t("tools.hash.weakHelpTrigger"),
+);
+const heading = computed(() =>
+  props.algorithm
+    ? t("tools.hash.weakHelpHeadingFor", { algorithm: props.algorithm })
+    : t("tools.hash.weakHelpHeading"),
+);
 </script>
 
 <template>
   <AppPopover
-    :label="t('tools.hash.weakHelpLabel')"
+    :label="dialogLabel"
     :placement="placement"
   >
     <template #trigger="{ toggle, triggerProps }">
@@ -28,14 +51,14 @@ const { t } = useI18n();
         type="button"
         class="help-dot"
         v-bind="triggerProps"
-        :aria-label="t('tools.hash.weakHelpTrigger')"
+        :aria-label="triggerLabel"
         @click="toggle"
       >
         ?
       </button>
     </template>
     <h2 class="popover-heading">
-      {{ t('tools.hash.weakHelpHeading') }}
+      {{ heading }}
     </h2>
     <p class="popover-body">
       {{ t('tools.hash.weakHelpBody') }}

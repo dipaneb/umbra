@@ -115,7 +115,20 @@ const TOOLS: ToolRegistryEntry[] = [
     id: "hash",
     name: "Hash",
     descriptionKey: "tools.hash.description",
-    aliases: ["hash", "checksum", "sha256", "sha512", "md5", "sha1", "digest", "hachage", "empreinte"],
+    aliases: [
+      "hash",
+      "checksum",
+      "sha256",
+      "sha512",
+      "sha3",
+      "sha3-256",
+      "sha3-512",
+      "md5",
+      "sha1",
+      "digest",
+      "hachage",
+      "empreinte",
+    ],
     route: "/tools/hash",
     icon: "hash",
     component: () => import("../tools/hash/HashView.vue"),
@@ -227,8 +240,11 @@ export const useRegistryStore = defineStore("registry", () => {
   // result-shape checks. Read by a view that has to re-invoke its own file
   // handler after the drop — e.g. Hash re-hashing the dropped file when the
   // selected algorithm set changes (Story 8.4), for which the one-shot
-  // `hash_compute_file` dispatch alone isn't enough.
-  const dropSourcePath = ref<string | null>(null);
+  // `hash_compute_file` dispatch alone isn't enough. Tagged with `toolId`
+  // like `dropResult` (code review, Story 8.4) — the pairing is safe today
+  // (only one consumer, gated by `isStillActive`/`superseded`), but an
+  // untagged shared field is a footgun for a future second consumer.
+  const dropSourcePath = ref<{ toolId: string; path: string } | null>(null);
 
   // One-shot outcome of a dispatcher-invoked clipboard-paste command — set by `DropZone.vue`
   // after it invokes `activeTool.paste.handler`. A separate field from `dropResult`, not a

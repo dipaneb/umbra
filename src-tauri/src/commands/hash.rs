@@ -1,11 +1,34 @@
 use umbra_core::ToolError;
-use umbra_core::hash::{Algorithm, DigestEntry, MAX_INPUT_BYTES, compute, compute_bytes};
+use umbra_core::hash::{
+    ALL_ALGORITHMS, Algorithm, DigestEntry, MAX_INPUT_BYTES, compute, compute_bytes,
+};
+
+// A caller can never legitimately request more distinct algorithms than
+// exist — a request longer than this is either duplicated or a malformed/
+// hostile IPC call bypassing the UI's checkbox ceiling. Rejected before any
+// work happens, same CWE-400 family as MAX_INPUT_BYTES.
+fn check_algorithm_count(algorithms: &[Algorithm]) -> Result<(), ToolError> {
+    if algorithms.len() > ALL_ALGORITHMS.len() {
+        return Err(ToolError {
+            code: "hash-too-many-algorithms".to_string(),
+            message: format!(
+                "requested {} algorithms, which exceeds the {} known algorithms",
+                algorithms.len(),
+                ALL_ALGORITHMS.len()
+            ),
+            position: None,
+            context: None,
+        });
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn hash_compute(
     input: String,
     algorithms: Vec<Algorithm>,
 ) -> Result<Vec<DigestEntry>, ToolError> {
+    check_algorithm_count(&algorithms)?;
     tauri::async_runtime::spawn_blocking(move || compute(&input, &algorithms))
         .await
         .map_err(map_join_error)?
@@ -16,6 +39,11 @@ pub async fn hash_compute_file(
     path: String,
     algorithms: Vec<Algorithm>,
 ) -> Result<Vec<DigestEntry>, ToolError> {
+    check_algorithm_count(&algorithms)?;
+    if algorithms.is_empty() {
+        // Nothing was asked for — skip the (up to 100 MiB) read entirely.
+        return Ok(vec![]);
+    }
     tauri::async_runtime::spawn_blocking(move || {
         // Checked via metadata, before the file is read, so an oversized
         // file is rejected without ever being materialized in memory (same
@@ -167,6 +195,23 @@ mod tests {
         .await
         .unwrap_err();
         assert_eq!(err.code, "file-read-error");
+    }
+
+    #[tokio::test]
+    async fn hash_compute_command_rejects_more_algorithms_than_exist() {
+        let over = vec![Algorithm::Sha256; ALL_ALGORITHMS.len() + 1];
+        let err = hash_compute("abc".to_string(), over).await.unwrap_err();
+        assert_eq!(err.code, "hash-too-many-algorithms");
+    }
+
+    #[tokio::test]
+    async fn hash_compute_file_command_skips_the_read_when_no_algorithms_are_requested() {
+        // A nonexistent path proves the file is never touched — an empty
+        // algorithm list returns before check_file_size / the read.
+        let entries = hash_compute_file("/nonexistent/path/umbra-test".to_string(), vec![])
+            .await
+            .unwrap();
+        assert_eq!(entries, vec![]);
     }
 
     #[tokio::test]
