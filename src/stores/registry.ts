@@ -220,6 +220,16 @@ export const useRegistryStore = defineStore("registry", () => {
   // above.
   const dropResult = ref<{ toolId: string; value: unknown } | { toolId: string; error: ToolError } | null>(null);
 
+  // The filesystem path of the file behind the current *successful*
+  // `dropResult` (null on an error outcome or before any drop). A sibling
+  // field, not folded into `dropResult` — same reasoning as `pasteResult`:
+  // views that only need the outcome must not have to widen their
+  // result-shape checks. Read by a view that has to re-invoke its own file
+  // handler after the drop — e.g. Hash re-hashing the dropped file when the
+  // selected algorithm set changes (Story 8.4), for which the one-shot
+  // `hash_compute_file` dispatch alone isn't enough.
+  const dropSourcePath = ref<string | null>(null);
+
   // One-shot outcome of a dispatcher-invoked clipboard-paste command — set by `DropZone.vue`
   // after it invokes `activeTool.paste.handler`. A separate field from `dropResult`, not a
   // repurposed one: five other tools' views already depend on `dropResult` meaning "a file-drop
@@ -249,6 +259,7 @@ export const useRegistryStore = defineStore("registry", () => {
     dropArgsProviders,
     setDropArgsProvider,
     dropResult,
+    dropSourcePath,
     pasteResult,
     getLatestWinsRunner,
   };

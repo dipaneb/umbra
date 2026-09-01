@@ -116,6 +116,12 @@
      see DESIGN.md's Do's and Don'ts for the deliberate-exception writeup
      before reusing this anywhere else. */
   --color-diff-added: #34d399;
+  /* Story 8.4, 2026-09-01 — the app's general success/affirmative color
+     (first use: the Hash tool's Verify "match" state, opposite
+     --color-accent-destructive's "does not match"). Added by developer
+     direction; DESIGN.md's colour table owes a matching entry (follow-up —
+     that doc is otherwise locked). */
+  --color-accent-success: #34d399;
 
   --shadow-floating:
     0 0 0 1px rgba(255, 255, 255, 0.05),
@@ -141,6 +147,7 @@
   --color-accent-destructive: #cf3130;
   --color-accent-neutral-chip: #e4e5e7;
   --color-diff-added: #15803d;
+  --color-accent-success: #15803d;
 
   --shadow-floating: 0 1px 2px rgba(16, 17, 19, 0.05), 0 3px 8px rgba(16, 17, 19, 0.04);
 }

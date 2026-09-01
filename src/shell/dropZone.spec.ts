@@ -253,6 +253,8 @@ describe("DropZone", () => {
       toolId: "base64",
       error: { code: "file-read-error", message: "/tmp/file.bin: boom", position: null, context: null },
     });
+    // Story 8.4: no source path on an error outcome.
+    expect(registry.dropSourcePath).toBeNull();
   });
 
   it("shows a no-op notice that auto-clears when dropping on a tool with no drop support (AC3)", async () => {
@@ -289,6 +291,9 @@ describe("DropZone", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("hash_compute_file", { path: "/tmp/report.pdf" });
     expect(registry.dropResult).toEqual({ toolId: "hash", value: sampleDigests });
+    // Story 8.4: the file's path is forwarded alongside the outcome so a view
+    // can re-invoke its file handler (Hash re-hashing on a selection change).
+    expect(registry.dropSourcePath).toBe("/tmp/report.pdf");
   });
 
   it("latest-wins: a newer drop's outcome survives even when the older drop's invoke() resolves later (AC2, AD-16)", async () => {
