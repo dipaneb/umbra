@@ -41,7 +41,46 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-01  # story 8-5 created (bmad-create-story), backlog -> ready-for-dev
+last_updated: 2026-09-02  # story 8-5 Task 1 + Task 2a done (bmad-party-mode); stays in-progress
+# note: story 8-5 Task 1 + Task 2a done 2026-09-02 (bmad-dev-story -> bmad-party-mode, developer's
+# method choice; installed roster, session mode, Epic 8 party memory resumed). No drift vs the
+# story Dev Notes on re-read. Redesign scope decided with the developer: single enriched view, NO
+# tabs (5th redesign holding the 8.1-8.4 discipline), ZERO action buttons (Decode -> live debounced
+# decode; Paste button cut too - "hell no" - native paste + clipboardMatch cover it), no primary-
+# orange anywhere. Header/payload STAY <pre> - JsonTree.vue NOT reused (AD-6 island question closed).
+# Dashed-box notice -> plain caption + ? AppPopover (developer: "why use the dotted box used for
+# dropping a file?"). NO permanent Algorithm line - a CONDITIONAL boxless unsigned-alg warning only
+# (fires on alg none/absent/non-string). Live clock so expired + nbf "not valid yet" re-evaluate.
+# Claims: relative time + i64 bounds check + wrong-type-vs-absent factual note (both deferred-work.md
+# items folded, both view-side). AD-1 split is the cleanest in Epic 8: JwtDecoded/decode/
+# decode_segment/numeric_claim/11 tests/jwt_decode/lib.rs/jwtDecoded.ts ALL UNCHANGED; the entire
+# Rust diff is a MAX_INPUT_BYTES const (1 MB) + guard + new jwt-input-too-large code + ~3 tests.
+# NO crypto crate, NO verify primitive (signature stays discarded), NO command/registry/clipboardMatch
+# change, NO TRANSLATABLE_CODES change, NO persisted jwt.* setting. FR16/FR17 expanded; FR18 + Story
+# 2.6 AC4 downgraded (verification -> explicitly out of scope for this tool, P3 backlog #55).
+# Decision record: 8-5-jwt-decision-record.md. AC3: 6 backlog-candidate issues filed on dipaneb/umbra
+# (#120 raw signature, #121 signature-segment validation, #122 named-claims table, #123 two-token
+# diff, #124 JsonTree.vue reuse, #125 tighten isJwtShaped) + a comment on the pre-existing #55
+# (JWT signature verification) rather than a duplicate; developer confirmed GitHub issues this story
+# (not the 8.3/8.4 personal-backlog route). Design canvas "JWT Inspector Redesign" published +
+# revised once: claude.ai/code/artifact/9ab4c58a-8f60-4cdd-9e71-8bdf32139529 (4 artboards, light
+# theme, dark parity owed at build). Task 2a: AC6-AC22 written into the story file's
+# "Acceptance Criteria -- Task 2 (Redesign)" section; developer signed off 2026-09-02. Story STAYS
+# in-progress -- Task 2b (per-slice implementation, developer render-review each slice, commit per
+# slice, ask before pushing; first slice = Epic-7 tokenisation + restructure) is the remaining work,
+# not started. Nothing committed this session.
+# note: story 8-5 moved to in-progress 2026-09-01 (bmad-dev-story). Task 0 (branch setup)
+# found already done by a prior session: branch feat/story-8-5-reimagine-the-jwt-inspector
+# already existed with commit 702cb75 "docs(story-8-5): story spec + Task 1 charter" (story
+# file + the sprint-status backlog->ready-for-dev edit, from main's tip d7bb977 == baseline_commit,
+# Conventional-Commits-scoped, no code, no PII) -- content-identical to what Task 0 prescribes,
+# so adopted as-is rather than recreated. baseline_commit d7bb977 re-confirmed this session as
+# HEAD == origin/main == main; working tree clean apart from the pre-existing untracked
+# .claude/workflows/. This session is now on that branch. Remaining Task 0 step -- the
+# ready-for-dev -> in-progress move -- done here. Task 1 (discovery -> 8-5-jwt-decision-record.md)
+# is a facilitated cut/keep/add session requiring the developer's method choice
+# (bmad-party-mode vs bmad-forge-idea) and judgement -- HALTED for that, per the story's own
+# "run interactively, not autonomously" instruction. Not committed.
 # note: story 8-5 created 2026-09-01 (bmad-create-story). Developer explicitly chose to
 # continue Epic 8 top-to-bottom (8-5-reimagine-the-jwt-inspector) over strict
 # sprint-status.yaml auto-discovery, which would have picked 6-3 next -- the same
@@ -1371,7 +1410,7 @@ development_status:
   # Not committed -- all review changes are UNCOMMITTED working-tree changes on
   # feat/story-8-4-reimagine-the-hash-generator.
   8-4-reimagine-the-hash-generator: done
-  8-5-reimagine-the-jwt-inspector: ready-for-dev
+  8-5-reimagine-the-jwt-inspector: in-progress
   8-6-reimagine-nl-cron: backlog
   8-7-reimagine-the-bucket-ocr: backlog
   8-8-reimagine-the-bucket-pdf: backlog
