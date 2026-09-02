@@ -107,7 +107,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@3a8b2ad3ea1212417907ff0e1b3d0c4e121bef40 # 1.94.0
 
-      - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: cache ort-sys ONNX Runtime binary
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
