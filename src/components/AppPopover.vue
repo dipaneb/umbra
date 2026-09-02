@@ -4,8 +4,12 @@
 //  - uncontrolled: the component owns its open/close state
 //  - content is the default slot; the trigger is the #trigger slot
 //  - `placement` is a fixed set, CSS-positioned against the trigger — no
-//    viewport measurement, no auto-flip, no positioning dependency. If a
-//    placement clips in some layout, the consumer picks another.
+//    positioning dependency. Story 8.5 added a light viewport-aware flip: the
+//    prop is a *preferred* placement, and `flipPlacement` (pure, in
+//    ./appPopoverPlacement.ts) swaps it to the opposite side of an axis on
+//    open — and again on window resize while open — if the panel would
+//    overflow the viewport there. Still CSS-only, no positioning library; not
+//    re-flipped on scroll.
 // A `v-model:open` escape hatch is intentionally not added until a second
 // consumer needs it.
 //
@@ -19,19 +23,16 @@
 //  - Escape is handled by a listener on the panel, not a capture-phase
 //    document listener, so an open popover never swallows Escape app-wide.
 import { computed, nextTick, onBeforeUnmount, ref, useId } from "vue";
-
-type Placement =
-  | "bottom-start"
-  | "bottom"
-  | "bottom-end"
-  | "top-start"
-  | "top"
-  | "top-end";
+import { flipPlacement, type Placement } from "./appPopoverPlacement";
 
 const props = withDefaults(
   defineProps<{
     /** Accessible name for the popover surface (role="dialog"). */
     label: string;
+    /**
+     * Preferred placement. Flipped to the opposite side of an axis on open if
+     * the panel would overflow the viewport there and the other side has room.
+     */
     placement?: Placement;
   }>(),
   { placement: "bottom-start" },
@@ -43,6 +44,10 @@ const triggerWrapEl = ref<HTMLElement | null>(null);
 const panelEl = ref<HTMLElement | null>(null);
 const panelId = useId();
 
+// The placement actually applied — the prop, or a viewport-aware flip of it
+// computed once per open (see resolvePlacement).
+const effectivePlacement = ref<Placement>(props.placement);
+
 // v-bind this onto the trigger element in the #trigger slot so it carries
 // the right ARIA wiring without the consumer hand-repeating it.
 const triggerProps = computed(() => ({
@@ -50,6 +55,27 @@ const triggerProps = computed(() => ({
   "aria-expanded": open.value,
   "aria-controls": open.value ? panelId : undefined,
 }));
+
+// Snapshot whether the popover was open at the moment the trigger was
+// pressed — captured on `pointerdown`, which fires BEFORE the focus change
+// (and therefore before the panel's `focusout` handler). On a WebKit webview
+// (Tauri/macOS) `focusout`'s `relatedTarget` is null even when focus is
+// moving to the trigger, so `onPanelFocusOut` closes the popover; the trailing
+// `click` then runs `toggle()`, sees `open === false`, and reopens — a visible
+// flash. This lets `toggle()` know the press was a "close" gesture, not a
+// fresh "open".
+let wasOpenOnTriggerPointerDown = false;
+let triggerPointerDownAt = 0;
+function onTriggerPointerDown() {
+  wasOpenOnTriggerPointerDown = open.value;
+  triggerPointerDownAt = Date.now();
+}
+
+// A press and the `click` it produces are milliseconds apart. `toggle()` only
+// honours "was open at pointerdown" while it is that fresh — so a stale flag
+// left by a gesture that produced no click (right-click, `pointercancel` from
+// a touch-scroll, a press dragged off the trigger) cannot eat a later open.
+const TRIGGER_PRESS_WINDOW_MS = 1000;
 
 function focusTrigger() {
   const wrap = triggerWrapEl.value;
@@ -74,23 +100,91 @@ function onPanelKeydown(event: KeyboardEvent) {
   if (event.key === "Escape") close({ returnFocus: true });
 }
 
+// Measure the trigger + panel against the viewport and swap `data-placement`
+// to a non-clipping side if needed. Runs inside the same nextTick as the focus
+// call on open (before the browser paints, so there is no visible re-position)
+// and again on every window resize while open, so dragging the window edge
+// re-flips the open popover instead of leaving it clipped until reopened.
+// jsdom returns zero rects → no flip (the six existing consumers keep their
+// preferred placement under test).
+function resolvePlacement() {
+  const trigger = triggerWrapEl.value;
+  const panel = panelEl.value;
+  if (!trigger || !panel) return;
+  const t = trigger.getBoundingClientRect();
+  const p = panel.getBoundingClientRect();
+  effectivePlacement.value = flipPlacement(
+    props.placement,
+    { left: t.left, right: t.right, top: t.top, bottom: t.bottom },
+    { width: p.width, height: p.height },
+    {
+      width: document.documentElement.clientWidth,
+      height: document.documentElement.clientHeight,
+    },
+  );
+}
+
+// Coalesce a burst of resize events into one measurement per frame.
+let resolveFrame: number | undefined;
+function scheduleResolvePlacement() {
+  if (resolveFrame !== undefined) return;
+  resolveFrame = requestAnimationFrame(() => {
+    resolveFrame = undefined;
+    resolvePlacement();
+  });
+}
+
+function cancelScheduledResolve() {
+  if (resolveFrame !== undefined) {
+    cancelAnimationFrame(resolveFrame);
+    resolveFrame = undefined;
+  }
+}
+
 function openPopover() {
   if (open.value) return;
+  // Start from the preferred placement so reopening in a roomy spot doesn't
+  // keep a stale flip.
+  effectivePlacement.value = props.placement;
   open.value = true;
   // Capture phase so an outside pointerdown is seen before other handlers
   // act on it. pointerdown only — no stopPropagation, no keyboard.
   document.addEventListener("pointerdown", onDocPointerDown, true);
-  void nextTick(() => panelEl.value?.focus());
+  window.addEventListener("resize", scheduleResolvePlacement);
+  void nextTick(() => {
+    resolvePlacement();
+    panelEl.value?.focus();
+  });
 }
 
 function close(opts: { returnFocus?: boolean } = {}) {
   if (!open.value) return;
   open.value = false;
   document.removeEventListener("pointerdown", onDocPointerDown, true);
+  window.removeEventListener("resize", scheduleResolvePlacement);
+  cancelScheduledResolve();
   if (opts.returnFocus) focusTrigger();
 }
 
 function toggle() {
+  // If the popover was open when this press started, the user's intent is
+  // "close" — even if a focusout/outside handler already closed it as part of
+  // the same interaction (WebKit null-relatedTarget path). Only trust the flag
+  // if the pointerdown that set it is from this very press (see the window
+  // const) so an earlier aborted press can't strand it.
+  const closeGesture =
+    wasOpenOnTriggerPointerDown &&
+    Date.now() - triggerPointerDownAt < TRIGGER_PRESS_WINDOW_MS;
+  wasOpenOnTriggerPointerDown = false;
+  if (closeGesture) {
+    // `close()` is a no-op when the focusout path already closed it, so its
+    // own `returnFocus` wouldn't fire; and on a WebKit webview a <button> is
+    // not focused on click. Return focus to the trigger unconditionally so it
+    // is never dropped to <body>.
+    close({ returnFocus: false });
+    focusTrigger();
+    return;
+  }
   if (open.value) close({ returnFocus: true });
   else openPopover();
 }
@@ -106,6 +200,8 @@ function onPanelFocusOut(event: FocusEvent) {
 
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDocPointerDown, true);
+  window.removeEventListener("resize", scheduleResolvePlacement);
+  cancelScheduledResolve();
 });
 
 defineExpose({
@@ -124,6 +220,7 @@ defineExpose({
     <span
       ref="triggerWrapEl"
       class="popover-trigger"
+      @pointerdown="onTriggerPointerDown"
     >
       <slot
         name="trigger"
@@ -140,7 +237,7 @@ defineExpose({
         :id="panelId"
         ref="panelEl"
         class="popover-panel"
-        :data-placement="props.placement"
+        :data-placement="effectivePlacement"
         role="dialog"
         :aria-label="props.label"
         tabindex="-1"

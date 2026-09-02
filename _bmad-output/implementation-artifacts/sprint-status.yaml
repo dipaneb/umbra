@@ -41,7 +41,70 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-01  # story 8-4 code review complete, moved to done (bmad-code-review)
+last_updated: 2026-09-02  # story 8-5 code review complete (bmad-code-review); review -> done
+# note: story 8-5 Task 1 + Task 2a done 2026-09-02 (bmad-dev-story -> bmad-party-mode, developer's
+# method choice; installed roster, session mode, Epic 8 party memory resumed). No drift vs the
+# story Dev Notes on re-read. Redesign scope decided with the developer: single enriched view, NO
+# tabs (5th redesign holding the 8.1-8.4 discipline), ZERO action buttons (Decode -> live debounced
+# decode; Paste button cut too - "hell no" - native paste + clipboardMatch cover it), no primary-
+# orange anywhere. Header/payload STAY <pre> - JsonTree.vue NOT reused (AD-6 island question closed).
+# Dashed-box notice -> plain caption + ? AppPopover (developer: "why use the dotted box used for
+# dropping a file?"). NO permanent Algorithm line - a CONDITIONAL boxless unsigned-alg warning only
+# (fires on alg none/absent/non-string). Live clock so expired + nbf "not valid yet" re-evaluate.
+# Claims: relative time + i64 bounds check + wrong-type-vs-absent factual note (both deferred-work.md
+# items folded, both view-side). AD-1 split is the cleanest in Epic 8: JwtDecoded/decode/
+# decode_segment/numeric_claim/11 tests/jwt_decode/lib.rs/jwtDecoded.ts ALL UNCHANGED; the entire
+# Rust diff is a MAX_INPUT_BYTES const (1 MB) + guard + new jwt-input-too-large code + ~3 tests.
+# NO crypto crate, NO verify primitive (signature stays discarded), NO command/registry/clipboardMatch
+# change, NO TRANSLATABLE_CODES change, NO persisted jwt.* setting. FR16/FR17 expanded; FR18 + Story
+# 2.6 AC4 downgraded (verification -> explicitly out of scope for this tool, P3 backlog #55).
+# Decision record: 8-5-jwt-decision-record.md. AC3: 6 backlog-candidate issues filed on dipaneb/umbra
+# (#120 raw signature, #121 signature-segment validation, #122 named-claims table, #123 two-token
+# diff, #124 JsonTree.vue reuse, #125 tighten isJwtShaped) + a comment on the pre-existing #55
+# (JWT signature verification) rather than a duplicate; developer confirmed GitHub issues this story
+# (not the 8.3/8.4 personal-backlog route). Design canvas "JWT Inspector Redesign" published +
+# revised once: claude.ai/code/artifact/9ab4c58a-8f60-4cdd-9e71-8bdf32139529 (4 artboards, light
+# theme, dark parity owed at build). Task 2a: AC6-AC22 written into the story file's
+# "Acceptance Criteria -- Task 2 (Redesign)" section; developer signed off 2026-09-02. Story STAYS
+# in-progress -- Task 2b (per-slice implementation, developer render-review each slice, commit per
+# slice, ask before pushing; first slice = Epic-7 tokenisation + restructure) is the remaining work,
+# not started. Nothing committed this session.
+# note: story 8-5 moved to in-progress 2026-09-01 (bmad-dev-story). Task 0 (branch setup)
+# found already done by a prior session: branch feat/story-8-5-reimagine-the-jwt-inspector
+# already existed with commit 702cb75 "docs(story-8-5): story spec + Task 1 charter" (story
+# file + the sprint-status backlog->ready-for-dev edit, from main's tip d7bb977 == baseline_commit,
+# Conventional-Commits-scoped, no code, no PII) -- content-identical to what Task 0 prescribes,
+# so adopted as-is rather than recreated. baseline_commit d7bb977 re-confirmed this session as
+# HEAD == origin/main == main; working tree clean apart from the pre-existing untracked
+# .claude/workflows/. This session is now on that branch. Remaining Task 0 step -- the
+# ready-for-dev -> in-progress move -- done here. Task 1 (discovery -> 8-5-jwt-decision-record.md)
+# is a facilitated cut/keep/add session requiring the developer's method choice
+# (bmad-party-mode vs bmad-forge-idea) and judgement -- HALTED for that, per the story's own
+# "run interactively, not autonomously" instruction. Not committed.
+# note: story 8-5 created 2026-09-01 (bmad-create-story). Developer explicitly chose to
+# continue Epic 8 top-to-bottom (8-5-reimagine-the-jwt-inspector) over strict
+# sprint-status.yaml auto-discovery, which would have picked 6-3 next -- the same
+# explicit-continuation pattern every Epic 7 and Epic 8 story has followed; 6-3/6-4 stay
+# deliberately deferred. epic-8 already in-progress, 8.1-8.4 all done, not the first story
+# in the epic so no epic-status transition. baseline_commit d7bb977 confirmed as origin/main's
+# real tip directly (git rev-parse HEAD == origin/main == main == d7bb977782ff...); working
+# tree clean apart from the pre-existing untracked .claude/workflows/. Fifth instance of
+# Epic 8's "Task 1 decision record gates Task 2" charter shape (8.1-8.4 all proved it end to
+# end) -- only Task 1's AC1-5 are real Given/When/Then; Task 2's redesign ACs are deferred to
+# a Task 2a follow-up edit of the same story file once 8-5-jwt-decision-record.md lands, per
+# epics.md's explicit instruction. Live-read the full current JWT implementation
+# (crates/umbra-core/src/jwt.rs decode(), src-tauri/src/commands/jwt.rs jwt_decode,
+# src/tools/jwt/JwtView.vue [100% pre-Epic-7], jwtDecoded.ts hand-synced mirror,
+# JwtView.spec.ts, tools.jwt.* i18n, the jwt registry entry incl. its Story-7.8 clipboardMatch,
+# toolError.ts TRANSLATABLE_CODES, matchesJwt/isJwtShaped) so discovery starts from confirmed
+# fact. Distinctive framing captured in Dev Notes: JWT has no drop/file path (plain local
+# latest-wins runner, unlike Hash); it already participates in the clipboard-suggestion surface
+# via a registry clipboardMatch (Hash/UUID have none); it already renders structured JSON as a
+# raw <pre> (JsonTree.vue reuse is the obvious "Changed" candidate, an AD-6 decision); and its
+# signature segment is discarded entirely -- making "add offline signature verification" the
+# central keep/cut/add question, the first Epic 8 tool where AppTabs.vue (Decode / Verify)
+# could genuinely be justified, under hard AD-2/AD-7/AD-11 constraints on any crypto dependency
+# (no network, no JWKS-by-kid fetch, ever). Story file not committed.
 # note: story 8-2 code review 2026-08-30 (bmad-code-review, status "review" -> "done") --
 # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor)
 # against b151314..HEAD. 33 raw findings -> 23 after dedup -> 4 decision-needed, 8 patch,
@@ -1347,7 +1410,27 @@ development_status:
   # Not committed -- all review changes are UNCOMMITTED working-tree changes on
   # feat/story-8-4-reimagine-the-hash-generator.
   8-4-reimagine-the-hash-generator: done
-  8-5-reimagine-the-jwt-inspector: backlog
+  # note: story 8-5 code review 2026-09-02 (bmad-code-review, status "review" -> "done") --
+  # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor
+  # against AC6-AC22) vs main...HEAD, code files only. AC6-AC22 all verified as met. 1
+  # decision-needed (AppPopover shared-component scope expansion + the Story 8.3 "no auto-flip"
+  # reversal riding in on 8.5) -- resolved with the developer: accepted as shipped, disclosure
+  # adequate, no standalone decision record. 9 patches applied + full green gate re-run (pnpm
+  # lint / test 722 / build / cargo fmt / test 360 / clippy all clean): frontend size guard
+  # measures UTF-8 bytes via TextEncoder not .length; AppPopover wasOpenOnTriggerPointerDown
+  # guarded by a pointerdown timestamp (a setTimeout(0) first attempt raced the click under
+  # full-suite timing -- reverted); AppPopover close-via-trigger returns focus unconditionally
+  # (WebKit <body>-focus); runDecode generation counter fences a slow in-flight decode against
+  # an empty/oversize call; algWarning fires on alg "" / whitespace; outOfRange bounds against
+  # the 8.64e15 ECMAScript time-value limit not Number.MAX_SAFE_INTEGER; flipPlacement vertical
+  # flip checks the flipped side fits; over-cap paste announced to screen readers; jwt.rs
+  # MAX_INPUT_BYTES renamed MAX_TOKEN_BYTES (no longer collides with the 100 MiB core convention).
+  # 2 deferred -> deferred-work.md: the owed pnpm tauri dev light/dark --shadow-floating render-
+  # review on the new AppPopover consumer, and SR announcement of clock-driven exp/nbf flips.
+  # 8 dismissed as noise. Not committed -- all review changes are UNCOMMITTED working-tree
+  # changes on feat/story-8-5-reimagine-the-jwt-inspector. Owed before the PR: the pnpm tauri
+  # dev visual pass. epic-8 stays in-progress (8-6..8-9 still backlog).
+  8-5-reimagine-the-jwt-inspector: done
   8-6-reimagine-nl-cron: backlog
   8-7-reimagine-the-bucket-ocr: backlog
   8-8-reimagine-the-bucket-pdf: backlog
