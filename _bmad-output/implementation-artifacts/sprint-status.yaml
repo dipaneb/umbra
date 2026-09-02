@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-02  # story 8-5 Task 1 + Task 2a done (bmad-party-mode); stays in-progress
+last_updated: 2026-09-02  # story 8-5 Task 2b implemented (bmad-dev-story); in-progress -> review
 # note: story 8-5 Task 1 + Task 2a done 2026-09-02 (bmad-dev-story -> bmad-party-mode, developer's
 # method choice; installed roster, session mode, Epic 8 party memory resumed). No drift vs the
 # story Dev Notes on re-read. Redesign scope decided with the developer: single enriched view, NO
@@ -1410,7 +1410,7 @@ development_status:
   # Not committed -- all review changes are UNCOMMITTED working-tree changes on
   # feat/story-8-4-reimagine-the-hash-generator.
   8-4-reimagine-the-hash-generator: done
-  8-5-reimagine-the-jwt-inspector: in-progress
+  8-5-reimagine-the-jwt-inspector: review
   8-6-reimagine-nl-cron: backlog
   8-7-reimagine-the-bucket-ocr: backlog
   8-8-reimagine-the-bucket-pdf: backlog

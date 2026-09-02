@@ -1,6 +1,16 @@
 use crate::ToolError;
 use crate::base64::decode_bytes;
 
+// A JWT is a credential carried in an HTTP header — realistic tokens run a few
+// hundred to a few thousand bytes. 1 MiB is ~250x the largest plausible token
+// and still trivially cheap to base64url-decode and JSON-parse. The guard
+// exists for the same CWE-400 unbounded-allocation reason every other tool
+// module has one (`base64.rs` / `hash.rs` / `json.rs`), applied to `jwt.rs`
+// for the first time in Story 8.5: live as-you-type decoding makes a
+// pathological paste a real cost. `pub` so the command layer / the view's
+// mirrored ceiling can reference the same value instead of hardcoding it.
+pub const MAX_INPUT_BYTES: usize = 1_048_576;
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct JwtDecoded {
     pub header: serde_json::Value,
@@ -11,6 +21,23 @@ pub struct JwtDecoded {
 }
 
 pub fn decode(token: &str) -> Result<JwtDecoded, ToolError> {
+    // Byte-length guard first — before any trimming or splitting — so a
+    // pathological paste is rejected without allocating the segment vector.
+    // Fixed prose that embeds the runtime byte count, so it renders raw via
+    // `toolErrorMessage` and stays out of `TRANSLATABLE_CODES`, matching
+    // `hash-input-too-large` / `json-input-too-large`.
+    if token.len() > MAX_INPUT_BYTES {
+        return Err(ToolError {
+            code: "jwt-input-too-large".to_string(),
+            message: format!(
+                "input is {} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit",
+                token.len()
+            ),
+            position: None,
+            context: None,
+        });
+    }
+
     let segments: Vec<&str> = token.trim().split('.').collect();
     if segments.len() != 3 {
         return Err(ToolError {
@@ -210,5 +237,43 @@ mod tests {
 
         assert_eq!(err.code, "jwt-invalid-payload");
         assert_eq!(err.context, Some("segment: payload".to_string()));
+    }
+
+    #[test]
+    fn decode_rejects_input_over_max_size() {
+        let err = decode(&"A".repeat(MAX_INPUT_BYTES + 1)).unwrap_err();
+
+        assert_eq!(err.code, "jwt-input-too-large");
+        assert_eq!(err.position, None);
+        assert!(err.message.contains(&(MAX_INPUT_BYTES + 1).to_string()));
+    }
+
+    #[test]
+    fn decode_accepts_a_token_landing_exactly_on_the_size_cap() {
+        // A valid token whose (discarded) signature segment is padded to put
+        // the whole string exactly on the cap — proves the guard is
+        // exclusive (`>`, not `>=`).
+        let header = json!({"alg": "HS256", "typ": "JWT"});
+        let payload = json!({"sub": "x"});
+        let base = token(&header, &payload, "");
+        let jwt = format!("{base}{}", "A".repeat(MAX_INPUT_BYTES - base.len()));
+        assert_eq!(jwt.len(), MAX_INPUT_BYTES);
+
+        let decoded = decode(&jwt).unwrap();
+
+        assert_eq!(decoded.header, header);
+        assert_eq!(decoded.payload, payload);
+    }
+
+    #[test]
+    fn decode_normal_token_is_unaffected_by_the_size_guard() {
+        let header = json!({"alg": "HS256", "typ": "JWT"});
+        let payload = json!({"sub": "1234567890", "exp": 1735689600});
+        let jwt = token(&header, &payload, "sig");
+        assert!(jwt.len() < MAX_INPUT_BYTES);
+
+        let decoded = decode(&jwt).unwrap();
+
+        assert_eq!(decoded.exp, Some(1735689600));
     }
 }
