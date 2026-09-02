@@ -20,7 +20,7 @@ md-5 = "0.11"
 # Story 8.4: SHA3-256 / SHA3-512 (FIPS 202). Same RustCrypto `Digest` trait
 # and one-shot API as sha2 (`Sha3_256::digest(bytes)`); shares the resolved
 # `digest` 0.11 line. Re-verified current via Context7 (/rustcrypto/hashes).
-sha3 = "0.11"
+sha3 = "0.12"
 croner = "3"
 chrono = "0.4"
 oar-ocr = "0.6"
