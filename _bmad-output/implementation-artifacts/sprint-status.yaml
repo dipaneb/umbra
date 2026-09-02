@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-02  # story 8-5 code review complete (bmad-code-review); review -> done
+last_updated: 2026-09-03  # story 8-6 context created (bmad-create-story); backlog -> ready-for-dev
 # note: story 8-5 Task 1 + Task 2a done 2026-09-02 (bmad-dev-story -> bmad-party-mode, developer's
 # method choice; installed roster, session mode, Epic 8 party memory resumed). No drift vs the
 # story Dev Notes on re-read. Redesign scope decided with the developer: single enriched view, NO
@@ -1431,7 +1431,20 @@ development_status:
   # changes on feat/story-8-5-reimagine-the-jwt-inspector. Owed before the PR: the pnpm tauri
   # dev visual pass. epic-8 stays in-progress (8-6..8-9 still backlog).
   8-5-reimagine-the-jwt-inspector: done
-  8-6-reimagine-nl-cron: backlog
+  8-6-reimagine-nl-cron: ready-for-dev
+  # note: story 8-6 context created 2026-09-03 (bmad-create-story). Task-1-gated Epic 8
+  # charter story scoped to the NL <-> Cron tool (src/tools/cron/CronView.vue +
+  # crates/umbra-core/src/cron.rs + src-tauri/src/commands/cron.rs + cronExplanation.ts +
+  # i18n + the cron registry entry). Only Task 1's AC1-5 are real; Task 2 ACs deferred to
+  # Task 2a per epics.md. baseline_commit 2a5ddf9 (origin/main tip: story 8-5 = PR #126).
+  # epic-8 already in-progress, 8.1-8.5 all done, not the first story -> no epic transition.
+  # Sixth run of the 8.1-8.5 discovery->decision-record->Task-2a->per-slice shape. Hard
+  # constraints flagged for the redesign: AD-9 (round-trip-before-display + the 49-row
+  # phrase corpus as a CI gate, non-negotiable), AD-13 (this story IS the NL->cron revamp
+  # the 2026-08-23 localization amendment deferred to; English-only disclosure must stay
+  # honest), describe() staying a project-owned templater. Open container question: cron is
+  # the only bidirectional two-state-group tool in Epic 8, so AppTabs is genuinely on the
+  # table (weighed vs. 8.2's smart-detection choice). Not committed.
   8-7-reimagine-the-bucket-ocr: backlog
   8-8-reimagine-the-bucket-pdf: backlog
   8-9-reimagine-the-bucket-images: backlog
