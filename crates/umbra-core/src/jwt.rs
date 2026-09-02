@@ -7,9 +7,12 @@ use crate::base64::decode_bytes;
 // exists for the same CWE-400 unbounded-allocation reason every other tool
 // module has one (`base64.rs` / `hash.rs` / `json.rs`), applied to `jwt.rs`
 // for the first time in Story 8.5: live as-you-type decoding makes a
-// pathological paste a real cost. `pub` so the command layer / the view's
-// mirrored ceiling can reference the same value instead of hardcoding it.
-pub const MAX_INPUT_BYTES: usize = 1_048_576;
+// pathological paste a real cost. Named `MAX_TOKEN_BYTES` rather than the
+// `MAX_INPUT_BYTES` the other modules use, precisely because the value here is
+// 100x smaller — the shared name on a very different magnitude is a maintainer
+// trap. `pub` so the tests and the frontend's hand-synced mirror (`JwtView.vue`)
+// name one value.
+pub const MAX_TOKEN_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct JwtDecoded {
@@ -26,11 +29,11 @@ pub fn decode(token: &str) -> Result<JwtDecoded, ToolError> {
     // Fixed prose that embeds the runtime byte count, so it renders raw via
     // `toolErrorMessage` and stays out of `TRANSLATABLE_CODES`, matching
     // `hash-input-too-large` / `json-input-too-large`.
-    if token.len() > MAX_INPUT_BYTES {
+    if token.len() > MAX_TOKEN_BYTES {
         return Err(ToolError {
             code: "jwt-input-too-large".to_string(),
             message: format!(
-                "input is {} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit",
+                "input is {} bytes, which exceeds the {MAX_TOKEN_BYTES}-byte limit",
                 token.len()
             ),
             position: None,
@@ -241,11 +244,11 @@ mod tests {
 
     #[test]
     fn decode_rejects_input_over_max_size() {
-        let err = decode(&"A".repeat(MAX_INPUT_BYTES + 1)).unwrap_err();
+        let err = decode(&"A".repeat(MAX_TOKEN_BYTES + 1)).unwrap_err();
 
         assert_eq!(err.code, "jwt-input-too-large");
         assert_eq!(err.position, None);
-        assert!(err.message.contains(&(MAX_INPUT_BYTES + 1).to_string()));
+        assert!(err.message.contains(&(MAX_TOKEN_BYTES + 1).to_string()));
     }
 
     #[test]
@@ -256,8 +259,8 @@ mod tests {
         let header = json!({"alg": "HS256", "typ": "JWT"});
         let payload = json!({"sub": "x"});
         let base = token(&header, &payload, "");
-        let jwt = format!("{base}{}", "A".repeat(MAX_INPUT_BYTES - base.len()));
-        assert_eq!(jwt.len(), MAX_INPUT_BYTES);
+        let jwt = format!("{base}{}", "A".repeat(MAX_TOKEN_BYTES - base.len()));
+        assert_eq!(jwt.len(), MAX_TOKEN_BYTES);
 
         let decoded = decode(&jwt).unwrap();
 
@@ -270,7 +273,7 @@ mod tests {
         let header = json!({"alg": "HS256", "typ": "JWT"});
         let payload = json!({"sub": "1234567890", "exp": 1735689600});
         let jwt = token(&header, &payload, "sig");
-        assert!(jwt.len() < MAX_INPUT_BYTES);
+        assert!(jwt.len() < MAX_TOKEN_BYTES);
 
         let decoded = decode(&jwt).unwrap();
 

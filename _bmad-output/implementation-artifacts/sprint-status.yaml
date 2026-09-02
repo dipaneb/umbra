@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-02  # story 8-5 Task 2b implemented (bmad-dev-story); in-progress -> review
+last_updated: 2026-09-02  # story 8-5 code review complete (bmad-code-review); review -> done
 # note: story 8-5 Task 1 + Task 2a done 2026-09-02 (bmad-dev-story -> bmad-party-mode, developer's
 # method choice; installed roster, session mode, Epic 8 party memory resumed). No drift vs the
 # story Dev Notes on re-read. Redesign scope decided with the developer: single enriched view, NO
@@ -1410,7 +1410,27 @@ development_status:
   # Not committed -- all review changes are UNCOMMITTED working-tree changes on
   # feat/story-8-4-reimagine-the-hash-generator.
   8-4-reimagine-the-hash-generator: done
-  8-5-reimagine-the-jwt-inspector: review
+  # note: story 8-5 code review 2026-09-02 (bmad-code-review, status "review" -> "done") --
+  # three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor
+  # against AC6-AC22) vs main...HEAD, code files only. AC6-AC22 all verified as met. 1
+  # decision-needed (AppPopover shared-component scope expansion + the Story 8.3 "no auto-flip"
+  # reversal riding in on 8.5) -- resolved with the developer: accepted as shipped, disclosure
+  # adequate, no standalone decision record. 9 patches applied + full green gate re-run (pnpm
+  # lint / test 722 / build / cargo fmt / test 360 / clippy all clean): frontend size guard
+  # measures UTF-8 bytes via TextEncoder not .length; AppPopover wasOpenOnTriggerPointerDown
+  # guarded by a pointerdown timestamp (a setTimeout(0) first attempt raced the click under
+  # full-suite timing -- reverted); AppPopover close-via-trigger returns focus unconditionally
+  # (WebKit <body>-focus); runDecode generation counter fences a slow in-flight decode against
+  # an empty/oversize call; algWarning fires on alg "" / whitespace; outOfRange bounds against
+  # the 8.64e15 ECMAScript time-value limit not Number.MAX_SAFE_INTEGER; flipPlacement vertical
+  # flip checks the flipped side fits; over-cap paste announced to screen readers; jwt.rs
+  # MAX_INPUT_BYTES renamed MAX_TOKEN_BYTES (no longer collides with the 100 MiB core convention).
+  # 2 deferred -> deferred-work.md: the owed pnpm tauri dev light/dark --shadow-floating render-
+  # review on the new AppPopover consumer, and SR announcement of clock-driven exp/nbf flips.
+  # 8 dismissed as noise. Not committed -- all review changes are UNCOMMITTED working-tree
+  # changes on feat/story-8-5-reimagine-the-jwt-inspector. Owed before the PR: the pnpm tauri
+  # dev visual pass. epic-8 stays in-progress (8-6..8-9 still backlog).
+  8-5-reimagine-the-jwt-inspector: done
   8-6-reimagine-nl-cron: backlog
   8-7-reimagine-the-bucket-ocr: backlog
   8-8-reimagine-the-bucket-pdf: backlog

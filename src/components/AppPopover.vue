@@ -65,9 +65,17 @@ const triggerProps = computed(() => ({
 // flash. This lets `toggle()` know the press was a "close" gesture, not a
 // fresh "open".
 let wasOpenOnTriggerPointerDown = false;
+let triggerPointerDownAt = 0;
 function onTriggerPointerDown() {
   wasOpenOnTriggerPointerDown = open.value;
+  triggerPointerDownAt = Date.now();
 }
+
+// A press and the `click` it produces are milliseconds apart. `toggle()` only
+// honours "was open at pointerdown" while it is that fresh — so a stale flag
+// left by a gesture that produced no click (right-click, `pointercancel` from
+// a touch-scroll, a press dragged off the trigger) cannot eat a later open.
+const TRIGGER_PRESS_WINDOW_MS = 1000;
 
 function focusTrigger() {
   const wrap = triggerWrapEl.value;
@@ -160,12 +168,21 @@ function close(opts: { returnFocus?: boolean } = {}) {
 
 function toggle() {
   // If the popover was open when this press started, the user's intent is
-  // "close" — even if a focusout/outside handler has already closed it as
-  // part of the same interaction (WebKit null-relatedTarget path). `close()`
-  // is a no-op when already closed, so this just prevents a reopen.
-  if (wasOpenOnTriggerPointerDown) {
-    wasOpenOnTriggerPointerDown = false;
-    close({ returnFocus: true });
+  // "close" — even if a focusout/outside handler already closed it as part of
+  // the same interaction (WebKit null-relatedTarget path). Only trust the flag
+  // if the pointerdown that set it is from this very press (see the window
+  // const) so an earlier aborted press can't strand it.
+  const closeGesture =
+    wasOpenOnTriggerPointerDown &&
+    Date.now() - triggerPointerDownAt < TRIGGER_PRESS_WINDOW_MS;
+  wasOpenOnTriggerPointerDown = false;
+  if (closeGesture) {
+    // `close()` is a no-op when the focusout path already closed it, so its
+    // own `returnFocus` wouldn't fire; and on a WebKit webview a <button> is
+    // not focused on click. Return focus to the trigger unconditionally so it
+    // is never dropped to <body>.
+    close({ returnFocus: false });
+    focusTrigger();
     return;
   }
   if (open.value) close({ returnFocus: true });

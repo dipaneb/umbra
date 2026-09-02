@@ -61,13 +61,16 @@ export function flipPlacement(
     }
   }
 
-  // Vertical. `bottom*` sits below the trigger, `top*` above. Flip toward
-  // whichever side has more room when the panel doesn't fit on the current one.
+  // Vertical. `bottom*` sits below the trigger, `top*` above. Flip only when
+  // the current side overflows AND the flipped side actually fits — same rule
+  // as the horizontal axis. Flipping to a side that also doesn't fit just
+  // moves the clip to the top of the panel (hiding its heading), which is
+  // worse than an overflow past the fold.
   const spaceBelow = viewport.height - trigger.bottom - margin;
   const spaceAbove = trigger.top - margin;
-  if (placement.startsWith("bottom") && panel.height > spaceBelow && spaceAbove > spaceBelow) {
+  if (placement.startsWith("bottom") && panel.height > spaceBelow && panel.height <= spaceAbove) {
     placement = placement.replace("bottom", "top") as Placement;
-  } else if (placement.startsWith("top") && panel.height > spaceAbove && spaceBelow > spaceAbove) {
+  } else if (placement.startsWith("top") && panel.height > spaceAbove && panel.height <= spaceBelow) {
     placement = placement.replace("top", "bottom") as Placement;
   }
 

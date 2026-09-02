@@ -19,13 +19,13 @@ import type { JwtDecoded } from "./jwtDecoded";
 const { t } = useI18n();
 const settings = useSettingsStore();
 
-// Mirrors umbra-core::jwt::MAX_INPUT_BYTES (1 MiB). Caught here on the live
+// Mirrors umbra-core::jwt::MAX_TOKEN_BYTES (1 MiB). Caught here on the live
 // path before an over-cap paste is ever shipped over IPC; umbra-core keeps
 // its own identical guard (defense in depth, AC18 — the cap holds end to end
-// even if this one is bypassed). `.length` (UTF-16 units) is a cheap lower
-// bound on the UTF-8 byte count — a JWT is pure-ASCII base64url so the two
-// are equal anyway.
-const MAX_INPUT_BYTES = 1_048_576;
+// even if this one is bypassed). Measured as UTF-8 bytes (TextEncoder), the
+// same unit umbra-core's `token.len()` guard uses, so the two agree for any
+// input — not just a pure-ASCII base64url token.
+const MAX_TOKEN_BYTES = 1_048_576;
 
 // Live-decode debounce — the same 200 ms as Base64View / JsonView / HashView.
 const DECODE_DEBOUNCE_MS = 200;
@@ -68,7 +68,11 @@ const prettyPayload = computed(() =>
 const algWarning = computed(() => {
   if (!decoded.value) return false;
   const alg = (decoded.value.header as Record<string, unknown>).alg;
-  return typeof alg !== "string" || alg.toLowerCase() === "none";
+  if (typeof alg !== "string") return true;
+  // An empty or whitespace-only `alg` is as unreadable as a missing one, and
+  // `" none "` is still `none` — trim before comparing.
+  const normalized = alg.trim().toLowerCase();
+  return normalized === "" || normalized === "none";
 });
 
 // --- Claims ---------------------------------------------------------------
@@ -99,12 +103,17 @@ function jsonTypeOf(value: unknown): string {
   return t("tools.jwt.typeObject");
 }
 
-// AC16 (deferred-work fold-in #1): `value * 1000` can exceed
-// Number.MAX_SAFE_INTEGER for an epoch near the outer edge of the Rust i64 /
-// RFC 7519 NumericDate range — `new Date()` would then render "Invalid Date".
+// AC16 (deferred-work fold-in #1): `value * 1000` can land past the range
+// `new Date()` can represent for an epoch near the outer edge of the Rust i64 /
+// RFC 7519 NumericDate range — which would then render "Invalid Date".
 function outOfRange(seconds: number): boolean {
+  // ±8.64e15 ms is the ECMAScript time-value limit — past it `new Date()` is
+  // an Invalid Date. That band sits *below* Number.MAX_SAFE_INTEGER (~9.007e15),
+  // so the guard has to be the Date limit, not the safe-integer limit, or an
+  // epoch in the gap still renders "Invalid Date".
+  const MAX_DATE_MS = 8_640_000_000_000_000;
   const ms = seconds * 1000;
-  return !Number.isFinite(ms) || Math.abs(ms) > Number.MAX_SAFE_INTEGER;
+  return !Number.isFinite(ms) || Math.abs(ms) > MAX_DATE_MS;
 }
 
 const CLAIM_LABEL_KEYS = {
@@ -203,13 +212,23 @@ function relativeFromNow(targetMs: number): string {
 
 // --- Decode ------------------------------------------------------------------
 
-async function announceDecoded(on: boolean) {
+// AC21: clear the always-present polite region, then (next tick) set it to
+// `message` so an identical result still re-announces. Pass "" to just clear.
+async function announce(message: string) {
   announcement.value = "";
+  if (message === "") return;
   await nextTick();
-  if (on) announcement.value = t("tools.jwt.decodedAnnouncement");
+  announcement.value = message;
 }
 
+// Bumped at the top of every runDecode. The empty / oversize branches return
+// without going through runLatestWins, so they cannot rely on its `superseded`
+// flag to fence a slower in-flight decode — this generation check does it for
+// every exit path.
+let decodeGeneration = 0;
+
 async function runDecode() {
+  const generation = ++decodeGeneration;
   error.value = null;
   cancelCopyFeedback();
   const value = token.value;
@@ -217,16 +236,17 @@ async function runDecode() {
   if (value.trim() === "") {
     decoded.value = null;
     oversize.value = false;
-    void announceDecoded(false);
+    void announce("");
     return;
   }
 
-  // AC18: an over-cap paste never reaches IPC — and it is a calm status
-  // line, not a red alert.
-  if (value.length > MAX_INPUT_BYTES) {
+  // AC18: an over-cap paste never reaches IPC — and it is a calm status line,
+  // not a red alert. Byte length (TextEncoder), matching umbra-core's guard,
+  // so a large non-ASCII paste is caught here too.
+  if (new TextEncoder().encode(value).length > MAX_TOKEN_BYTES) {
     decoded.value = null;
     oversize.value = true;
-    void announceDecoded(false);
+    void announce(t("tools.jwt.oversize"));
     return;
   }
   oversize.value = false;
@@ -235,16 +255,17 @@ async function runDecode() {
     const result = await runLatestWins(() =>
       invoke<JwtDecoded>("jwt_decode", { token: value }),
     );
-    if (!result.superseded) {
-      decoded.value = result.value;
-      void announceDecoded(true);
-    }
+    if (result.superseded || generation !== decodeGeneration) return;
+    decoded.value = result.value;
+    void announce(t("tools.jwt.decodedAnnouncement"));
   } catch (err) {
-    // runLatestWins swallows a stale rejection as `{ superseded: true }` — a
-    // rejection that reaches here belongs to the latest call.
+    // runLatestWins swallows a stale rejection as `{ superseded: true }`; the
+    // generation check additionally drops a rejection whose run was overtaken
+    // by an empty / oversize call (which never touches runLatestWins).
+    if (generation !== decodeGeneration) return;
     decoded.value = null;
     error.value = toToolError(err);
-    void announceDecoded(false);
+    void announce("");
   }
 }
 
