@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-03  # story 8-6 context created (bmad-create-story); backlog -> ready-for-dev
+last_updated: 2026-09-03  # story 8-6 -> in-progress (bmad-dev-story); Task 0 pre-done, halted for Task 1 method choice
 # note: story 8-5 Task 1 + Task 2a done 2026-09-02 (bmad-dev-story -> bmad-party-mode, developer's
 # method choice; installed roster, session mode, Epic 8 party memory resumed). No drift vs the
 # story Dev Notes on re-read. Redesign scope decided with the developer: single enriched view, NO
@@ -1431,7 +1431,62 @@ development_status:
   # changes on feat/story-8-5-reimagine-the-jwt-inspector. Owed before the PR: the pnpm tauri
   # dev visual pass. epic-8 stays in-progress (8-6..8-9 still backlog).
   8-5-reimagine-the-jwt-inspector: done
-  8-6-reimagine-nl-cron: ready-for-dev
+  8-6-reimagine-nl-cron: in-progress
+  # note: story 8-6 moved to in-progress 2026-09-03 (bmad-dev-story). Task 0 (branch setup)
+  # found already done by a prior session: branch feat/story-8-6-reimagine-nl-cron already
+  # existed with commit 07815a5 "docs(story-8-6): story spec + Task 1 charter" (story file +
+  # the sprint-status backlog->ready-for-dev edit, from main's tip 2a5ddf9 == baseline_commit,
+  # Conventional-Commits-scoped, no code, no PII) -- content-identical to what Task 0
+  # prescribes, so adopted as-is rather than recreated. baseline_commit 2a5ddf9 re-confirmed
+  # this session as origin/main == main == HEAD's parent; working tree clean apart from the
+  # pre-existing untracked .claude/workflows/. This session is on that branch. Remaining Task 0
+  # step -- the ready-for-dev -> in-progress move -- done here. Task 1 (discovery ->
+  # 8-6-cron-decision-record.md) is a facilitated cut/keep/add session requiring the
+  # developer's method choice (bmad-party-mode vs bmad-forge-idea) and judgement -- HALTED for
+  # that, per the story's own "run interactively, not autonomously" instruction. Not committed.
+  # note: story 8-6 Task 1 discovery done 2026-09-03 (bmad-dev-story -> bmad-party-mode, the
+  # developer's method choice; installed roster, session mode, Epic 8 party memory resumed).
+  # LARGEST scope shift in Epic 8: developer rejected the whole free-text NL->cron premise
+  # ("English->cron is a structure problem, not a language problem; doing it well = a local
+  # model we won't ship, and AD-7 forbids the API route"). DECIDED: (1) RETIRE parse_schedule
+  # + the entire NL grammar + Story 3.3's 48-row phrase corpus (drift-corrected from the
+  # story's "49") + ScheduleParseResult + the cron_parse_schedule command (~700 lines of
+  # cron.rs); (2) REPLACE with a language-neutral GUIDED BUILDER -- a flat expert grid of 5
+  # always-visible per-field editors (plain field grammar for v1: every/value/list/range/step;
+  # L/#/W deferred), bidirectional with an editable expression line, seeded 0 9 * * *;
+  # (3) container = ONE BIDIRECTIONAL GRID, no AppTabs (6th Epic 8 no-tabs call, new reason:
+  # both jobs are the same surface); (4) KEEP + EXPAND cron->English -- describe() prose stays
+  # + a new always-on per-field breakdown (CronExplanation grows fields: Vec<FieldExplanation>,
+  # TS mirror follows) that never shrugs; REJECT 6-field honestly; (5) ADD MAX_INPUT_BYTES to
+  # cron.rs (only transform tool without one). FR19 rewritten, FR20 expanded, FR21 + FR22
+  # RETIRED (developer-approved -- no free-text = no honest-failure corpus / no language-
+  # specific input). Two architecture-spine touches recorded for developer acknowledgement:
+  # AD-9 amendment (round-trip + corpus mandate now binds only FUTURE free-text/model NL->cron,
+  # which is backlog) and AD-13 resolution (English-only notice REMOVED -- what it disclosed no
+  # longer exists, not softened). EXPERIENCE.md Flow 3's scripted demo step ("type every Monday
+  # at 9am -> 0 9 * * 1") no longer exists -> replacement step approved. AC3: MIXED routing --
+  # Cut #1 (purpose-built small per-language NL->cron model, FR19 v2) -> GitHub backlog-
+  # candidate issue -> FILED as dipaneb/umbra#130; Cuts #2-8 -> developer's personal backlog,
+  # deviation logged. Decision record: 8-6-cron-decision-record.md. Developer SIGNED OFF on the
+  # scope + the AD-9 amendment + AD-13 resolution (both -> ARCHITECTURE-SPINE.md at build time)
+  # 2026-09-03. Task 1 COMPLETE. Story STAYS in-progress -- Task 2a next (resolve the record's
+  # 11 open items + write real AC6+ in the same room, developer sign-off on the AC set), then
+  # Task 2b (per-slice impl, render-review each slice, ask before pushing). Nothing committed.
+  # note: story 8-6 Task 2a COMPLETE 2026-09-03 (bmad-dev-story -> bmad-party-mode, same room).
+  # All 11 of the decision record's open items resolved with the developer; AC6-AC26 written
+  # into a new "## Acceptance Criteria -- Task 2 (Redesign)" section. Key calls: field editor
+  # = HYBRID CronFieldEditor.vue (Every/Specific segment + name-aware <select> on Month/DoW +
+  # auto-expand-only Advanced raw-grammar disclosure), one string value per field as the
+  # single source of truth; expr-line <-> grid bridge = view-side split/join, round-trip-
+  # validated by cron_explain; CronExplanation grows fields: Vec<FieldExplanation> +
+  # description_generic: bool (view suppresses the prose one-liner when generic); 6-field ->
+  # new cron-six-field-unsupported which JOINS TRANSLATABLE_CODES (en+fr); MAX_INPUT_BYTES =
+  # 1024 + cron-input-too-large (role=status, non-translatable); no persisted cron.* settings;
+  # next-runs stays hard-coded 3; one local latest-wins runner. States/anatomy canvas "Cron NL
+  # Redesign" published (Artifact f36c1906, 4 artboards, light theme; dark parity owed at 2b).
+  # Developer SIGNED OFF on the AC set 2026-09-03. Task 1 + Task 2a committed together (the
+  # 8.2/8.5 "one commit for record + story file" pattern) on branch
+  # feat/story-8-6-reimagine-nl-cron; NOT pushed. Story STAYS in-progress -- Task 2b next.
   # note: story 8-6 context created 2026-09-03 (bmad-create-story). Task-1-gated Epic 8
   # charter story scoped to the NL <-> Cron tool (src/tools/cron/CronView.vue +
   # crates/umbra-core/src/cron.rs + src-tauri/src/commands/cron.rs + cronExplanation.ts +
