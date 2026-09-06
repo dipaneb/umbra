@@ -360,6 +360,7 @@
     "base64-invalid-padding": "The Base64 input has invalid padding.",
     "base64-not-utf8": "The decoded bytes aren't valid UTF-8 text.",
     "base64-data-uri-malformed": "That isn't a valid Base64 data URI — it needs a ';base64,' marker before the payload.",
-    "cron-six-field-unsupported": "This tool handles standard 5-field cron expressions. Seconds-precision (6-field) expressions aren't supported yet."
+    "cron-six-field-unsupported": "This tool handles standard 5-field cron expressions. Seconds-precision (6-field) expressions aren't supported yet.",
+    "cron-no-upcoming-runs": "This expression has no upcoming occurrences \u2014 the date it specifies may never exist (for example February 30th)."
   }
 }

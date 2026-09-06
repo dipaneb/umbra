@@ -360,6 +360,7 @@
     "base64-invalid-padding": "Le remplissage de l'entrée Base64 n'est pas valide.",
     "base64-not-utf8": "Les octets décodés ne sont pas du texte UTF-8 valide.",
     "base64-data-uri-malformed": "Ce n'est pas une URI data Base64 valide — il faut un marqueur ';base64,' avant la charge utile.",
-    "cron-six-field-unsupported": "Cet outil prend en charge les expressions cron standard à 5 champs. Les expressions à précision de secondes (6 champs) ne sont pas encore prises en charge."
+    "cron-six-field-unsupported": "Cet outil prend en charge les expressions cron standard à 5 champs. Les expressions à précision de secondes (6 champs) ne sont pas encore prises en charge.",
+    "cron-no-upcoming-runs": "Cette expression n\u2019a aucune occurrence \u00e0 venir \u2014 la date qu\u2019elle indique n\u2019existe peut-\u00eatre jamais (par exemple le 30 f\u00e9vrier)."
   }
 }

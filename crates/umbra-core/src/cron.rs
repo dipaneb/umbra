@@ -148,10 +148,20 @@ fn spec_to_term(spec: &FieldSpec) -> FieldTerm {
             },
         },
         FieldSpec::Step { base, step } => {
+            // `parse_term` only ever routes a step's base through `parse_base`, whose
+            // codomain is exactly {Wildcard, Range, Single} — so every arm is named here
+            // rather than swept into a `_` fallthrough. If `parse_base` ever grows a
+            // variant, this stops compiling instead of silently rendering the new shape as
+            // a bare `*/N` with its `within`/`from` dropped.
             let (within, from) = match &**base {
+                FieldSpec::Wildcard => (None, None),
                 FieldSpec::Range(a, b) => (Some(TermRange { from: *a, to: *b }), None),
                 FieldSpec::Single(a) => (None, Some(*a)),
-                _ => (None, None),
+                FieldSpec::List(_) | FieldSpec::Step { .. } | FieldSpec::Compound(_) => {
+                    return FieldTerm::Unsupported {
+                        raw: format!("*/{step}"),
+                    };
+                }
             };
             FieldTerm::Step {
                 step: *step,
@@ -221,15 +231,36 @@ fn explain_at(
 
     let trimmed = expression.trim();
 
-    // Story 8.6 AC16: `croner` silently accepts an optional leading seconds field, but this
-    // tool's own `describe()` templater discards it while `next_runs` correctly reflects
-    // seconds precision — a redesign that "explains a cron expression properly" must not
-    // let that mismatch through. Rejected before any parsing, so a 6-field expression never
-    // reaches `describe()`/`field_explanations()` (both parse 5-field expressions only).
-    if trimmed.split_whitespace().count() == 6 {
+    // Story 8.6 AC16: `croner` silently accepts an optional leading seconds field, but
+    // `schedule_description` reads five fields, so it would describe the seconds as minutes
+    // while `next_runs` correctly reflects seconds precision — describing `30 0 9 * * 1` as
+    // "at 9:00 AM" when it fires at :30 would be a real lie. Rejected before any parsing,
+    // with its own value-free code so the message can be translated.
+    let field_count = trimmed.split_whitespace().count();
+    if field_count == 6 {
         return Err(ToolError {
             code: "cron-six-field-unsupported".to_string(),
             message: SIX_FIELD_UNSUPPORTED_MESSAGE.to_string(),
+            position: None,
+            context: None,
+        });
+    }
+    // `croner` accepts 5..=7 fields (seconds and year are both optional) and expands the
+    // `@daily`-style nicknames inside `parse()` before any field-count check, so a 1-token
+    // or 7-token expression parses happily. `schedule_description` indexes exactly five
+    // fields, so anything else must be rejected *here*, before it reaches that indexing:
+    // a nickname used to panic on `standard[1]`, and a 7-field expression used to be
+    // described from its first five tokens — reading `0 0 9 * * 1 2027` (Mondays at 09:00)
+    // as "the 9th at 12:00 AM". Describing an expression from the wrong fields is exactly
+    // the lie the six-field guard above exists to prevent; this closes the other side of it.
+    // Empty/whitespace-only input keeps its own dedicated code, so it falls through to
+    // `Cron::from_str` and `map_cron_error` rather than being caught as a field-count error.
+    if field_count != 5 && !trimmed.is_empty() {
+        return Err(ToolError {
+            code: "cron-invalid-pattern".to_string(),
+            message: format!(
+                "expected a 5-field cron expression (minute hour day-of-month month day-of-week), got {field_count}"
+            ),
             position: None,
             context: None,
         });
@@ -344,11 +375,11 @@ enum FieldKind {
     DayOfWeek,
 }
 
-// A field value as this templater understands it. Hand-parsed from the raw expression string
+// A field value as this module understands it. Hand-parsed from the raw expression string
 // (never from `croner::Cron`'s internal `CronPattern`) so this module's output vocabulary
-// stays a project-owned contract — reused by both `describe()`'s sentence rendering and
-// `field_explanations()`'s per-field rendering below, so the two English-rendering directions
-// never drift apart on what a field shape means.
+// stays a project-owned contract. It is the intermediate shape behind `FieldTerm`, the
+// language-neutral term the view's per-locale renderers consume — no English (and no prose
+// of any kind) is produced in this crate.
 //
 // `Compound` covers a comma list whose parts aren't all bare values (`1-5,0`, `1,10-20/2`) —
 // `List` stays a distinct variant because an all-bare list renders far better ("0, 15, and 30")
@@ -371,9 +402,19 @@ const WEEKDAY_ABBREVIATIONS: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fr
 
 // `croner` accepts three-letter names in the month and day-of-week fields (verified against
 // the installed 3.x: `0 0 * * FRI`, `0 0 * jan-mar *` and `0 0 * * SUN,SAT` all parse), and
-// they're common in real crontabs — so this templater has to understand them too, or a
+// they're common in real crontabs — so this module has to understand them too, or a
 // perfectly ordinary expression would render as an unexplained fallback.
 fn parse_value(kind: FieldKind, raw: &str) -> Option<u32> {
+    // `croner` strips a leading `+` from the day-of-week field and switches the two day
+    // fields from cron's OR to an AND (`0 9 15 * +5` fires only on Friday the 15th). This
+    // module has no way to express that — `DayMatch` only models the OR rule — and Rust's
+    // `u32::from_str` would happily read "+5" as 5, producing a sentence ("on the 15th or
+    // every Friday") that contradicts the run times shown beside it. Decline it instead, so
+    // the field renders as `Unsupported` and the prose sentence is suppressed, matching how
+    // `L` / `#` / `W` are handled (Story 8.6 Cut #3).
+    if kind == FieldKind::DayOfWeek && raw.starts_with('+') {
+        return None;
+    }
     if let Ok(value) = raw.parse::<u32>() {
         return Some(value);
     }
@@ -406,7 +447,19 @@ fn parse_field(kind: FieldKind, raw: &str) -> Option<FieldSpec> {
             })
             .collect();
         return Some(match bare {
-            Some(values) => FieldSpec::List(values),
+            // A cron field is a set, not a sequence: `17,9` and `9,17` select the same two
+            // hours, and `0,0` selects one minute. Normalising here means every locale
+            // renderer lists values in chronological order with no repeats, instead of each
+            // one re-deriving that — `0 17,9 * * *` used to read "at 5:00 PM and 9:00 AM"
+            // directly above a next-runs list that correctly ran 09:00 then 17:00.
+            Some(mut values) => {
+                values.sort_unstable();
+                values.dedup();
+                match values.as_slice() {
+                    [single] => FieldSpec::Single(*single),
+                    _ => FieldSpec::List(values),
+                }
+            }
             None => FieldSpec::Compound(parts),
         });
     }
@@ -454,6 +507,12 @@ mod tests {
     // reading: parsing, normalisation, cron's own semantics, and the error contract.
 
     // --- explain(): runs, errors, guards ----------------------------------
+    // A fixed instant, so guard tests never depend on the wall clock.
+    fn fixed_now() -> chrono::DateTime<chrono::Local> {
+        chrono::Local
+            .with_ymd_and_hms(2026, 6, 15, 12, 0, 0)
+            .unwrap()
+    }
 
     #[test]
     fn explain_returns_three_increasing_runs_that_all_match_the_expression() {
@@ -729,6 +788,135 @@ mod tests {
         // Every other field still parsed — a renderer can show four good rows and one raw.
         assert_eq!(schedule.minute, FieldTerm::Value { value: 0 });
         assert!(!schedule_of("0 0 1 * *").has_unsupported_field());
+    }
+
+    // Story 8.6 code review 2026-09-06: `croner` expands `@daily`-style nicknames inside
+    // `parse()`, so they used to reach `schedule_description` as a single token and panic on
+    // `standard[1]`. "Unsupported" (Cut #5) has to mean an honest error, never a crash.
+    #[test]
+    fn explain_at_rejects_nickname_macros_without_panicking() {
+        for nickname in [
+            "@daily",
+            "@hourly",
+            "@weekly",
+            "@monthly",
+            "@yearly",
+            "@annually",
+        ] {
+            let err = explain_at(fixed_now(), nickname).unwrap_err();
+            assert_eq!(err.code, "cron-invalid-pattern", "nickname {nickname}");
+        }
+    }
+
+    // `croner` accepts 5..=7 fields. The 6-field case has its own translatable code; 7 fields
+    // used to slip past every guard and be described from the wrong five tokens.
+    #[test]
+    fn explain_at_rejects_seven_field_expressions() {
+        let err = explain_at(fixed_now(), "0 0 9 * * 1 2027").unwrap_err();
+        assert_eq!(err.code, "cron-invalid-pattern");
+        // The 6-field code is still the specific one, not swallowed by the new guard.
+        assert_eq!(
+            explain_at(fixed_now(), "0 0 9 * * 1").unwrap_err().code,
+            "cron-six-field-unsupported"
+        );
+    }
+
+    // `croner` reads a leading `+` on the day-of-week field as "AND the two day fields",
+    // which `DayMatch` cannot express — describing it with cron's OR states the opposite of
+    // the run times shown beside it.
+    #[test]
+    fn day_of_week_and_modifier_is_unsupported_rather_than_described_as_or() {
+        let schedule = schedule_of("0 9 15 * +5");
+        assert_eq!(
+            schedule.day_of_week,
+            FieldTerm::Unsupported {
+                raw: "+5".to_string()
+            }
+        );
+        assert!(schedule.has_unsupported_field());
+    }
+
+    // A cron field is a set: order is not meaningful and repeats are not meaningful.
+    #[test]
+    fn list_values_are_sorted_and_deduplicated() {
+        assert_eq!(
+            schedule_of("0 17,9 * * *").hour,
+            FieldTerm::Values {
+                values: vec![9, 17]
+            }
+        );
+        // A list that collapses to one distinct value is a single value, not a 1-item list.
+        assert_eq!(
+            schedule_of("0,0,0 9 * * *").minute,
+            FieldTerm::Value { value: 0 }
+        );
+        assert_eq!(
+            schedule_of("0 9 * * 1,3,5").day_of_week,
+            FieldTerm::Values {
+                values: vec![1, 3, 5]
+            }
+        );
+    }
+
+    // The sweep below asserts only that nothing lands in `Unsupported`, which proves the
+    // grammar *parses* but not that it parses to the right thing — swapping `within` and
+    // `from`, or resolving `FRI` to 6, would still pass all 3136 cases. These pin the shapes
+    // the renderers actually read (code review 2026-09-06).
+    #[test]
+    fn step_terms_distinguish_a_bounding_range_from_a_starting_value() {
+        // `10-50/5` is a step *within* a range; `5/10` is a step *from* a start value. The
+        // renderers phrase those two differently, so the mapping must not be symmetric.
+        assert_eq!(
+            schedule_of("10-50/5 * * * *").minute,
+            FieldTerm::Step {
+                step: 5,
+                within: Some(TermRange { from: 10, to: 50 }),
+                from: None,
+            }
+        );
+        assert_eq!(
+            schedule_of("5/10 * * * *").minute,
+            FieldTerm::Step {
+                step: 10,
+                within: None,
+                from: Some(5),
+            }
+        );
+        assert_eq!(
+            schedule_of("*/15 * * * *").minute,
+            FieldTerm::Step {
+                step: 15,
+                within: None,
+                from: None,
+            }
+        );
+    }
+
+    #[test]
+    fn month_and_weekday_names_resolve_to_the_numbers_the_renderers_expect() {
+        assert_eq!(
+            schedule_of("0 0 * * FRI").day_of_week,
+            FieldTerm::Value { value: 5 }
+        );
+        assert_eq!(
+            schedule_of("0 0 * * MON-FRI").day_of_week,
+            FieldTerm::Range {
+                range: TermRange { from: 1, to: 5 }
+            }
+        );
+        assert_eq!(
+            schedule_of("0 0 * JAN *").month,
+            FieldTerm::Value { value: 1 }
+        );
+        assert_eq!(
+            schedule_of("0 0 * jan-mar *").month,
+            FieldTerm::Range {
+                range: TermRange { from: 1, to: 3 }
+            }
+        );
+        // `?` is croner's "no specific value" and folds to a wildcard, which is what drives
+        // `day_match` — get this wrong and every OR/AND sentence is wrong with it.
+        assert_eq!(schedule_of("0 0 ? * 1").day_of_month, FieldTerm::Every);
     }
 
     // The whole plain grammar, swept: every shape this module claims to parse, in every

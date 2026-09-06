@@ -33,7 +33,7 @@ describe("CronFieldEditor", () => {
     ["hour", "Hour", "0-23"],
     ["dayOfMonth", "Day of month", "1-31"],
     ["month", "Month", "1-12"],
-    ["dayOfWeek", "Day of week", "0-6"],
+    ["dayOfWeek", "Day of week", "0-7"],
   ] as [CronFieldKey, string, string][])(
     "labels %s and carries its range hint in the accessible name",
     (fieldKey, name, range) => {
@@ -48,25 +48,26 @@ describe("CronFieldEditor", () => {
     expect(withPhrase.find("input").attributes("title")).toBe("Day of week — Monday");
 
     const withoutPhrase = mountField("dayOfWeek", "1", "");
-    expect(withoutPhrase.find("input").attributes("title")).toBe("Day of week (0-6)");
+    expect(withoutPhrase.find("input").attributes("title")).toBe("Day of week (0-7)");
   });
 
-  it("emits `advance` when the value first becomes `*`", async () => {
+  it("emits the typed value and never an advance event", async () => {
     const wrapper = mountField("minute", "0");
     await wrapper.find("input").setValue("*");
     expect(wrapper.emitted("update:modelValue")).toEqual([["*"]]);
-    expect(wrapper.emitted("advance")).toEqual([[]]);
-  });
-
-  it("does not emit `advance` when the value was already `*`", async () => {
-    const wrapper = mountField("minute", "*");
-    await wrapper.find("input").setValue("*");
+    // The `*` auto-advance was removed at code review 2026-09-06: `*` is both a complete
+    // field value and the first character of `*/15`, so advancing on the transition made
+    // every step expression impossible to type. Traversal is plain Tab now.
     expect(wrapper.emitted("advance")).toBeUndefined();
   });
 
-  it("does not emit `advance` for a non-`*` value", async () => {
+  it("lets a step expression be typed one character at a time", async () => {
     const wrapper = mountField("minute", "0");
-    await wrapper.find("input").setValue("5");
+    const input = wrapper.find("input");
+    await input.setValue("*");
+    await input.setValue("*/");
+    await input.setValue("*/15");
+    expect(wrapper.emitted("update:modelValue")).toEqual([["*"], ["*/"], ["*/15"]]);
     expect(wrapper.emitted("advance")).toBeUndefined();
   });
 

@@ -37,8 +37,10 @@ export function toToolError(err: unknown): ToolError {
 // path's errors carry croner's own dynamic runtime message text (and
 // cron-input-too-large embeds a byte count) — there is no free-text NL->cron grammar
 // left to make an "English-only parser" argument about (Story 8.6 retired it).
-// cron-six-field-unsupported is the one exception: a fixed, value-free, project-authored
-// sentence, so it joins the set below.
+// cron-six-field-unsupported and cron-no-upcoming-runs are the exceptions: both are fixed,
+// value-free, project-authored sentences, so they join the set below. (cron-no-upcoming-runs
+// was added at Story 8.6's code review — it met this same criterion from the start and was
+// excluded by oversight, which left a French user reading an English sentence.)
 //
 // `translatableCode` intentionally has no signature enforcing full ToolError
 // code coverage — an unmapped code safely falls through to `message` below.
@@ -99,6 +101,7 @@ const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   // other cron-* code either carries croner's own dynamic runtime text or embeds a byte count
   // (cron-input-too-large), so this is the sole cron-* addition here.
   "cron-six-field-unsupported",
+  "cron-no-upcoming-runs",
 ]);
 
 export function toolErrorMessage(err: ToolError, t: Translate): string {

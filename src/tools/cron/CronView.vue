@@ -6,7 +6,7 @@ import { PhCheck, PhCopySimple } from "@phosphor-icons/vue";
 import { writeClipboardText } from "../../shell/clipboard";
 import { debounce } from "../../shell/debounce";
 import { createLatestWinsRunner } from "../../shell/invoke";
-import { formatDateTime } from "../../shell/locale";
+import { formatDateTime, resolveLocale } from "../../shell/locale";
 import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import { useSettingsStore } from "../../stores/settings";
 // Per-affordance copy confirmation — the JsonTree / Base64View / HashView /
@@ -17,7 +17,6 @@ import { useCopyFeedback } from "../json/useCopyFeedback";
 import CronFieldEditor, { type CronFieldKey } from "./CronFieldEditor.vue";
 import type { CronExplanation } from "./cronExplanation";
 import { cronLocaleFor } from "./describeSchedule";
-import { resolveLocale } from "../../shell/locale";
 import { fieldTerms, hasUnsupportedField } from "./scheduleDescription";
 
 // Cron field order — fixed, and shared by every array below that's indexed against it
@@ -116,9 +115,14 @@ function formatRun(epochSeconds: number): string {
 // AC24: clear the always-present polite region, then (next tick) set it so an
 // identical result still re-announces. Pass "" to just clear.
 async function announce(message: string) {
+  const generation = explainGeneration;
   announcement.value = "";
   if (message === "") return;
   await nextTick();
+  // Same fence as every runExplain exit path: this one awaits a tick, so a newer run (or the
+  // empty-input path's synchronous clear) can land in between and the region would otherwise
+  // announce "Expression explained." over a panel that is already gone.
+  if (generation !== explainGeneration) return;
   announcement.value = message;
 }
 
@@ -160,7 +164,14 @@ async function runExplain() {
     const result = await runLatestWins(() =>
       invoke<CronExplanation>("cron_explain", { expression: value }),
     );
-    if (result.superseded || generation !== explainGeneration) return;
+    // `explainGeneration` is bumped only when a run *starts*, and `runLatestWins` only marks
+    // a call superseded once a newer invoke has begun — typing does neither, so between
+    // dispatch and resolve neither fence has moved. Without this third check the write-back
+    // below restores the stale snapshot over the character the user just typed, and the next
+    // debounce re-explains the reverted string, losing the keystroke for good.
+    if (result.superseded || generation !== explainGeneration || value !== expression.value) {
+      return;
+    }
     explanation.value = result.value;
     // A valid `cron_explain` result is proof `value` is exactly 5 whitespace-separated
     // fields — re-split so a pasted expression's fields land in the boxes and any odd
@@ -194,17 +205,12 @@ function onFieldChange(index: number, value: string) {
   debouncedExplain();
 }
 
-// OTP-style auto-advance: a field emits `advance` when its value first becomes `*`. Move
-// focus to the next box (nothing to do on the last field).
-const fieldRefs = ref<Array<{ focus: () => void } | null>>([]);
-function setFieldRef(el: unknown, index: number) {
-  fieldRefs.value[index] = (el as { focus?: () => void } | null)?.focus
-    ? (el as { focus: () => void })
-    : null;
-}
-function onFieldAdvance(index: number) {
-  fieldRefs.value[index + 1]?.focus();
-}
+// The OTP-style `*` auto-advance was removed at code review (2026-09-06). A cron field is
+// not an OTP cell: `*` is simultaneously a complete value and a valid prefix of `*/15`,
+// `*/5`, `*/2`, so advancing the moment a box becomes `*` made the grammar this strip
+// advertises impossible to type — the `/15` landed in the next box, over its contents.
+// There is no local signal that separates the two cases, so traversal is plain Tab, like
+// every other form on the platform. Supersedes AC11 (see the story's Review Findings).
 
 // "…or paste one in to read it back": a whole cron expression pasted into any field box is
 // spread across all five (or, for a 6-field paste, sent through as-is so core returns the
@@ -270,12 +276,10 @@ async function onCopyDescription() {
       <CronFieldEditor
         v-for="(key, index) in FIELD_KEYS"
         :key="key"
-        :ref="(el) => setFieldRef(el, index)"
         :field-key="key"
         :model-value="fieldValues[index]"
         :phrase="fieldPhrases[index]"
         @update:model-value="(value) => onFieldChange(index, value)"
-        @advance="onFieldAdvance(index)"
       />
     </div>
 
@@ -369,8 +373,20 @@ async function onCopyDescription() {
       </div>
 
       <!-- AC12/AC15: one row per field — the never-shrugging breakdown, same source
-           (`explanation.fields`) each CronFieldEditor's hover title reads. -->
-      <ul class="breakdown">
+           (`explanation.schedule`) each CronFieldEditor's hover title reads.
+           Shown only when the prose sentence is suppressed (developer's call, render-review
+           2026-09-06): the breakdown was specified as the floor under a sentence that could
+           degrade to a generic `fallback_description`. That fallback is deleted — the
+           sentence now either reads correctly or is suppressed outright — so rendering both
+           at once restated the sentence rather than backing it up ("Tous les jours, à 9h00"
+           over three wildcard rows saying "chaque jour"/"chaque mois"/"chaque jour de la
+           semaine"). Prose XOR breakdown, which is what crontab.guru actually does. The
+           phrases stay live on every box's hover title either way. Supersedes AC12's "the
+           same five phrases render as visible rows in the live panel". -->
+      <ul
+        v-if="sentenceSuppressed"
+        class="breakdown"
+      >
         <li
           v-for="row in breakdownRows"
           :key="row.key"

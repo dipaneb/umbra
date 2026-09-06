@@ -154,8 +154,8 @@ describe("CronView", () => {
     expect(editors).toHaveLength(5);
     expect(editors.map((e) => e.props("modelValue"))).toEqual(["0", "9", "*", "*", "*"]);
     expect(editors.map((e) => e.props("phrase"))).toEqual([
-      "minute 0",
-      "hour 9",
+      "0",
+      "9",
       "every day",
       "every month",
       "every day of the week",
@@ -281,6 +281,38 @@ describe("CronView", () => {
     expect(wrapper!.text()).not.toContain("1:01 AM");
   });
 
+  // Code review 2026-09-06. Distinct from the supersession test above: there, a *second
+  // invoke* starts before the first resolves, which `runLatestWins` already fences. Here the
+  // user simply types while one request is in flight — no new invoke, so neither
+  // `explainGeneration` nor `latestRequestId` moves, and the write-back used to restore the
+  // stale snapshot over the character just typed.
+  it("does not let an in-flight result overwrite a field edited while it was pending", async () => {
+    await mountView();
+
+    let resolveFirst: (value: unknown) => void = () => {};
+    invokeMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    fieldEditors(wrapper!)[1].vm.$emit("update:modelValue", "1");
+    await flushPromises();
+    vi.advanceTimersByTime(DEBOUNCE_MS);
+    await flushPromises();
+
+    // The request for "0 1 * * *" is in flight. The user keeps typing: the box is now "12".
+    fieldEditors(wrapper!)[1].vm.$emit("update:modelValue", "12");
+    await flushPromises();
+
+    // The older request lands. It must not touch the boxes or the expression.
+    resolveFirst(explanation(schedule(value(0), value(1))));
+    await flushPromises();
+
+    expect(wrapper!.find(".expr-code").text()).toBe("0 12 * * *");
+    expect(fieldEditors(wrapper!)[1].props("modelValue")).toBe("12");
+  });
+
   it("copies the composed expression string, confirming only after the write resolves; clears on edit (AC22)", async () => {
     await mountView();
     let resolveWrite: () => void = () => {};
@@ -363,18 +395,16 @@ describe("CronView", () => {
     expect(editors[4].props("phrase")).toBe("Monday through Friday");
   });
 
-  it("renders the prose one-liner with a secondary copy button, plus the 5 breakdown rows (AC12, AC15, AC22)", async () => {
+  it("renders the prose one-liner with a secondary copy button, and no breakdown beside it (AC12, AC15, AC22)", async () => {
     await mountView();
 
     expect(wrapper!.find(".panel-prose").text()).toBe("Every day, at 9:00 AM");
-    const rows = wrapper!.findAll(".breakdown li").map((li) => li.text().replace(/\s+/g, " ").trim());
-    expect(rows).toEqual([
-      "Minute: minute 0",
-      "Hour: hour 9",
-      "Day of month: every day",
-      "Month: every month",
-      "Day of week: every day of the week",
-    ]);
+    // Prose XOR breakdown (render-review 2026-09-06). The breakdown was the floor under a
+    // sentence that could degrade to a generic fallback; that fallback is gone, so showing
+    // both restated the sentence — on the seed, three of five rows just said "every".
+    expect(wrapper!.findAll(".breakdown li")).toHaveLength(0);
+    // The phrases are still live on every box's hover title.
+    expect(fieldEditors(wrapper!)[0].props("phrase")).toBe("0");
 
     let resolveWrite: () => void = () => {};
     writeTextMock.mockImplementationOnce(
@@ -405,7 +435,7 @@ describe("CronView", () => {
     const rows = wrapper!
       .findAll(".breakdown li")
       .map((li) => li.text().replace(/\s+/g, " ").trim());
-    expect(rows[0]).toBe("Minute: minute 0");
+    expect(rows[0]).toBe("Minute: 0");
     expect(rows[2]).toBe("Day of month: as specified (L)");
     // The panel itself still announces success, and the other four rows still read normally.
     expect(wrapper!.find(".panel[role='status']").exists()).toBe(true);
@@ -427,34 +457,36 @@ describe("CronView", () => {
     expect(wrapper!.find(".expr-copy .expr-copy-ok").exists()).toBe(false);
   });
 
-  it("auto-advances focus to the next field box when a box's value first becomes `*`", async () => {
+  // Code review 2026-09-06 replaced the `*` auto-advance with plain Tab traversal: `*` is
+  // both a complete field value and the first character of `*/15`, so advancing on the
+  // transition moved focus mid-token and the `/15` overwrote the next box.
+  it("keeps focus in the edited box so a step expression can be typed", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     await mountView(SEED_EXPLANATION, host);
 
     const editors = fieldEditors(wrapper!);
     const minuteInput = editors[0].find("input").element as HTMLInputElement;
-    const hourInput = editors[1].find("input").element as HTMLInputElement;
 
     minuteInput.focus();
     await editors[0].find("input").setValue("*");
     await flushPromises();
+    expect(document.activeElement).toBe(minuteInput);
 
-    expect(document.activeElement).toBe(hourInput);
-    // The OTP-cell feel: the arrived-at box selects its contents so the next keystroke replaces.
-    expect(hourInput.selectionStart).toBe(0);
-    expect(hourInput.selectionEnd).toBe(1);
+    await editors[0].find("input").setValue("*/15");
+    await flushPromises();
+    expect(document.activeElement).toBe(minuteInput);
+    expect(wrapper!.find(".expr-code").text()).toContain("*/15");
 
     host.remove();
   });
 
-  it("does not throw reaching past the last field box when Day of week becomes `*`", async () => {
+  it("keeps focus in the last field box when Day of week becomes `*`", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     await mountView(SEED_EXPLANATION, host);
 
     const dowEditor = fieldEditors(wrapper!)[4];
-    // Take it off `*` first (no advance — "1" isn't "*"), then to "*" so `advance` really fires.
     await dowEditor.find("input").setValue("1");
     await flushPromises();
     const dowInput = dowEditor.find("input").element as HTMLInputElement;
@@ -462,7 +494,6 @@ describe("CronView", () => {
     await dowEditor.find("input").setValue("*");
     await flushPromises();
 
-    // No 6th box to move to — focus simply stays put, no error.
     expect(document.activeElement).toBe(dowInput);
 
     host.remove();

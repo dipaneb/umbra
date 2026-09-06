@@ -82,6 +82,10 @@ function valueName(kind: CronFieldKind, value: number): string {
   if (kind === "dayOfMonth") return ordinal(value);
   if (kind === "month") return monthName(value);
   if (kind === "dayOfWeek") return weekdayName(value);
+  // An hour reads as a clock hour everywhere else in this module (`hourQualifier`'s value
+  // and values cases both use `hourName`); the union path reached it through here and
+  // printed a bare number, giving "during the 9 through 12 and 15 hours".
+  if (kind === "hour") return hourName(value);
   return String(value);
 }
 
@@ -131,8 +135,20 @@ function stepPhrase(
   within: TermRange | null,
   from: number | null,
 ): string {
+  // Minutes, hours and months cycle inside a fixed period, so `*/N` there really is a rate.
+  // The two day fields are not: `*/3` on day-of-month selects the 1st, 4th … 28th, 31st and
+  // then restarts at the 1st, so the gap across a month boundary is 1-3 days, never a clean
+  // 3 — and `*/2` on day-of-week selects Sun, Tue, Thu, Sat, which no interval describes.
+  // State the selection rule for those two instead of an interval it does not keep
+  // (crontab.guru's phrasing; code review 2026-09-06).
   const every =
-    step === 1 ? `every ${UNIT_SINGULAR[kind]}` : `every ${step} ${UNIT_PLURAL[kind]}`;
+    kind === "dayOfMonth" || kind === "dayOfWeek"
+      ? step === 1
+        ? `every ${UNIT_SINGULAR[kind]}`
+        : `on every ${ordinal(step)} ${kind === "dayOfMonth" ? "day-of-month" : "day-of-week"}`
+      : step === 1
+        ? `every ${UNIT_SINGULAR[kind]}`
+        : `every ${step} ${UNIT_PLURAL[kind]}`;
   if (within) return `${every} from ${boundsPhrase(kind, within)}`;
   if (from !== null) return `${every} from ${singleBoundPhrase(kind, from)}`;
   return every;
@@ -361,13 +377,13 @@ export const englishCronLocale: CronLocale = {
                 ? "every month"
                 : "every day of the week";
       case "value":
-        if (kind === "minute") return `minute ${term.value}`;
-        if (kind === "hour") return `hour ${term.value}`;
+        // Both consumers (the breakdown row and the box hover title) already print the
+        // field's own label, so repeating the noun here read as "Minute: minute 0".
+        if (kind === "minute" || kind === "hour") return String(term.value);
         if (kind === "dayOfMonth") return `the ${ordinal(term.value)}`;
         return valueName(kind, term.value);
       case "values":
-        if (kind === "minute") return `minutes ${valueList(kind, term.values)}`;
-        if (kind === "hour") return `hours ${valueList(kind, term.values)}`;
+        if (kind === "minute" || kind === "hour") return valueList(kind, term.values);
         if (kind === "dayOfMonth") return `the ${valueList(kind, term.values)}`;
         return valueList(kind, term.values);
       case "range":

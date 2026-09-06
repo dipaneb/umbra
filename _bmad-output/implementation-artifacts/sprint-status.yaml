@@ -1431,7 +1431,28 @@ development_status:
   # changes on feat/story-8-5-reimagine-the-jwt-inspector. Owed before the PR: the pnpm tauri
   # dev visual pass. epic-8 stays in-progress (8-6..8-9 still backlog).
   8-5-reimagine-the-jwt-inspector: done
-  8-6-reimagine-nl-cron: in-progress
+  8-6-reimagine-nl-cron: done
+  # note: story 8-6 code review 2026-09-06 (bmad-code-review, "in-progress" -> "done") --
+  # three parallel layers over 2a5ddf9..HEAD. Acceptance Auditor scored AC1-AC26 at 24 MET /
+  # 2 PARTIAL / 0 NOT MET. 21 patch findings applied + 3 decision-needed resolved by the
+  # developer; 3 deferred to deferred-work.md; 2 dismissed. Two high-severity defects fixed:
+  # non-5-field expressions (@daily-style nicknames panicked umbra-core; 7-field expressions
+  # were described from the wrong five tokens) and ungrammatical French union rendering in
+  # the month / day-of-month / day-of-week fields. The `*` auto-advance was removed (it made
+  # `*/15` impossible to type), superseding AC11 and AC24's auto-advance clause; AC26 amended
+  # to name epics.md, prd.md and tauri.conf.json. Verification: pnpm lint / vue-tsc / pnpm
+  # test 845 / pnpm build / cargo fmt / clippy / cargo test 345 all green.
+  # Followed by a post-review `bmad-correct-course` (developer-approved 2026-09-06,
+  # sprint-change-proposal-2026-09-06-post-review.md): re-synced AC11, AC12, AC24 and AC26,
+  # plus five ripples the story file did not cover -- PRD FR20 and epics.md FR20 ("always-on"
+  # breakdown), EXPERIENCE.md Flow 3 (keyboard-only justified by the deleted auto-advance),
+  # a Dev Notes bullet and a new Change Log row. That pass also corrected the code review's
+  # own patch: tauri.conf.json minimumSystemVersion 11.0 -> 13.0, matching PRD NFR3's stated
+  # macOS 13+ floor rather than Intl.ListFormat's bare technical one.
+  # Owed before merge: the remainder of the `pnpm tauri dev` render-review (light + dark) of
+  # the changed French strings and the new step phrasing, plus a native-French read of the
+  # corrected union wording.
+
   # note: story 8-6 moved to in-progress 2026-09-03 (bmad-dev-story). Task 0 (branch setup)
   # found already done by a prior session: branch feat/story-8-6-reimagine-nl-cron already
   # existed with commit 07815a5 "docs(story-8-6): story spec + Task 1 charter" (story file +

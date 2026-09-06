@@ -62,21 +62,6 @@ export function ordinalCategory(locale: string, value: number): Intl.LDMLPluralR
   return rules.select(value);
 }
 
-const cardinalRules = new Map<string, Intl.PluralRules>();
-
-/**
- * The CLDR *cardinal* plural category. English has 2 categories, French 3, Russian 4,
- * Arabic 6 — which is exactly why "just add an s" is not a localisation strategy.
- */
-export function pluralCategory(locale: string, value: number): Intl.LDMLPluralRule {
-  let rules = cardinalRules.get(locale);
-  if (!rules) {
-    rules = new Intl.PluralRules(locale, { type: "cardinal" });
-    cardinalRules.set(locale, rules);
-  }
-  return rules.select(value);
-}
-
 /**
  * Expands the values a term names, when it names a small explicit set — used by renderers
  * that fuse minute+hour into clock times. Ranges and steps deliberately don't expand: they

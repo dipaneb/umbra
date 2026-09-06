@@ -34,7 +34,10 @@
       "icons/icon.ico"
     ],
     "resources": ["resources/models/"],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
   },
   "plugins": {
     "updater": {

@@ -44,6 +44,34 @@ function schedule(
 
 const say = (s: ScheduleDescription) => englishCronLocale.sentence(s);
 
+// Code review 2026-09-06: an hour union reached `valueName` and printed bare numbers
+// ("during the 9 through 12 and 15 hours") while every other hour path used `hourName`.
+describe("englishCronLocale union rendering", () => {
+  it("names hours in an hour union instead of printing raw numbers", () => {
+    const said = say(schedule(value(0), union(range(9, 12), value(15)), every, every, every));
+    expect(said).not.toMatch(/\b15 hours\b/);
+    expect(said).toContain("3 PM");
+  });
+
+  it("renders a month union", () => {
+    expect(say(schedule(value(0), value(0), every, union(range(1, 3), value(6)), every))).toContain(
+      "January through March and June",
+    );
+  });
+
+  it("renders a day-of-month union", () => {
+    expect(say(schedule(value(0), value(0), union(range(1, 5), value(10)), every, every))).toContain(
+      "the 1st through 5th and 10th",
+    );
+  });
+
+  it("renders a weekday union", () => {
+    expect(say(schedule(value(0), value(0), every, every, union(range(1, 5), value(0))))).toContain(
+      "Monday through Friday and Sunday",
+    );
+  });
+});
+
 describe("englishCronLocale.sentence", () => {
   // The same corpus the Rust templater was held to before the renderer moved to the view —
   // ported verbatim so the migration is provably behaviour-preserving. Each row is a real
@@ -194,7 +222,7 @@ describe("englishCronLocale.sentence", () => {
     [
       "0 0 */3 * *",
       schedule(value(0), value(0), step(3), every, every),
-      "Every 3 days, at 12:00 AM",
+      "On every 3rd day-of-month, at 12:00 AM",
     ],
     // cron's day-field OR quirk
     [
@@ -258,14 +286,14 @@ describe("englishCronLocale.fieldPhrase", () => {
     expect(englishCronLocale.fieldPhrase("month", every)).toBe("every month");
     expect(englishCronLocale.fieldPhrase("dayOfWeek", every)).toBe("every day of the week");
 
-    expect(englishCronLocale.fieldPhrase("minute", value(5))).toBe("minute 5");
-    expect(englishCronLocale.fieldPhrase("hour", value(9))).toBe("hour 9");
+    expect(englishCronLocale.fieldPhrase("minute", value(5))).toBe("5");
+    expect(englishCronLocale.fieldPhrase("hour", value(9))).toBe("9");
     expect(englishCronLocale.fieldPhrase("dayOfMonth", value(15))).toBe("the 15th");
     expect(englishCronLocale.fieldPhrase("month", value(6))).toBe("June");
     expect(englishCronLocale.fieldPhrase("dayOfWeek", value(1))).toBe("Monday");
 
     expect(englishCronLocale.fieldPhrase("minute", values(0, 15, 30))).toBe(
-      "minutes 0, 15, and 30",
+      "0, 15, and 30",
     );
     expect(englishCronLocale.fieldPhrase("dayOfWeek", values(1, 3, 5))).toBe(
       "Monday, Wednesday, and Friday",
@@ -279,12 +307,12 @@ describe("englishCronLocale.fieldPhrase", () => {
     expect(englishCronLocale.fieldPhrase("dayOfWeek", range(1, 5))).toBe("Monday through Friday");
 
     expect(englishCronLocale.fieldPhrase("minute", step(15))).toBe("every 15 minutes");
-    expect(englishCronLocale.fieldPhrase("dayOfWeek", step(2))).toBe("every 2 days of the week");
+    expect(englishCronLocale.fieldPhrase("dayOfWeek", step(2))).toBe("on every 2nd day-of-week");
     expect(englishCronLocale.fieldPhrase("minute", step(5, [10, 50]))).toBe(
       "every 5 minutes from minute 10 through 50",
     );
     expect(englishCronLocale.fieldPhrase("dayOfMonth", step(7, [1, 28]))).toBe(
-      "every 7 days from the 1st through the 28th",
+      "on every 7th day-of-month from the 1st through the 28th",
     );
 
     expect(englishCronLocale.fieldPhrase("minute", union(range(1, 5), value(10)))).toBe(

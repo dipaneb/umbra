@@ -42,6 +42,42 @@ function schedule(
 
 const say = (s: ScheduleDescription) => frenchCronLocale.sentence(s);
 
+// Code review 2026-09-06: before this block the only `union(` case in this file was on the
+// minute field — the one position where a part needs no article, so it could not reveal that
+// `partPhrase` was bypassing `boundsPhrase` and dropping every `du…au` / `de…à` contraction.
+// A union is covered in all five fields now.
+describe("frenchCronLocale union rendering", () => {
+  it("keeps the de…à contraction in a month union", () => {
+    expect(say(schedule(value(0), value(0), every, union(range(1, 3), value(6)), every))).toBe(
+      "Tous les jours de janvier à mars et en juin, à 0h00",
+    );
+  });
+
+  it("keeps the du…au contraction and the article in a day-of-month union", () => {
+    expect(say(schedule(value(0), value(0), union(range(1, 5), value(10)), every, every))).toBe(
+      "Du 1er au 5 et le 10, à 0h00",
+    );
+  });
+
+  it("keeps the du…au contraction in a weekday union", () => {
+    expect(say(schedule(value(0), value(0), every, every, union(range(1, 5), value(0))))).toBe(
+      "Du lundi au vendredi et tous les dimanches, à 0h00",
+    );
+  });
+
+  it("names hours rather than bare numbers in an hour union", () => {
+    const said = say(schedule(value(0), union(range(9, 12), value(15)), every, every, every));
+    expect(said).not.toMatch(/\b12 et 15\b/);
+    expect(said).toContain("15h");
+  });
+
+  it("renders a minute union", () => {
+    expect(say(schedule(union(range(1, 5), value(10)), every, every, every, every))).toContain(
+      "minute",
+    );
+  });
+});
+
 describe("frenchCronLocale.sentence", () => {
   // The same real-world expressions the English corpus covers, so the two locales stay in
   // lockstep on *which* schedules are supported even though the phrasing is independent.
@@ -155,7 +191,7 @@ describe("frenchCronLocale.sentence", () => {
     [
       "0 0 */3 * *",
       schedule(value(0), value(0), step(3), every, every),
-      "Tous les 3 jours, à 0h00",
+      "Chaque 3e jour du mois, à 0h00",
     ],
     // cron's OR quirk
     [
@@ -188,8 +224,11 @@ describe("frenchCronLocale.sentence", () => {
     expect(saidLower(schedule(value(0), step(2), every, every, every))).toContain(
       "toutes les 2 heures",
     );
+    // The two day fields deliberately leave the gendered "tous/toutes les N" frame — a
+    // `*/N` there is a rank, not a rate (code review 2026-09-06) — so masculine agreement is
+    // carried by the month case below.
     expect(saidLower(schedule(value(0), value(0), step(3), every, every))).toContain(
-      "tous les 3 jours",
+      "chaque 3e jour du mois",
     );
     expect(saidLower(schedule(value(0), value(0), value(1), step(2), every))).toContain(
       "tous les 2 mois",
@@ -263,7 +302,7 @@ describe("frenchCronLocale.fieldPhrase", () => {
     expect(frenchCronLocale.fieldPhrase("month", every)).toBe("chaque mois");
     expect(frenchCronLocale.fieldPhrase("dayOfWeek", every)).toBe("chaque jour de la semaine");
 
-    expect(frenchCronLocale.fieldPhrase("minute", value(5))).toBe("minute 5");
+    expect(frenchCronLocale.fieldPhrase("minute", value(5))).toBe("5");
     expect(frenchCronLocale.fieldPhrase("dayOfMonth", value(1))).toBe("le 1er");
     expect(frenchCronLocale.fieldPhrase("dayOfMonth", value(15))).toBe("le 15");
     expect(frenchCronLocale.fieldPhrase("month", value(6))).toBe("juin");
@@ -273,11 +312,9 @@ describe("frenchCronLocale.fieldPhrase", () => {
     expect(frenchCronLocale.fieldPhrase("month", range(3, 8))).toBe("de mars à août");
     expect(frenchCronLocale.fieldPhrase("minute", step(15))).toBe("toutes les 15 minutes");
     expect(frenchCronLocale.fieldPhrase("dayOfMonth", step(7, [1, 28]))).toBe(
-      "tous les 7 jours du 1er au 28",
+      "chaque 7e jour du mois du 1er au 28",
     );
-    expect(frenchCronLocale.fieldPhrase("minute", values(0, 15, 30))).toBe(
-      "minutes 0, 15 et 30",
-    );
+    expect(frenchCronLocale.fieldPhrase("minute", values(0, 15, 30))).toBe("0, 15 et 30");
     expect(frenchCronLocale.fieldPhrase("dayOfMonth", unsupported("L"))).toBe(
       "tel qu'indiqué (L)",
     );

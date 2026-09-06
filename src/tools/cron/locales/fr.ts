@@ -57,6 +57,13 @@ function ordinal(value: number): string {
   return ordinalCategory(LOCALE, value) === "one" ? `${value}er` : String(value);
 }
 
+// A *rank* ordinal, which is a different thing from a calendar-date ordinal above. A date
+// takes a cardinal after the first ("le 1er janvier", then "le 2 janvier"), but a rank always
+// marks: "chaque 2e jour", never "chaque 2 jour". CLDR's "one" category still picks out 1.
+function rankOrdinal(value: number): string {
+  return ordinalCategory(LOCALE, value) === "one" ? `${value}er` : `${value}e`;
+}
+
 // Elision: `de` becomes `d'` before a vowel or mute h — "de mars" but "d'avril", "d'août",
 // "d'octobre". No placeholder-based message system can express this, because the
 // preposition mutates based on the *inserted* word.
@@ -108,6 +115,12 @@ const UNIT_PLURAL: Record<CronFieldKind, string> = {
 function everyN(kind: CronFieldKind, step: number): string {
   const all = UNIT_GENDER[kind] === "f" ? "toutes" : "tous";
   if (step === 1) return `chaque ${UNIT_SINGULAR[kind]}`;
+  // See the English renderer's note: `*/N` is a genuine rate for minutes, hours and months,
+  // but on the two day fields it is a selection rule that resets at the period boundary, so
+  // "tous les 3 jours" states an interval the schedule does not keep (code review
+  // 2026-09-06). `un jour sur trois` would imply the same interval, so name the rank.
+  if (kind === "dayOfMonth") return `chaque ${rankOrdinal(step)} jour du mois`;
+  if (kind === "dayOfWeek") return `chaque ${rankOrdinal(step)} jour de la semaine`;
   return `${all} les ${step} ${UNIT_PLURAL[kind]}`;
 }
 
@@ -133,9 +146,9 @@ function valueList(kind: CronFieldKind, values: number[]): string {
 function boundsPhrase(kind: CronFieldKind, range: TermRange): string {
   switch (kind) {
     case "minute":
-      return `de la minute ${range.from} à ${range.to}`;
+      return `entre la minute ${range.from} et la minute ${range.to}`;
     case "hour":
-      return `de l'heure ${range.from} à ${range.to}`;
+      return `entre l'heure ${range.from} et l'heure ${range.to}`;
     case "dayOfMonth":
       return `du ${ordinal(range.from)} au ${ordinal(range.to)}`;
     case "month":
@@ -228,7 +241,7 @@ function hourQualifier(hour: FieldTerm): string {
       // French equivalent of "during the 9 AM hour", which has no natural short form.
       return ` entre ${clockTime(hour.value, 0)} et ${clockTime(hour.value, 59)}`;
     case "values":
-      return ` durant les heures ${joinList(LOCALE, hour.values.map(hourName))}`;
+      return ` à ${joinList(LOCALE, hour.values.map(hourName))}`;
     case "range":
       return ` entre ${clockTime(hour.range.from, 0)} et ${clockTime(hour.range.to, 59)}`;
     case "step":
@@ -240,7 +253,10 @@ function hourQualifier(hour: FieldTerm): string {
       }
       return hour.step === 1 ? " de chaque heure" : `, toutes les ${hour.step} heures`;
     case "union":
-      return ` durant les heures ${partList("hour", hour.parts)}`;
+      return ` ${joinList(
+        LOCALE,
+        hour.parts.map((part) => hourQualifier(part).trimStart()),
+      )}`;
     case "unsupported":
       return ` durant les heures indiquées (${hour.raw})`;
   }
@@ -282,7 +298,11 @@ function domScope(dom: FieldTerm): string {
     case "step":
       return stepPhrase("dayOfMonth", dom.step, dom.within, dom.from);
     case "union":
-      return `les ${partList("dayOfMonth", dom.parts)}`;
+      // Each part renders through `domScope` itself, so it keeps its own article and
+      // contraction ("du 1er au 5", "le 10"). Joining bare part phrases under one shared
+      // "les " prefix produced "les 1er à 5 et 10" — the exact class of breakage the
+      // per-locale renderer split exists to avoid.
+      return joinList(LOCALE, dom.parts.map(domScope));
     case "unsupported":
       return `les jours indiqués (${dom.raw})`;
   }
@@ -302,7 +322,7 @@ function dowScope(dow: FieldTerm): string {
     case "step":
       return stepPhrase("dayOfWeek", dow.step, dow.within, dow.from);
     case "union":
-      return partList("dayOfWeek", dow.parts);
+      return joinList(LOCALE, dow.parts.map(dowScope));
     case "unsupported":
       return `les jours indiqués (${dow.raw})`;
   }
@@ -327,7 +347,12 @@ function monthQualifier(month: FieldTerm): string {
       }
       return month.step === 1 ? "" : `, tous les ${month.step} mois`;
     case "union":
-      return ` en ${partList("month", month.parts)}`;
+      // "de janvier à mars et en juin" — a range takes `de`, a bare month takes `en`, so the
+      // preposition belongs to each part, never to the join.
+      return ` ${joinList(
+        LOCALE,
+        month.parts.map((part) => monthQualifier(part).trimStart()),
+      )}`;
     case "unsupported":
       return ` durant les mois indiqués (${month.raw})`;
   }
@@ -384,13 +409,13 @@ export const frenchCronLocale: CronLocale = {
                 ? "chaque mois"
                 : "chaque jour de la semaine";
       case "value":
-        if (kind === "minute") return `minute ${term.value}`;
-        if (kind === "hour") return `heure ${term.value}`;
+        // Both consumers (the breakdown row and the box hover title) already print the
+        // field's own label, so repeating the noun here read as "Minute: minute 0".
+        if (kind === "minute" || kind === "hour") return String(term.value);
         if (kind === "dayOfMonth") return `le ${ordinal(term.value)}`;
         return valueName(kind, term.value);
       case "values":
-        if (kind === "minute") return `minutes ${valueList(kind, term.values)}`;
-        if (kind === "hour") return `heures ${valueList(kind, term.values)}`;
+        if (kind === "minute" || kind === "hour") return valueList(kind, term.values);
         if (kind === "dayOfMonth") return `les ${valueList(kind, term.values)}`;
         return valueList(kind, term.values);
       case "range":

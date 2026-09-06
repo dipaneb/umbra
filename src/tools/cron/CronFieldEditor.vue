@@ -18,17 +18,13 @@ const props = defineProps<{
   // The single source of truth for this field — a bare value (`5`), `*`, a list (`1,3,5`),
   // a range (`1-5`), or a step (`*/15`). Shown verbatim; never transformed here.
   modelValue: string;
-  // This field's breakdown phrase (from `CronExplanation.fields[i].phrase`) — surfaced as a
+  // This field's breakdown phrase (from `CronExplanation.schedule`) — surfaced as a
   // hover title so the strip stays visually quiet; the live panel renders the visible rows.
   phrase: string;
 }>();
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
-  // OTP-style auto-advance: typing `*` completes a field (nothing more to say about it), so
-  // move to the next box. Only on the *transition* to `*` — a field that's already `*` never
-  // fires this, so re-typing `*` or parking the cursor there doesn't skip ahead.
-  advance: [];
 }>();
 
 const { t } = useI18n();
@@ -50,7 +46,7 @@ const RANGE_HINT: Record<CronFieldKey, string> = {
   hour: "0-23",
   dayOfMonth: "1-31",
   month: "1-12",
-  dayOfWeek: "0-6",
+  dayOfWeek: "0-7",
 };
 
 const label = computed(() => t(LABEL_KEYS[props.fieldKey]));
@@ -61,14 +57,13 @@ const title = computed(() =>
 );
 
 function onInput(event: Event) {
-  const next = (event.target as HTMLInputElement).value;
-  const advancing = props.modelValue !== "*" && next === "*";
-  emit("update:modelValue", next);
-  if (advancing) emit("advance");
+  emit("update:modelValue", (event.target as HTMLInputElement).value);
 }
 
-// Called by CronView when the previous box auto-advances — select the contents so the next
-// keystroke replaces (the OTP-cell feel), rather than appending to an existing value.
+// Exposed for tests and for any future caller that needs to place the cursor in a specific
+// field. The `*` auto-advance that used to drive it was removed at code review (2026-09-06):
+// `*` is both a complete field value and the first character of `*/15`, so advancing on the
+// transition made every step expression impossible to type. Traversal is plain Tab.
 function focus() {
   inputRef.value?.focus();
   inputRef.value?.select();
