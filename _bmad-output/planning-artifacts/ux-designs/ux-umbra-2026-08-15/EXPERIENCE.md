@@ -87,7 +87,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 
 Full WCAG 2.1 AA. Behavioral floor — visual contrast math lives in `DESIGN.md`.
 
-- **Every flow is keyboard-drivable, no exceptions.** Grounded directly in PRD NFR5: the 5-minute demo (⌘K → JSON format → JWT decode → NL→cron → drag-drop into Bucket) must be fully drivable without a mouse. If a flow can't be completed by keyboard alone, it isn't done.
+- **Every flow is keyboard-drivable, no exceptions.** Grounded directly in PRD NFR5: the 5-minute demo (⌘K → JSON format → JWT decode → build a cron schedule → drag-drop into Bucket) must be fully drivable without a mouse. If a flow can't be completed by keyboard alone, it isn't done. (The cron step read "NL→cron" until Story 8.6 retired the natural-language parser; the guided builder that replaced it is a row of text inputs, so the step is still keyboard-only.)
 - Visible focus indicators on every interactive element, at every tab stop, on every surface (sidebar, grid-home, palette, Settings, in-tool controls).
 - Every control has a screen-reader label and role — VoiceOver-readable per NFR5, not just visually labeled.
 - Color contrast: reference `DESIGN.md` tokens by name, e.g. `{colors.accent-signature-on-text}` for any orange-on-text pairing, `{colors.text-tertiary}` for de-emphasized text that still needs to read as real content — don't restate ratios here.
@@ -121,7 +121,7 @@ Wireframe: [`wireframes/flow-first-launch-2026-08-16.excalidraw`](wireframes/flo
 1. Wi-Fi is off. Devon opens Umbra — grid-home is already what's on screen from the prior launch (or reachable in one keystroke).
 2. `⌘K`, types "json," `Enter` — JSON Formatter opens. Pastes a payload, formats it.
 3. `⌘K` again, "jwt" — JWT Inspector opens. Pastes a token; header and payload render pretty-printed, no network call (FR16), and the sidebar's active-nav highlight updates instantly.
-4. `⌘K`, "cron" — types "every Monday at 9am," gets `0 9 * * 1` back deterministically.
+4. `⌘K`, "cron" — in the field strip, sets **Day of week** to `1` and **Hour** to `9`; the expression reads `0 9 * * 1`, the panel reads "Every Monday, at 9:00 AM", and the next 3 runs are listed. (Story 8.6, 2026-09-06: the free-text step this replaced — typing "every Monday at 9am" — no longer exists; the natural-language parser was retired in favour of a language-neutral guided builder. Typing `*` in a field jumps to the next one, so the whole schedule is still keyboard-only.)
 5. Activates the Bucket drop zone's file-picker button to select a screenshot of an error dialog — the file-picker is the flow's stated canonical, keyboard-operable path (Interaction Primitives); dragging the screenshot onto the drop zone works too, as an alternative to it. Local ONNX OCR extracts the text; Devon copies it out as plain text with one click (FR4).
 6. **Climax:** the panel watches the whole sequence run — palette, format, decode, convert, select, extract, copy — without a single mouse click needed anywhere in the sequence, and without the network indicator ever lighting up. The demo's proof point isn't any one tool; it's that nothing here needed the internet, and every step traces back to one registry and one interaction primitive (copy-to-clipboard-as-text).
 

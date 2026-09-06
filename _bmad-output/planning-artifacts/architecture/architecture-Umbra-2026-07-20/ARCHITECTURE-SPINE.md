@@ -96,6 +96,17 @@ graph LR
 - **Prevents:** a confident-sounding but wrong cron expression reaching the user (the PRD's explicit AI-honesty bar, FR21)
 - **Rule:** every NL→cron result round-trips through the cron→English direction before display; only a consistent round-trip is shown. The canonical phrase corpus (must-convert + must-honestly-fail sets) runs as an automated test in `umbra-core`; a corpus regression fails the build. `[ADOPTED]`
 
+**Amendment (2026-09-06, Story 8.6 — the cron revamp):** the free-text NL→cron leg is
+**retired** in favour of a language-neutral guided builder that is deterministic by
+construction. `parse_schedule`, its grammar, and the 48-row phrase corpus are deleted (git
+history preserves them). This rule's round-trip-before-display mandate and the
+phrase-corpus CI gate **remain binding on any future free-text or model-based NL→cron** — a
+v2 exploration tracked as [dipaneb/umbra#130](https://github.com/dipaneb/umbra/issues/130).
+The guided builder needs neither: it cannot emit an invalid or unintended expression, and
+its output is re-described live via `cron_explain` for immediate user feedback. The rule
+stays `[ADOPTED]` for the case it was written about; it simply has no subject in this tool
+any more.
+
 ### AD-10 — One persistence mechanism, one writer
 
 - **Binds:** all persisted state
@@ -148,6 +159,27 @@ NL→cron leg is deliberately deferred, and the deferral is disclosed rather tha
   governance convention that a pattern not fully re-applied needs a reason on record.
   The original rule stays `[ADOPTED]` for any *third* language, where the same
   disclosure approach applies unless the cron revamp has landed by then.
+
+**Resolution (2026-09-06, Story 8.6 — the cron revamp landed):** the 2026-08-23 deferral
+above is **closed, by satisfying the letter rather than by another exception.** The cron
+tool now ships fully localized:
+
+- The free-text English grammar is gone (see the AD-9 amendment), so there is no
+  English-only parser left to disclose. `tools.cron.englishOnlyNotice` is deleted from
+  both locale files, and the French `description` loses its "in English" clause.
+- The *schedule descriptions* — the prose one-liner and the five per-field breakdown rows
+  — are localized too, which the original revamp plan had not intended. `umbra-core::cron`
+  no longer produces prose at all: `CronExplanation` carries a language-neutral
+  `ScheduleDescription` (parsed field terms plus cron's day-field OR rule), and
+  `src/tools/cron/locales/{en,fr}.ts` render it per locale. This is AD-1 applied properly
+  — an English sentence generated in core was presentation formatted a layer too early,
+  and no other language could be derived from it once the meaning had been collapsed to a
+  string.
+- **Consequence for a third language:** adding one no longer requires touching Rust or
+  this rule. It is one renderer module under `src/tools/cron/locales/` plus its entry in
+  `describeSchedule.ts`. The OCR leg's own requirement is unchanged.
+
+The rule stays `[ADOPTED]` and, for the cron tool, is now met in full.
 
 ### AD-14 — The shell owns OS I/O edges exactly once
 

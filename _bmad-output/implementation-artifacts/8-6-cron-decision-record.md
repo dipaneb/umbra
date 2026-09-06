@@ -228,3 +228,84 @@ Arguably a better demo — it shows the builder doing its job and the live panel
 9. **Next-runs count** — keep the hard-coded 3, or make it a view-side "show more" / a setting (Cut #7 is the richer version).
 10. **Spec rewrite** — `CronView.spec.ts` to the new single-surface structure (Task 2b), but the AC set should name the behaviours that must stay covered (bidirectional binding both ways, live recompute, 6-field rejection, over-cap state, `role="alert"` vs `role="status"`, copy-after-resolve).
 11. **The per-field editor component** — a cron-island component under `src/tools/cron/` (AD-6 default), unless Task 2a sees genuine cross-tool reuse (it should not).
+
+---
+
+## Addendum — localized schedule descriptions (2026-09-06, Task 2b)
+
+**Status:** decided and implemented during Task 2b, after the developer reviewed the working
+tool. Supersedes this record's original "no `cron-*` code becomes translatable" / English-only
+`describe()` position, and the AD-13 resolution above.
+
+### What prompted it
+
+The record above kept `describe()` as an English-only, core-side templater and treated AD-13 as
+resolved because the *parser*'s English-only-ness was gone. Reviewing the built tool surfaced
+the gap that reasoning left open: the prose one-liner and the five per-field breakdown rows
+were still English strings generated in Rust, so a French user got a French UI wrapped around
+English prose. AD-13's letter was not met; its disclosure had been removed anyway. The
+developer's call: **the cron tool must work in every shipped language, in this story.**
+
+### The decision: serialize meaning, render at the edge
+
+The English sentence was presentation formatted at the wrong layer. Once a schedule is
+collapsed into `"Every weekday, at 9:00 AM"` the meaning is destroyed and no other locale can
+be derived from it — the same class of error as returning a formatted date string instead of a
+timestamp. This codebase already had the correct pattern one module over: `ToolError` carries a
+`code`, and `src/shell/toolError.ts` decides what sentence that becomes, per locale.
+
+Four options were weighed:
+
+| | Verdict |
+|---|---|
+| **A1** — core serializes the raw field AST, view interprets *and* phrases | Rejected: drags well-tested interpretation into TS |
+| **A2** — core serializes a normalized semantic description, view phrases only | **Chosen** |
+| **B** — a `describe_fr()` per language in Rust, locale passed over IPC | Rejected: puts locale awareness in core (against AD-1), grows the command signature with a presentation concern, N languages = N Rust modules with drift risk |
+| **C** — buy `cronstrue` (30+ locales) | Rejected: it produces one sentence; this tool also renders five per-field breakdown rows, which no library provides. Buying would localize ~1/6 of the prose surface and still require the pipeline, leaving two rendering systems side by side in one panel |
+
+The A1/A2 line was drawn by one test: **would this logic be identical for an English reader, a
+French reader, and a machine?** Parsing, name resolution (`FRI` → 5), `?` → wildcard, and
+cron's day-field OR rule pass — they stay in core. Idiom selection (fusing minute+hour into
+"9:09 AM", saying "every weekday" for `1-5`) does *not* — those are English phrasing choices,
+and they moved to the view along with the corpus that tested them.
+
+### The contract
+
+`CronExplanation { schedule: ScheduleDescription, next_runs: Vec<i64> }`, where
+`ScheduleDescription` carries five normalized `FieldTerm`s (`Every` / `Value` / `Values` /
+`Range` / `Step{step, within, from}` / `Union` / `Unsupported{raw}`) plus a `DayMatch`.
+
+Two design notes worth keeping:
+
+- **`Unsupported { raw }` replaced `description_generic: bool`.** The boolean said "something
+  somewhere was unrenderable"; the variant says *which field* and *what the raw text was*, in
+  that field's own slot. That is what lets the view suppress the sentence while still rendering
+  four good breakdown rows and one honest raw one.
+- **`day_match` is derivable but stated anyway.** Cron fires on day-of-month OR day-of-week
+  when both are restricted. That rule is obscure enough that leaving each locale renderer to
+  rediscover it is how one of them silently gets it wrong.
+
+### Consequences
+
+- `umbra-core::cron` produces no prose. ~520 lines of Rust phrasing deleted.
+- `src/tools/cron/locales/{en,fr}.ts` are standalone renderers implementing a two-method
+  interface. Deliberately **not** a shared framework they parameterize: a frame that fits
+  English and French breaks on the first language with different word order, and duplication is
+  cheaper than the wrong abstraction at this scale.
+- `Intl.ListFormat` and `Intl.PluralRules` (CLDR) supply list conjunction and ordinal
+  categories per locale rather than hand-rolled tables. This required bumping `tsconfig.json`'s
+  `lib` from ES2020 to ES2021 — types only, `target` unchanged. **A third non-cron-island file
+  beyond AC26's two**, recorded here rather than folded in silently.
+- Adding language #3 is one renderer module plus a row in `describeSchedule.ts`. No Rust
+  change, no IPC change, no architecture decision.
+- The English renderer was ported to TypeScript and passed the entire Rust corpus unchanged on
+  first run — the migration is provably behaviour-preserving, not merely plausible.
+
+### Follow-ups not taken
+
+- `L`, `5#3`, `15W` still render as `Unsupported` (Story 8.6 Cut #3, unchanged). They are now
+  the *only* trigger for sentence suppression.
+- `@daily` / `@hourly` macros remain out of scope (Cut #5) — they are not 5-field expressions
+  and the field strip cannot represent them.
+- French copy was written by a non-native reviewer of this codebase and verified by the
+  developer at render-review; a third language would need the same native-reader check.
