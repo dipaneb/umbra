@@ -74,10 +74,10 @@ FR IDs are global and stable. Phases: **MVP** (target ~Aug 8), **P2** (rest of A
 
 ### F6 — Natural language ↔ cron (MVP, AI-flavored)
 
-- **FR19.** Convert a natural-language schedule ("every Monday at 9am") to a standard 5-field cron expression, fully offline (INV-1). **Decided:** v1 uses a deterministic parser (exact, tiny, testable); the small-local-model/hybrid upgrade is v2 (see addendum).
-- **FR20.** Convert a cron expression to a plain-English description, including the next 3 upcoming run times.
-- **FR21.** When the input can't be confidently converted, the tool says so and shows what it _did_ understand — no silently wrong cron. This is the AI-quality bar: wrong-but-confident output is a bug, not a model limitation. Acceptance basis: the canonical phrase corpus in `crates/umbra-core/src/cron.rs` (Story 3.3; must-convert and must-honestly-fail sets), maintained as an automated test.
-- **FR22.** English input only in v1 (French is a P3 candidate, coupled with FR25's rule).
+- **FR19.** Build a standard 5-field cron expression through a **language-neutral guided editor** — a row of per-field inputs composing any expression in the plain field grammar (wildcard, value, list, range, step) — fully offline (INV-1). **Revised 2026-09-06 (Story 8.6):** v1 originally specified a deterministic natural-language parser ("every Monday at 9am" → `0 9 * * 1`). That parser is **retired**. Free-text NL→cron cannot be done well deterministically, and doing it well implies a local model this product will not ship in v1; the reframe that settled it was that "English → cron" is a *structure* problem ("I forget the field order and whether Sunday is 0 or 7"), not a *language* problem — so it is now solved structurally. A small-model/hybrid free-text upgrade remains a v2 exploration ([dipaneb/umbra#130](https://github.com/dipaneb/umbra/issues/130)) and must reinstate AD-9's round-trip verification if built.
+- **FR20.** Convert a cron expression to a plain-language description, including the next 3 upcoming run times. **Expanded 2026-09-06 (Story 8.6):** the description is now (a) a one-line sentence covering the whole plain field grammar, (b) an always-on per-field breakdown that never falls back, and (c) **rendered in the user's language** — `umbra-core` returns a language-neutral `ScheduleDescription` and the view renders it per locale (English and French ship). Six-field seconds-precision expressions are rejected honestly rather than silently mis-described.
+- **FR21. RETIRED 2026-09-06 (Story 8.6).** ~~When the input can't be confidently converted, the tool says so and shows what it _did_ understand — no silently wrong cron. Acceptance basis: the canonical phrase corpus in `crates/umbra-core/src/cron.rs` (Story 3.3).~~ With no free-text input there is nothing to honestly fail on; the phrase corpus and its CI gate are deleted (git history preserves them). **The honesty principle survives and arguably strengthens:** the guided editor cannot compose an invalid expression, and the per-field breakdown never shrugs. AD-9's round-trip-before-display mandate remains binding on any future free-text or model-based NL→cron. **Where other requirements cite "FR21's honesty bar" they mean this principle, not the retired corpus gate.**
+- **FR22. RETIRED 2026-09-06 (Story 8.6).** ~~English input only in v1 (French is a P3 candidate, coupled with FR25's rule).~~ There is no language-specific input any more — the editor's controls are i18n keys and a cron expression has no language. Schedule descriptions render in the user's locale; adding a language is one renderer module. AD-13's cron deferral (2026-08-23) is closed by satisfying the rule's letter.
 
 ### F7 — The Bucket, v0: local OCR (MVP — flagship demo)
 
@@ -93,7 +93,7 @@ FR IDs are global and stable. Phases: **MVP** (target ~Aug 8), **P2** (rest of A
 
 ### F9 — Second AI feature (P2 — pick one, backlog the other)
 
-- **FR29.** _Either_ "explain this regex" (regex → structured plain-English breakdown, local inference) _or_ OCR→structured ("photo of a table → JSON"). Choice deliberately deferred to post-MVP, based on what the OCR/NL-cron work reveals about local-inference capacity. FR21's honesty bar applies.
+- **FR29.** _Either_ "explain this regex" (regex → structured plain-English breakdown, local inference) _or_ OCR→structured ("photo of a table → JSON"). Choice deliberately deferred to post-MVP, based on what the OCR/NL-cron work reveals about local-inference capacity. The honesty bar formerly stated as FR21 applies (see FR21's retirement note — the principle outlived its acceptance mechanism).
 
 ### F10 — Distribution & updates (P2 — shipping is part of "finished")
 
@@ -147,7 +147,7 @@ All four open questions from the brief were decided on 2026-07-19 during this PR
 - **Name → Umbra.** The working title was dropped after a trademark collision with an existing company.
 - **License → All Rights Reserved.** Revised 2026-07-20 (was FSL): recruiter-readable, but no reuse by anyone — FSL's eventual conversion to a permissive license and interim non-commercial reuse allowance were more than intended.
 - **OCR → ONNX model** (Hugging Face export via `ort` or similar). Chosen over macOS Vision specifically to keep the Bucket portable to Windows/Linux (NFR3). Exact model selection is an architecture-phase task.
-- **NL→cron → deterministic parser in v1**; small-local-model/hybrid upgrade in v2. FR21's honesty bar applies to both stages.
+- **NL→cron → deterministic parser in v1**; small-local-model/hybrid upgrade in v2. ~~FR21's honesty bar applies to both stages.~~ **Superseded 2026-09-06 (Story 8.6):** the deterministic parser is retired in favour of a language-neutral guided editor; the model/hybrid path stays a v2 exploration ([#130](https://github.com/dipaneb/umbra/issues/130)) and inherits the honesty principle formerly stated as FR21.
 
 ## 10. Glossary & assumptions
 
