@@ -96,6 +96,23 @@ graph LR
 - **Prevents:** a confident-sounding but wrong cron expression reaching the user (the PRD's explicit AI-honesty bar, FR21)
 - **Rule:** every NL→cron result round-trips through the cron→English direction before display; only a consistent round-trip is shown. The canonical phrase corpus (must-convert + must-honestly-fail sets) runs as an automated test in `umbra-core`; a corpus regression fails the build. `[ADOPTED]`
 
+**Amendment (2026-09-06, Story 8.6 — the cron revamp):** the free-text NL→cron leg is
+**retired** in favour of a language-neutral guided builder that is deterministic by
+construction. `parse_schedule`, its grammar, and the 48-row phrase corpus are deleted (git
+history preserves them). This rule's round-trip-before-display mandate and the
+phrase-corpus CI gate **remain binding on any future free-text or model-based NL→cron** — a
+v2 exploration tracked as [dipaneb/umbra#130](https://github.com/dipaneb/umbra/issues/130).
+The guided builder needs neither, but not because it cannot go wrong: its five boxes take
+free text, so it *can* compose an invalid expression (that is what the tool's `role="alert"`
+path is for) and an unintended one. What replaces the round-trip is that every edit is
+re-described live via `cron_explain` from the expression actually composed, so a mistake is
+visible in the same breath as it is made rather than being asserted away. (Corrected at
+Story 8.6's code review, 2026-09-06 — the original wording claimed an impossibility the
+free-text field strip does not have, and that claim was this paragraph's load-bearing
+premise.) The rule
+stays `[ADOPTED]` for the case it was written about; it simply has no subject in this tool
+any more.
+
 ### AD-10 — One persistence mechanism, one writer
 
 - **Binds:** all persisted state
@@ -149,6 +166,27 @@ NL→cron leg is deliberately deferred, and the deferral is disclosed rather tha
   The original rule stays `[ADOPTED]` for any *third* language, where the same
   disclosure approach applies unless the cron revamp has landed by then.
 
+**Resolution (2026-09-06, Story 8.6 — the cron revamp landed):** the 2026-08-23 deferral
+above is **closed, by satisfying the letter rather than by another exception.** The cron
+tool now ships fully localized:
+
+- The free-text English grammar is gone (see the AD-9 amendment), so there is no
+  English-only parser left to disclose. `tools.cron.englishOnlyNotice` is deleted from
+  both locale files, and the French `description` loses its "in English" clause.
+- The *schedule descriptions* — the prose one-liner and the five per-field breakdown rows
+  — are localized too, which the original revamp plan had not intended. `umbra-core::cron`
+  no longer produces prose at all: `CronExplanation` carries a language-neutral
+  `ScheduleDescription` (parsed field terms plus cron's day-field OR rule), and
+  `src/tools/cron/locales/{en,fr}.ts` render it per locale. This is AD-1 applied properly
+  — an English sentence generated in core was presentation formatted a layer too early,
+  and no other language could be derived from it once the meaning had been collapsed to a
+  string.
+- **Consequence for a third language:** adding one no longer requires touching Rust or
+  this rule. It is one renderer module under `src/tools/cron/locales/` plus its entry in
+  `describeSchedule.ts`. The OCR leg's own requirement is unchanged.
+
+The rule stays `[ADOPTED]` and, for the cron tool, is now met in full.
+
 ### AD-14 — The shell owns OS I/O edges exactly once
 
 - **Binds:** drops, clipboard, keyboard shortcuts
@@ -171,8 +209,8 @@ NL→cron leg is deliberately deferred, and the deferral is disclosed rather tha
 
 - **One runner per independent piece of state**, not one per tool and not one per action. Every write-trigger that touches that same state — including a cross-component trigger like `DropZone.vue`'s shared dispatcher — must share the one runner scoped to it.
 - **Use `registry.getLatestWinsRunner(toolId)`** when a tool has a single write-surface reachable from outside its own view component — the shape `DropZone.vue` (drop) plus the tool's own view (a manual invoke, e.g. Compute/Paste) both need to reach. `HashView.vue` is the reference implementation; Epic 4's Bucket tool (drag-drop and clipboard-paste both dispatching to the same registry-declared handler, per Story 4.2's AC) is the same shape and should follow it directly. This is the fix that closed the race bug that hit Stories 2.3 and 2.5 — a shared, tool-scoped runner, not a checklist reminder.
-- **A tool whose view has multiple genuinely independent state-groups should scope one local `createLatestWinsRunner()` per group instead** of reaching for the registry-scoped runner across the whole tool — `registry.getLatestWinsRunner(toolId)` is one runner per tool ID, coarser than that. `CronView.vue`'s two sections (cron→English, NL→cron) touch entirely disjoint refs; a single tool-wide runner would falsely mark one section's legitimate in-flight result as superseded the moment the unrelated other section fired — exactly the bug Story 3.1's own review caught and fixed by splitting into separate runners.
-- **Known caveat, not yet fixed:** within each of `CronView.vue`'s two groups, the two write-triggers that *do* share state (`onExplain`/`onPaste` both write `explanation`; `onParseSchedule`/`onPasteSchedule` both write `parseResult`) still use separate runner instances rather than one shared runner per group — an unresolved instance of the exact race this rule exists to prevent. Logged in `deferred-work.md`, not fixed by this amendment; a candidate for a follow-up story if it proves reachable in practice.
+- **A tool whose view has multiple genuinely independent state-groups should scope one local `createLatestWinsRunner()` per group instead** of reaching for the registry-scoped runner across the whole tool — `registry.getLatestWinsRunner(toolId)` is one runner per tool ID, coarser than that. The original example was `CronView.vue`'s two sections (cron→English, NL→cron), which touched entirely disjoint refs; a single tool-wide runner would falsely mark one section's legitimate in-flight result as superseded the moment the unrelated other section fired — exactly the bug Story 3.1's own review caught and fixed by splitting into separate runners. **That example no longer exists:** Story 8.6 retired the NL→cron section, and the cron tool is now a single state-group backed by one local runner. The rule stands on its own terms; treat the description above as the historical case that produced it.
+- **Known caveat — resolved 2026-09-06 (Story 8.6).** The caveat was that within each of `CronView.vue`'s two groups, the write-triggers that *did* share state (`onExplain`/`onPaste`; `onParseSchedule`/`onPasteSchedule`) used separate runner instances rather than one shared runner per group. All four are deleted: the redesigned tool has a single state-group and a single local runner, so the race has no subject. **A different race in the same file was found and fixed at that story's code review:** a latest-wins runner fences a result against a newer *request*, not against newer *input* — a view that writes derived state back from a request's own snapshot must also check that the snapshot still matches the live value, or it will silently revert what the user typed while the request was in flight.
 
 ## Consistency Conventions
 
@@ -182,7 +220,7 @@ NL→cron leg is deliberately deferred, and the deferral is disclosed rather tha
 | Data & formats | `ToolError { code, message, position: Option<Position>, context }` is the only error shape (AD-3). Core returns machine values — epoch timestamps are always unix seconds as `i64`, never milliseconds, across every tool (JWT `exp`/`iat`/`nbf`, cron next-run times); locale/timezone/case formatting is view-owned (AD-1). |
 | State & cross-cutting | Cross-tool state only in Pinia `settings`/`registry` stores (AD-6); `settings` store is the sole writer of `settings.json` (AD-10); shell owns clipboard/drop/shortcuts (AD-14). |
 | Code quality | No `unwrap`/`expect` in command paths; clippy `-D warnings`; `cargo fmt --check`; eslint; TypeScript `strict`. |
-| Testing | `umbra-core` unit tests (`cargo test -p umbra-core`, including the AD-9 corpus) + `src-tauri` command integration tests + Vitest. No e2e suite in v1 (NFR6). |
+| Testing | `umbra-core` unit tests (`cargo test -p umbra-core`; the AD-9 phrase corpus it used to name was retired with the free-text NL→cron parser in Story 8.6, and per-locale sentence corpora now live in `src/tools/cron/locales/*.spec.ts`) + `src-tauri` command integration tests + Vitest. No e2e suite in v1 (NFR6). |
 | Commits & releases | Conventional Commits from the first commit (enables a generated `CHANGELOG.md` later, FR32). |
 | Dependency hygiene | Every dependency's license checked for compatibility with bundling into an All-Rights-Reserved app — permissive fine, copyleft/GPL needs explicit review. |
 | Dependency version/API drift | Any pre-1.0 dependency, or one whose pin predates the story using it by more than a few weeks, gets a live re-verification against the vendored source (not docs.rs/crates.io summaries) before implementation — the exact API, not just the version number, since a resolved version can silently differ from what was researched. The finding is recorded in the Stack table, not just the story's own Dev Notes. *(Added 2026-08-07, Epic 4 retrospective — this discipline held under real pressure three epics running (Epic 2's `docs.rs` contradiction, Epic 3's `croner` field claim, Epic 4's `oar-ocr`/`ort` drift, twice in one story) but was being re-derived from scratch in each story's Dev Notes instead of living as a standing rule. See that document for full discussion.)* |

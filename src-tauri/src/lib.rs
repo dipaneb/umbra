@@ -11,7 +11,7 @@ use commands::base64::{
     base64_sniff,
 };
 use commands::bucket::{bucket_extract_text, bucket_extract_text_from_clipboard};
-use commands::cron::{cron_explain, cron_parse_schedule};
+use commands::cron::cron_explain;
 use commands::hash::{hash_compute, hash_compute_file};
 use commands::image::{bucket_convert_image, bucket_estimate_image_size};
 use commands::json::{
@@ -66,7 +66,6 @@ pub fn run() {
             bucket_extract_text_from_clipboard,
             jwt_decode,
             cron_explain,
-            cron_parse_schedule,
             bucket_merge_pdfs,
             bucket_extract_pdf_pages,
             bucket_extract_pdf_text,

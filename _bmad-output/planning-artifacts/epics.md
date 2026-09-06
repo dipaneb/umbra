@@ -64,10 +64,10 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 
 **F6 — Natural language ↔ cron (MVP, AI-flavored)**
 
-- FR19: Convert a natural-language schedule to a standard 5-field cron expression, fully offline via a deterministic parser (v1 decision; model/hybrid upgrade is v2).
-- FR20: Convert a cron expression to a plain-English description, including the next 3 upcoming run times.
-- FR21: When input can't be confidently converted, the tool says so and shows what it _did_ understand — no silently wrong cron. Acceptance basis: the canonical phrase corpus in `crates/umbra-core/src/cron.rs` (Story 3.3; must-convert ≥30, must-honestly-fail ≥10), maintained as an automated test.
-- FR22: English input only in v1.
+- FR19: Build a standard 5-field cron expression through a language-neutral guided editor (per-field inputs over the plain field grammar), fully offline. **Revised 2026-09-06 (Story 8.6)** — the deterministic natural-language parser is retired; the model/hybrid free-text path stays a v2 exploration ([#130](https://github.com/dipaneb/umbra/issues/130)).
+- FR20: Convert a cron expression to a plain-language description, including the next 3 upcoming run times. **Expanded 2026-09-06 (Story 8.6)** — plus a per-field breakdown that never falls back, shown when the one-line sentence cannot be rendered (amended 2026-09-06 — see the PRD's FR20), rendered in the user's locale, with 6-field expressions rejected honestly.
+- FR21: **RETIRED 2026-09-06 (Story 8.6)** — with no free-text input there is nothing to honestly fail on; the phrase corpus and its CI gate are deleted. The honesty *principle* survives (every edit is re-described live from the expression actually composed, so a mistake is visible immediately; the breakdown never shrugs). **Note (code review 2026-09-06):** the editor's five boxes take free text, so it *can* compose an invalid expression — the tool reports that honestly rather than preventing it and AD-9 still binds any future free-text or model-based NL→cron.
+- FR22: **RETIRED 2026-09-06 (Story 8.6)** — no language-specific input remains, and schedule descriptions render per locale.
 
 **F7 — The Bucket, v0: local OCR (MVP — flagship demo)**
 
@@ -83,7 +83,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 
 **F9 — Second AI feature (P2 — pick one, backlog the other)**
 
-- FR29: _Either_ "explain this regex" (local inference) _or_ OCR→structured ("photo of a table → JSON"). Choice deferred to post-MVP. FR21's honesty bar applies.
+- FR29: _Either_ "explain this regex" (local inference) _or_ OCR→structured ("photo of a table → JSON"). Choice deferred to post-MVP. The honesty bar formerly stated as FR21 applies (the principle outlived its acceptance mechanism — see FR21's retirement note).
 
 **F10 — Distribution & updates (P2)**
 
@@ -125,7 +125,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 - AD-6: tools are islands — no tool reads another tool's state; cross-cutting state only in Pinia stores `settings` and `registry`.
 - AD-7: zero network surface except `tauri-plugin-updater`; no network-purpose dependency anywhere; webview capabilities grant no network scope; OCR models bundled as app resources; `oar-ocr` auto-download disabled; updater carve-out disclosed in README **and** in-app.
 - AD-8: core-owned OCR trait (image bytes → text + confidence, honest empty/failure); `oar-ocr` 0.8.x is the v1 adapter; callers depend on the trait only.
-- AD-9: every NL→cron result round-trips through cron→English before display; the phrase corpus is an automated test in `umbra-core` — corpus regression is a failing build.
+- AD-9: every NL→cron result round-trips through cron→English before display; the phrase corpus is an automated test in `umbra-core` — corpus regression is a failing build. **Amended 2026-09-06 (Story 8.6):** the free-text NL→cron leg is retired, so this rule has no subject in the cron tool today; it remains binding on any future free-text or model-based NL→cron ([#130](https://github.com/dipaneb/umbra/issues/130)). See `ARCHITECTURE-SPINE.md`'s AD-9 amendment.
 - AD-10: only persistence is `tauri-plugin-store` (`settings.json`), single writer (frontend `settings` Pinia store); keys namespaced `shell.*` / `<tool-id>.*`; Settings pane enumerates all persisted state with one-action clear; window geometry captured frontend-side, debounced.
 - AD-11: CI runs `cargo check` + clippy on ubuntu and windows runners on every PR as a required check; `ort-sys` ONNX Runtime binaries cached in CI.
 - AD-12: releases are tag-driven via `tauri-action`: build → sign → notarize → GitHub Release with `latest.json`; update confirmation dialog is app-built UI; all secrets live only in GitHub Actions; updater private key backed up offline in two places before the first release; NFR1 network-monitor tour recorded in the release PR.
@@ -164,10 +164,10 @@ No UX design contract exists for this project (confirmed 2026-07-20). UX constra
 - FR16: Epic 2 — JWT decode, offline
 - FR17: Epic 2 — Humanized timestamp claims, expired-token flag
 - FR18: Epic 2 — Precise malformed-token errors
-- FR19: Epic 3 — NL → cron deterministic parser
-- FR20: Epic 3 — Cron → English + next 3 runs
-- FR21: Epic 3 — Honest failure + phrase corpus as automated test
-- FR22: Epic 3 — English-only v1 scope
+- FR19: ~~Epic 3 — NL → cron deterministic parser~~ → **Epic 8, Story 8.6 — language-neutral guided editor** (the Epic 3 parser is retired)
+- FR20: Epic 3 — Cron → English + next 3 runs; **expanded by Epic 8, Story 8.6** — per-field breakdown, localized descriptions
+- FR21: ~~Epic 3 — Honest failure + phrase corpus as automated test~~ — **RETIRED (Story 8.6)**
+- FR22: ~~Epic 3 — English-only v1 scope~~ — **RETIRED (Story 8.6)**
 - FR23: Epic 4 — Bucket drop zone with local ONNX OCR
 - FR24: Epic 4 — Editable result, one-click copy, <~3 s typical
 - FR25: Epic 4 — English OCR v1 (French coupling rule recorded)
@@ -198,6 +198,8 @@ The daily-driver set: encode/decode text and files, generate UUIDs singly or in 
 
 Type "every weekday at 8:30", get a correct cron expression — or an honest refusal showing what was understood. Deterministic parser both ways, round-trip validation before display, and the canonical phrase corpus running as an automated test (AD-9). Builds the AI-honesty machinery the v2 model path will reuse.
 **FRs covered:** FR19, FR20, FR21, FR22
+
+> **Superseded by Story 8.6 (2026-09-06).** The NL→cron parser and phrase corpus described here were retired in the cron revamp; FR19 was rewritten and FR21/FR22 retired. This epic remains the accurate record of what shipped in August 2026 and is deliberately left unedited — see Story 8.6 for the tool's current shape.
 
 ### Epic 4: The Bucket — local OCR _(MVP complete here)_
 
@@ -643,6 +645,8 @@ So that I can inspect real tokens without sending them anywhere.
 ## Epic 3: Natural language ↔ cron
 
 Type "every weekday at 8:30", get a correct cron expression — or an honest refusal showing what was understood. Deterministic parser both ways, round-trip validation before display, and the canonical phrase corpus running as an automated test (AD-9). Built in dependency order: the cron→English direction first, because AD-9 makes it the validation layer for NL→cron.
+
+> **Superseded by Story 8.6 (2026-09-06) — historical record, deliberately unedited.** The NL→cron parser (Story 3.2) and the phrase corpus (Story 3.3) were retired in the cron revamp: the tool is now a language-neutral guided editor with localized descriptions. Stories 3.1–3.3 below are left exactly as they shipped in August 2026, because rewriting a completed story's acceptance criteria to match a later decision would misrepresent what was actually built and reviewed at the time — and would erase the record of why Story 8.6 was needed. Current shape: Story 8.6 and `8-6-cron-decision-record.md`.
 
 ### Story 3.1: Read a cron expression in plain English
 
@@ -1267,7 +1271,7 @@ So that I don't have to remember or hunt for which tool handles it.
 
 **Given** clipboard content detection,
 **When** implemented,
-**Then** it is fully deterministic and local — no AI/ML inference, no new dependency — matching content against shape rules (JWT: three dot-separated base64url segments; JSON: parses successfully; Base64: matches the alphabet with valid padding) in `src/shell/`, consistent with this project's established "deterministic first" philosophy (FR19's cron parser) and AD-7's zero-network-surface rule.
+**Then** it is fully deterministic and local — no AI/ML inference, no new dependency — matching content against shape rules (JWT: three dot-separated base64url segments; JSON: parses successfully; Base64: matches the alphabet with valid padding) in `src/shell/`, consistent with this project's established "deterministic first" philosophy (the cron tool's deterministic core) and AD-7's zero-network-surface rule.
 
 **Given** a tool that wants clipboard-suggestion eligibility,
 **When** it's registered,

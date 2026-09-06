@@ -33,9 +33,14 @@ export function toToolError(err: unknown): ToolError {
 // separate field carrying that value — re-translating the sentence around it
 // without the real number would either drop the number or require parsing it
 // back out of English prose, which is fragile the moment Rust's wording
-// changes. Every cron-* code is also deliberately excluded: Story's own
-// French cron UI states the parser is English-only (tools.cron.englishOnlyNotice),
-// so an English cron error next to that notice is expected, not a bug.
+// changes. Most cron-* codes stay excluded for that same reason: the pasted-expression
+// path's errors carry croner's own dynamic runtime message text (and
+// cron-input-too-large embeds a byte count) — there is no free-text NL->cron grammar
+// left to make an "English-only parser" argument about (Story 8.6 retired it).
+// cron-six-field-unsupported and cron-no-upcoming-runs are the exceptions: both are fixed,
+// value-free, project-authored sentences, so they join the set below. (cron-no-upcoming-runs
+// was added at Story 8.6's code review — it met this same criterion from the start and was
+// excluded by oversight, which left a French user reading an English sentence.)
 //
 // `translatableCode` intentionally has no signature enforcing full ToolError
 // code coverage — an unmapped code safely falls through to `message` below.
@@ -92,6 +97,11 @@ const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   "base64-invalid-padding",
   "base64-not-utf8",
   "base64-data-uri-malformed",
+  // Story 8.6 AC16: the guided cron builder's one fixed, value-free, our-own sentence — every
+  // other cron-* code either carries croner's own dynamic runtime text or embeds a byte count
+  // (cron-input-too-large), so this is the sole cron-* addition here.
+  "cron-six-field-unsupported",
+  "cron-no-upcoming-runs",
 ]);
 
 export function toolErrorMessage(err: ToolError, t: Translate): string {
