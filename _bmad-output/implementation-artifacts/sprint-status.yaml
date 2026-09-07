@@ -41,7 +41,18 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-06  # story 8-7 -> ready-for-dev (bmad-create-story); story file + Task 1 ACs written, Task 2 ACs deferred per Epic 8's gate
+last_updated: 2026-09-06  # story 8-7 Task 1 DONE (bmad-dev-story -> bmad-party-mode, developer's method
+# choice). Decision record: 8-7-ocr-decision-record.md. THE structural story of Epic 8 so far: developer
+# confirmed the "Bucket" grouping was never a product decision (AI scaffolding left unfixed for velocity),
+# so 8.7 splits it into THREE registry tools -- "Image to Text" (ocr) / pdf / image -- which BINDS 8.8 and
+# 8.9 and changed their epics.md scope lines. Redesign is Live Text (image shown, text selectable on it),
+# replacing the editable textarea; OcrEngine trait widens to per-region text+confidence+geometry; Tauri
+# assetProtocol enabled scoped (spine amendment owed at build). Developer refused sign-off THREE times --
+# missing design round, missing AI-pipeline thinking, model choice as a footnote -- each refusal produced
+# the best material. Live bugs found and folded in: EXIF orientation never applied (sideways phone photos
+# report "no text found"), regions emitted in detection not reading order (also an NFR5 screen-reader bug),
+# limit_side_len=960 silently downscaling every image. FR23-FR26 all revised and propagated to prd.md +
+# epics.md this story (8.6's drift lesson). Task 2a (real AC7+) not started.
 # note: story 8-5 Task 1 + Task 2a done 2026-09-02 (bmad-dev-story -> bmad-party-mode, developer's
 # method choice; installed roster, session mode, Epic 8 party memory resumed). No drift vs the
 # story Dev Notes on re-read. Redesign scope decided with the developer: single enriched view, NO
@@ -1521,7 +1532,7 @@ development_status:
   # honest), describe() staying a project-owned templater. Open container question: cron is
   # the only bidirectional two-state-group tool in Epic 8, so AppTabs is genuinely on the
   # table (weighed vs. 8.2's smart-detection choice). Not committed.
-  8-7-reimagine-the-bucket-ocr: ready-for-dev
+  8-7-reimagine-the-bucket-ocr: in-progress
   8-8-reimagine-the-bucket-pdf: backlog
   8-9-reimagine-the-bucket-images: backlog
   epic-8-retrospective: optional

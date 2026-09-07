@@ -124,7 +124,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 - AD-5: a single Tool Registry (id, name, aliases, route, icon, drop/shortcut declarations) is the only source for sidebar, palette index, and routes.
 - AD-6: tools are islands — no tool reads another tool's state; cross-cutting state only in Pinia stores `settings` and `registry`.
 - AD-7: zero network surface except `tauri-plugin-updater`; no network-purpose dependency anywhere; webview capabilities grant no network scope; OCR models bundled as app resources; `oar-ocr` auto-download disabled; updater carve-out disclosed in README **and** in-app.
-- AD-8: core-owned OCR trait (image bytes → text + confidence, honest empty/failure); `oar-ocr` 0.8.x is the v1 adapter; callers depend on the trait only.
+- AD-8: core-owned OCR trait (image in → per-region text + confidence + geometry, honest empty/failure); `oar-ocr` **0.6.3** is the v1 adapter; callers depend on the trait only. *(Corrected 2026-09-06, Story 8.7: this line read "0.8.x", a figure from the 2026-07-19 planning sweep that predates Story 4.1 discovering the rustc-1.95 floor and pinning 0.6.3. `ARCHITECTURE-SPINE.md`'s Stack table has been correct throughout; this mirror was never updated. Story 8.7 also widened the trait's output from a single joined string plus a mean confidence to a per-region structure carrying bounding-polygon geometry — a recorded decision, see `8-7-ocr-decision-record.md`.)*
 - AD-9: every NL→cron result round-trips through cron→English before display; the phrase corpus is an automated test in `umbra-core` — corpus regression is a failing build. **Amended 2026-09-06 (Story 8.6):** the free-text NL→cron leg is retired, so this rule has no subject in the cron tool today; it remains binding on any future free-text or model-based NL→cron ([#130](https://github.com/dipaneb/umbra/issues/130)). See `ARCHITECTURE-SPINE.md`'s AD-9 amendment.
 - AD-10: only persistence is `tauri-plugin-store` (`settings.json`), single writer (frontend `settings` Pinia store); keys namespaced `shell.*` / `<tool-id>.*`; Settings pane enumerates all persisted state with one-action clear; window geometry captured frontend-side, debounced.
 - AD-11: CI runs `cargo check` + clippy on ubuntu and windows runners on every PR as a required check; `ort-sys` ONNX Runtime binaries cached in CI.
@@ -134,7 +134,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 - AD-15: files cross the IPC bridge as absolute paths; `src-tauri` owns all file reads/writes via one shared save-dialog-plus-write helper; core never touches the filesystem; byte arrays > ~64 KB never ride JSON IPC (exception: clipboard-pasted image bytes via raw IPC body).
 - AD-16: one shared frontend invoke helper for slow commands — request IDs, latest-wins supersession, results for unmounted views discarded; OCR session behind `OnceCell`; no progress events or cancellation in v1.
 
-**Stack (verified 2026-07-19; code owns exact pins at lockfile time):** Rust stable edition 2024; Tauri 2.11.x with plugins `store` 2.4.x, `updater` 2.x, `dialog` 2.x, `clipboard-manager` 2.x; Vue 3 + Vue Router + Pinia; `oar-ocr` 0.8.x (PaddleOCR mobile det+rec English ONNX, bundled); `croner` 3.x; GitHub Actions + `tauri-action` (macos build/sign runner, ubuntu + windows check matrix).
+**Stack (verified 2026-07-19; code owns exact pins at lockfile time):** Rust stable edition 2024; Tauri 2.11.x with plugins `store` 2.4.x, `updater` 2.x, `dialog` 2.x, `clipboard-manager` 2.x; Vue 3 + Vue Router + Pinia; `oar-ocr` **0.6.3** (PaddleOCR PP-OCRv6 **tiny** det+rec ONNX, multilingual dictionary, bundled — corrected 2026-09-06, Story 8.7; see `ARCHITECTURE-SPINE.md`'s Stack table for why 0.6.3 and not 0.8.x/0.9.x); `croner` 3.x; GitHub Actions + `tauri-action` (macos build/sign runner, ubuntu + windows check matrix).
 
 **Conventions binding acceptance criteria:** no `unwrap`/`expect` in command paths; clippy `-D warnings`; TypeScript `strict`; testing layers = core unit tests (`cargo test -p umbra-core`, incl. corpus) + `src-tauri` command integration tests + Vitest; Conventional Commits; every dependency's license checked for compatibility with bundling into an All-Rights-Reserved app (permissive licenses fine; copyleft/GPL needs review); accessibility (labels, focus, contrast) checked at PR review from v1.
 
@@ -738,7 +738,7 @@ So that screenshots of errors and documents become copyable text without touchin
 
 **Given** the OCR implementation,
 **When** inspected,
-**Then** `umbra-core` defines the OCR trait (image bytes in → recognized text + confidence out) and `oar-ocr` 0.8.x is the adapter behind it — callers, commands, and UI depend on the trait only (AD-8),
+**Then** `umbra-core` defines the OCR trait (image bytes in → recognized text + confidence out) and `oar-ocr` 0.8.x is the adapter behind it — callers, commands, and UI depend on the trait only (AD-8), *(historical record — Story 4.1 shipped `oar-ocr` **0.6.3** after discovering the rustc-1.95 floor, and Story 8.7 later widened the trait's output shape. Left as written per the Epic 3 precedent for historical ACs; see `ARCHITECTURE-SPINE.md`'s Stack table and `8-7-ocr-decision-record.md`.)*
 **And** the PaddleOCR mobile det+rec English ONNX models are bundled as app resources with `oar-ocr`'s auto-download feature explicitly disabled (AD-7),
 **And** the exact model files are chosen and documented in this story, closing the spine's deferred item.
 
@@ -1325,8 +1325,14 @@ So that I don't have to remember or hunt for which tool handles it.
 > `sprint-change-proposal-2026-08-16.md`. These 9 stories are deliberately chartered rather
 > than fully spec'd — Task 1 of each must produce a written decision record before Task 2's
 > real acceptance criteria can be written, the same gating discipline Story 6.3 already
-> established for the FR29 decision. No ordering dependency between the 9 stories; all depend
-> on Epic 7 being done first.
+> established for the FR29 decision. All depend on Epic 7 being done first.
+>
+> **Ordering — corrected 2026-09-06 (Story 8.7).** This preamble originally read "No ordering
+> dependency between the 9 stories." That is true of 8.1–8.6, each of which owned a private view
+> file, and **false of 8.7–8.9**, which shared one 713-line `BucketView.vue`, one registry entry
+> and one i18n block. **Story 8.7 resolved that shared container on behalf of all three** — see
+> `8-7-ocr-decision-record.md` — and 8.8 and 8.9 inherit its decision rather than relitigating it.
+> **8.7 must therefore precede 8.8 and 8.9.** 8.1–8.6 remain freely orderable.
 
 **Shared story shape (applies to Stories 8.1–8.9):**
 
@@ -1365,12 +1371,18 @@ Discovery + redesign per the shared shape above, scoped to the Cron tool (`src/t
 
 ### Story 8.7: Reimagine the Bucket — OCR
 
-Discovery + redesign per the shared shape above, scoped to the Bucket's OCR sub-feature (`src/tools/bucket/BucketView.vue`, `crates/umbra-core/src/ocr.rs`).
+Discovery + redesign per the shared shape above, scoped to the OCR sub-feature (`crates/umbra-core/src/ocr.rs`, `src-tauri/src/commands/bucket.rs`, and OCR's part of `src/tools/bucket/BucketView.vue`).
+
+**Scope expanded 2026-09-06 by this story's own Task 1** (`8-7-ocr-decision-record.md`), after the developer confirmed the "Bucket" grouping was never a product decision — three unrelated tools ended up under one name because an AI scaffolded it that way. Story 8.7 therefore also **splits the Bucket into three registry tools** — "Image to Text" (`ocr`), PDF (`pdf`) and Images (`image`) — carrying `drop`/`paste`/`clipboardMatch` to the OCR entry, partitioning the 16 aliases and the 32 i18n keys, and moving the PDF and Images views **verbatim** (no redesign; 8.8 and 8.9 own their own). That is the first shell-touching change in Epic 8, plus a spine amendment enabling Tauri's scoped asset protocol so the view can display the source image.
 
 ### Story 8.8: Reimagine the Bucket — PDF
 
-Discovery + redesign per the shared shape above, scoped to the Bucket's PDF sub-feature (`src/tools/bucket/BucketView.vue`, `crates/umbra-core/src/pdf.rs`).
+Discovery + redesign per the shared shape above, scoped to the **PDF tool** (`src/tools/pdf/PdfView.vue`, `crates/umbra-core/src/pdf.rs`, `src-tauri/src/commands/pdf.rs`).
+
+**Depends on Story 8.7**, which splits the shared `BucketView.vue` into three separate tools and moves this one across verbatim. 8.8 inherits that container decision and does not reopen it. **Two items are handed to this story in writing** by `8-7-ocr-decision-record.md`: rename the still-`bucket_*` PDF commands and error codes to `pdf_*` (8.7 renamed only its own, so the verbatim move stayed mechanically verifiable), and make the scan case honest — `noTextInPdf` currently says "no text in this PDF" for a scanned page whose text is visibly present as pixels, and should say it is a scan with no text layer.
 
 ### Story 8.9: Reimagine the Bucket — Images
 
-Discovery + redesign per the shared shape above, scoped to the Bucket's image sub-feature (`src/tools/bucket/BucketView.vue`, `crates/umbra-core/src/image_convert.rs`).
+Discovery + redesign per the shared shape above, scoped to the **Images tool** (`src/tools/image/ImageView.vue`, `crates/umbra-core/src/image_convert.rs`, `src-tauri/src/commands/image.rs`).
+
+**Depends on Story 8.7**, which splits the shared `BucketView.vue` into three separate tools and moves this one across verbatim. 8.9 inherits that container decision and does not reopen it. Handed to this story in writing: rename the still-`bucket_*` image commands and error codes to `image_*`.

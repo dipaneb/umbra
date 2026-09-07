@@ -41,22 +41,22 @@ so that the redesign reflects a deliberately chosen scope, not a visual reskin o
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0: Branch setup (AC: all)**
-  - [ ] Confirm `baseline_commit` (`d576c3e`) is still `origin/main`'s real tip before branching (`git rev-parse origin/main` — was `d576c3ebc450d278f000abf112cc2f810e8be400` at story-creation; `HEAD == origin/main == main`, working tree clean apart from the pre-existing untracked `.claude/workflows/`).
-  - [ ] `git checkout -b feat/story-8-7-reimagine-the-bucket-ocr` from the story-creation working tree, so the story file + decision record travel with the implementation branch (matches how 8.1–8.6 were branched; the story file is uncommitted at creation, so `git checkout -b` from `main`'s tip carries it and the `sprint-status.yaml` edit onto the new branch). Every subsequent commit lands on that branch.
+- [x] **Task 0: Branch setup (AC: all)**
+  - [x] Confirm `baseline_commit` (`d576c3e`) is still `origin/main`'s real tip before branching (`git rev-parse origin/main` — was `d576c3ebc450d278f000abf112cc2f810e8be400` at story-creation; `HEAD == origin/main == main`, working tree clean apart from the pre-existing untracked `.claude/workflows/`).
+  - [x] `git checkout -b feat/story-8-7-reimagine-the-bucket-ocr` from the story-creation working tree, so the story file + decision record travel with the implementation branch (matches how 8.1–8.6 were branched; the story file is uncommitted at creation, so `git checkout -b` from `main`'s tip carries it and the `sprint-status.yaml` edit onto the new branch). Every subsequent commit lands on that branch.
 
 - [ ] **Task 1: Discovery — produce the decision record (AC1–6)**
-  - [ ] Run `bmad-party-mode` (installed roster — Mary, John, Sally, Winston, Amelia, Paige; `session` mode; party memory on, resuming the 8.1–8.6 Epic 8 history) **or** `bmad-forge-idea` for a narrower persona-driven pressure-test — **the developer's choice for this story.** Frame it explicitly as: *open scope discovery for the Bucket's OCR sub-feature — the existing implementation is reference material, not a decision to preserve.*
-  - [ ] Feed the session the current, real state so it starts from fact. Re-read every file listed under **Dev Notes → Shipped implementation** at session start and confirm no drift vs. what is written there (Story 8.6's session found a stale corpus count doing exactly this; the check is not ceremony).
-  - [ ] Ground the session in what Epic 7 + Stories 8.1–8.6 locked — read `src/styles/tokens.css`, `src/styles/base.css`, `src/components/AppButton.vue`, `src/components/AppTabs.vue`, `src/components/AppPopover.vue` + `appPopoverPlacement.ts`, `src/App.vue`, `src/shell/icons.ts`, `src/shell/debounce.ts`, `src/shell/invoke.ts`, `src/shell/DropZone.vue` + `dropZone.ts`, `src/shell/clipboardMatch.ts`, `src/tools/json/useCopyFeedback.ts`, and `DESIGN.md` + `EXPERIENCE.md`.
-  - [ ] **Read the three prior Bucket stories as the record of what was already decided and why** — `4-1-drag-an-image-in-get-its-text.md`, `4-2-paste-a-screenshot-copy-the-text.md`, `4-3-the-bucket-never-bluffs.md`. AC4c's drop/paste shape and AC5's `OnceLock`/trait shape were reasoned there; reopening them is allowed, re-deriving them from scratch is waste.
-  - [ ] Run a competitive sweep for evidenced scope candidates — macOS Live Text / Preview's text selection, Windows PowerToys Text Extractor, Google Lens, `tesseract.js` front-ends, Shottr / CleanShot X OCR, ABBYY / Adobe Acrobat OCR, and OCR-to-structured tools (table → CSV/JSON). Candidates to weigh, not commitments: region/crop selection before extraction, per-region confidence display, preserved layout vs. flat text, multi-page/batch, language selection, deskew/preprocess, side-by-side image ↔ text view, re-run at higher effort, drag-out of the extracted text.
-  - [ ] Resolve **AC4a–4d** as explicit named decisions. Do not let the container question resolve itself by implementation drift — it binds two unstarted stories.
+  - [x] Run `bmad-party-mode` (installed roster — Mary, John, Sally, Winston, Amelia, Paige; `session` mode; party memory on, resuming the 8.1–8.6 Epic 8 history) **or** `bmad-forge-idea` for a narrower persona-driven pressure-test — **the developer's choice for this story.** Frame it explicitly as: *open scope discovery for the Bucket's OCR sub-feature — the existing implementation is reference material, not a decision to preserve.*
+  - [x] Feed the session the current, real state so it starts from fact. Re-read every file listed under **Dev Notes → Shipped implementation** at session start and confirm no drift vs. what is written there (Story 8.6's session found a stale corpus count doing exactly this; the check is not ceremony).
+  - [x] Ground the session in what Epic 7 + Stories 8.1–8.6 locked — read `src/styles/tokens.css`, `src/styles/base.css`, `src/components/AppButton.vue`, `src/components/AppTabs.vue`, `src/components/AppPopover.vue` + `appPopoverPlacement.ts`, `src/App.vue`, `src/shell/icons.ts`, `src/shell/debounce.ts`, `src/shell/invoke.ts`, `src/shell/DropZone.vue` + `dropZone.ts`, `src/shell/clipboardMatch.ts`, `src/tools/json/useCopyFeedback.ts`, and `DESIGN.md` + `EXPERIENCE.md`.
+  - [x] **Read the three prior Bucket stories as the record of what was already decided and why** — `4-1-drag-an-image-in-get-its-text.md`, `4-2-paste-a-screenshot-copy-the-text.md`, `4-3-the-bucket-never-bluffs.md`. AC4c's drop/paste shape and AC5's `OnceLock`/trait shape were reasoned there; reopening them is allowed, re-deriving them from scratch is waste.
+  - [x] Run a competitive sweep for evidenced scope candidates — macOS Live Text / Preview's text selection, Windows PowerToys Text Extractor, Google Lens, `tesseract.js` front-ends, Shottr / CleanShot X OCR, ABBYY / Adobe Acrobat OCR, and OCR-to-structured tools (table → CSV/JSON). Candidates to weigh, not commitments: region/crop selection before extraction, per-region confidence display, preserved layout vs. flat text, multi-page/batch, language selection, deskew/preprocess, side-by-side image ↔ text view, re-run at higher effort, drag-out of the extracted text.
+  - [x] Resolve **AC4a–4d** as explicit named decisions. Do not let the container question resolve itself by implementation drift — it binds two unstarted stories.
   - [ ] Resolve **AC2**'s FR23–FR26 verdicts, and if any FR is revised, **write the revision into `prd.md` and `epics.md` in this story**, not only into the decision record (AC2's second half).
-  - [ ] Decide each item under **Dev Notes → Known gaps in the shipped OCR path** — every one is in scope for this story by subject matter, and each needs an explicit fold-in / defer / reject call in the record. The two EXPERIENCE.md conflicts (no file-picker button, no in-flight state) are **live spec violations in shipped code**, not new feature ideas.
-  - [ ] Produce the written decision record to `_bmad-output/implementation-artifacts/8-7-ocr-decision-record.md`, mirroring `8-1`…`8-6`: **Kept / Changed / Added / Cut (backlog)** with rationale, plus the AC4 coupling decisions, the AC2 FR verdicts, and the AC5 AD-1 core split.
+  - [x] Decide each item under **Dev Notes → Known gaps in the shipped OCR path** — every one is in scope for this story by subject matter, and each needs an explicit fold-in / defer / reject call in the record. The two EXPERIENCE.md conflicts (no file-picker button, no in-flight state) are **live spec violations in shipped code**, not new feature ideas.
+  - [x] Produce the written decision record to `_bmad-output/implementation-artifacts/8-7-ocr-decision-record.md`, mirroring `8-1`…`8-6`: **Kept / Changed / Added / Cut (backlog)** with rationale, plus the AC4 coupling decisions, the AC2 FR verdicts, and the AC5 AD-1 core split.
   - [ ] AC3: capture each cut idea — draft a max-context body per idea in the record, then file as `backlog-candidate` GitHub issues on `dipaneb/umbra` linking back to it — **or** take the personal-backlog route if the developer directs it (the 8.3/8.4 precedent), logging the deviation.
-  - [ ] Optional: build a container-shape comparison canvas (one enriched view / `AppTabs` / three separate tools), with interaction states, as an Artifact. Given AC4a binds two other stories, this is a stronger canvas candidate than it was for 8.6, where the container was reasoned without one.
+  - [x] Optional: build a container-shape comparison canvas (one enriched view / `AppTabs` / three separate tools), with interaction states, as an Artifact. Given AC4a binds two other stories, this is a stronger canvas candidate than it was for 8.6, where the container was reasoned without one.
   - [ ] Developer confirms the scope decisions and open questions before Task 2 begins.
 
 - [ ] **Task 2a: Redesign ACs — write real Given/When/Then** (after Task 1's record exists; canvas picks in)
@@ -186,14 +186,232 @@ Nine transferable lessons, in descending order of how much they would cost to re
 
 ### Agent Model Used
 
+claude-opus-5 (Claude Code, `bmad-dev-story`).
+
 ### Debug Log References
+
+**Task 0 — branch setup, verified 2026-09-06.**
+`git fetch origin main` → `origin/main` = `d576c3ebc450d278f000abf112cc2f810e8be400`, identical to the
+story's `baseline_commit` (`d576c3e`). Branched `feat/story-8-7-reimagine-the-bucket-ocr` from that
+tip, matching the 8.1–8.6 convention. The story file and its `sprint-status.yaml` edit were committed
+onto the branch as `936f32f` (`docs(story-8-7): add story file for Reimagine the Bucket OCR`). The
+pre-existing untracked `.claude/workflows/` was left untracked, as the story's Task 0 anticipated.
+
+**Task 1 — Dev Notes drift check vs. the working tree (AC1's "must be re-read in full at session
+start" requirement).** Every claim under *Dev Notes → Shipped implementation* re-verified at
+`d576c3e`. Confirmed exactly as written:
+
+| Claim | Verified |
+| --- | --- |
+| `crates/umbra-core/src/ocr.rs` 281 lines | ✅ 281 |
+| `src/tools/bucket/BucketView.vue` 713 lines | ✅ 713 |
+| `BucketView.spec.ts` 711 lines, 33 `it()`, 3 `describe` (root / `"PDF section"` / `"Image section"`) | ✅ all four |
+| `ocrOutcome.ts` 5 lines, `imageTargetFormat.ts` 3 lines | ✅ |
+| Registry `bucket`: 16 aliases, `drop` + `paste` + `clipboardMatch` all OCR-only, no `shortcut` | ✅ |
+| `tools.bucket.*` = 32 keys, `en`/`fr` parity | ✅ 32 / 32, key sets identical |
+| No `bucket-*` code in `TRANSLATABLE_CODES` (gap #9) | ✅ — 7 `bucket-*` codes exist in Rust, 0 translated |
+| Gap #1 — no `open()` file picker in the OCR section | ✅ — `open()` appears only in the PDF (×3) and Images (×1) flows |
+| Gap #2 — no OCR in-flight state | ✅ — no `extracting` ref; `pdfMerging` / `imageEstimating` etc. all exist |
+| `oar-ocr` pinned `0.6.3` in `Cargo.lock`; `rust-version` `1.88` in both crates | ✅ — upgrade still blocked, as gap #10 concluded |
+
+**Two drifts found in the Dev Notes themselves** (the story file's own text, not the code — logged here
+rather than silently corrected, since Dev Notes is not a section this workflow may edit):
+
+1. **`TRANSLATABLE_CODES` now holds *two* `cron-*` codes, not one.** Dev Notes says "and (since 8.6)
+   `cron-six-field-unsupported`"; the set also contains `cron-no-upcoming-runs`. This is precisely the
+   "code review found a second code that met the criterion and had been missed" event that gap #9
+   itself cites — the fix landed, the Dev Notes sentence was written from the pre-fix state. Does not
+   change gap #9's instruction (apply the same criterion to each `bucket-*` code); it strengthens it,
+   since the criterion has now demonstrably been under-applied once.
+2. **`epics.md`'s `oar-ocr` 0.8.x drift is in *three* places, not four.** Gap #10 lists `:127`, `:137`,
+   `:741`, `:742`. Line 742 is the AD-7 bundled-models line and carries no version number; the three
+   real hits are `:127` (AD-8 restatement), `:137` (Stack line) and `:741` (Story 4.1 AC). The
+   remediation split still holds unchanged — `:127` and `:137` are live claims to correct, `:741` is
+   historical record that gets a forward pointer.
 
 ### Completion Notes List
 
+- **Task 0 complete.** Branch cut from the verified baseline; story file + sprint-status committed as `936f32f`.
+- **Task 1 discovery complete.** Developer chose `bmad-party-mode`. Decision record written to
+  `_bmad-output/implementation-artifacts/8-7-ocr-decision-record.md`, satisfying AC1–AC6.
+
+- **The session's premise changed in one line.** Asked whether "Bucket" was a name worth keeping, the
+  developer answered that the three-tools-under-one-name grouping was **never a product decision** — an
+  AI scaffolded it that way and it was left unfixed to keep moving. AC4a, framed in the story as a
+  three-way architecture fork, collapsed to a cleanup in a single round.
+
+- **Then it changed a second time.** Asked whether `OcrOutcome` should carry per-region confidence, the
+  developer redirected: *"can we make the text appear like on Apple Photos — select the text directly
+  from the image."* That is the redesign. It is a better answer to their own "copy and leave" than any
+  text pane, because partial selection removes the step where you re-find, in a transcription, what your
+  eyes already located on the image.
+
+- **Decisions taken (all developer-confirmed):** three separate registry tools, binding 8.8/8.9 (AC4a) ·
+  full split in this story with PDF and Images moving **verbatim** (AC4b) · `drop`/`paste`/`clipboardMatch`
+  move to the OCR entry, aliases partition (AC4c) · one runner, three doors — the view calls
+  `registry.getLatestWinsRunner` directly for the first time, since the new file picker is a third
+  write-trigger on the same state (AC4d) · **the `OcrEngine` trait changes**, deliberately and recorded,
+  to a region-structured outcome (AC5) · Tauri asset protocol enabled with a scope, a recorded spine
+  amendment · the editable `<textarea>` is replaced by "Copy all text" · low-confidence regions marked
+  on the image, no number shown · tool named **"Image to Text"**.
+
+- **Verification work that changed conclusions** (all checked against source, not docs or notes):
+  - `oar-ocr-core-0.6.3`'s `TextRegion` has **eight** fields — `bounding_box` (a polygon), `dt_poly`,
+    `rec_poly`, `text`, `confidence`, `orientation_angle`, `word_boxes`, `label`. `run_ocr` reads two and
+    discards the struct. **The geometry Live Text needs has been available since Story 4.1.**
+  - The bundled `character_dict.txt` contains all 17 checked French characters (`é è ê ë à â ù û ô î ï ç
+    œ É È À Ç`) among its 6,904 entries — so the 2026-08-23 AD-13 amendment is operative and **FR25's
+    "English in v1" is stale**.
+  - **All nine commands are `bucket_*` and all sixteen error codes are `bucket-*`** — but `umbra-core` is
+    clean (`ocr.rs` / `pdf.rs` / `image_convert.rs` are named for capabilities). The scaffold's name
+    reached only the command layer and the codes.
+  - `bucket-internal` and `bucket-input-too-large` are used by `commands/pdf.rs` and `commands/image.rs`
+    as well — so they are **added** as `ocr-*` rather than renamed, or the verbatim-move gate breaks.
+  - **Gap #9 is misdiagnosed.** Applying 8.6's own criterion (a fixed, value-free sentence we wrote
+    ourselves), almost no `bucket-*` message qualifies — nearly every one wraps a third-party error string
+    or embeds a byte count. It is a **voice** gap, not a translation gap, and it lands on the most-hit
+    error in the tool (drop a non-image → the `image` crate's raw English). Fix: write our own sentence,
+    *then* it qualifies.
+  - `app.security.assetProtocol` is **not** enabled, but the CSP already permits `asset:` /
+    `http://asset.localhost` / `data:` for `img-src` (configured by Story 8.2's data-URI preview), so only
+    the config and the scope are new.
+
+- **The developer refused the first sign-off, and was right to.** Their objection: the session had gone
+  entirely to structural debt (the split, the renames, the runner scoping, the asset-protocol amendment)
+  and the record held exactly **one** design idea — Live Text — which they had supplied themselves. For
+  the app's first and only AI feature, with Story 8.1's JSON room as the comparison, that was a real gap.
+  The session reopened generatively. What that round produced:
+
+  - **The unserved job.** The developer had named "PDF pages with unselectable text" as a real use, and
+    **neither tool serves it** — the PDF tool reads only an embedded text layer, and OCR won't open a PDF.
+    Resolved as **three tiers**: tier 1 (a dropped PDF stops failing with the `image` crate's raw error and
+    says PDFs open in the PDF tool) lands in 8.7; tier 2 (the PDF tool's "no text in this PDF" becomes
+    "this is a scan") is **handed to Story 8.8 in writing**; tier 3 (rasterize and OCR) is cut to a GitHub
+    issue carrying the full cost sheet. Paige's framing: *serving the attempt is not the same as serving
+    the extraction.*
+  - **A latent shipping bug, found by reading `run_ocr`.** It emits `lines.join("\n")` in the model's
+    **detection** order, not reading order — so a two-column screenshot interleaves silently, and no test
+    catches it because every fixture assertion is `contains("UMBRA")`. Free to fix once the geometry flows.
+  - **That bug is also an accessibility bug** (Paige). Live Text replaces a labelled `<textarea>` with
+    transparent spans a screen reader reads in **DOM order**. One geometric sort therefore serves three
+    requirements — Copy fidelity, screen-reader order, and `⌘F` match ordering — which moves it from a
+    correctness nicety to load-bearing under NFR5.
+  - **The in-flight state is not a spinner** (Sally). Render the image immediately from the path; let the
+    text resolve onto it a beat later. The "did it take my file?" anxiety is answered in the first frame,
+    and the `OnceLock` model load — the slowest moment in the app's life, on someone's first ever use —
+    happens against something recognisable instead of a blank pane. Free: the two are independent.
+  - **The resting state had never been designed** — the most-seen state in the app is currently a sentence
+    where an affordance should be. Becomes a real drop target with the picker inside it (needs `DropZone.vue`
+    to expose drag-enter state — a named shell change).
+  - Also decided: `⌘F` find-in-image **in**; `⌘A` selects all image text; "Copy all text" lives *on* the
+    image, not under it; a second drop replaces (no history, no persisted state — the job ends when you
+    paste, and nothing accumulating is the privacy-correct default); QR codes **out**, to a real GitHub
+    issue; handwriting stated as the *reason* low-confidence marking exists (PP-OCRv6 tiny is
+    printed-text-trained; confident nonsense is the FR26 risk), not a happy side effect.
+
+- **The developer refused sign-off a second time, and again correctly:** *"we need to think about the onnx
+  runtime, the model used, if it's multilanguage or not, the whole pipeline… AI feature means some new
+  thinking."* The record had a front door and a back door and nothing in between. An audit of the vendored
+  `oar-ocr` / `oar-ocr-core` 0.6.3 source found that `OarOcrEngine::new` calls
+  `OAROCRBuilder::new(det, rec, dict).build()` and **nothing else** — **six inherited defaults nobody in
+  this project had ever chosen**, in the app's only AI feature:
+
+  1. **`limit_side_len = 960`** — every image is downscaled so its longest side is ≤ 960 px **before
+     detection**. A 3024 × 1964 Retina screenshot is recognised at ~960 × 623; 13-point UI text reaches
+     the model ~4 px tall. It silently contradicts Live Text, which overlays a full-resolution image whose
+     recognition happened three times smaller. **Raised to 1600** (developer's call: no formal measurement).
+     Safe to judge rather than measure because detection cost scales with image *area* while recognition
+     cost scales with *region count* — so this is ~2.8× the pixels for the detection pass only.
+  2. **`max_text_length` is ambiguous** — 25 in `TextRecognitionConfig::default()`, 100 in the predictor
+     builder, 128 in the crate's own test. If 25 bounds CTC decoding, long lines truncate silently and no
+     existing test catches it (every fixture asserts `contains("UMBRA")` on a short fixture). **An empirical
+     long-line test is mandatory**, then the value is set explicitly.
+  3. **`orientation_angle` is always `None`** — it needs a third bundled model. *This corrected a claim
+     made earlier in this same session's decision record; the correction is recorded, not edited away.*
+  4. **`return_word_box = false`** — confirms the word-level cut for the right reason.
+  5. **Recognition `score_threshold = 0.0`** — good news, and load-bearing: nothing is silently filtered,
+     so `text: None` means recognition genuinely failed. This is what makes low-confidence marking honest
+     by construction rather than a display over a pre-filtered set.
+  6. **No execution provider configured** — `ort` runs CPU. Cut to a GitHub issue with the full analysis.
+
+  Plus a standing risk: **`ort` is pinned to `2.0.0-rc.12`, a release candidate**, held there because
+  `oar-ocr-core` 0.6.3 declares rc.12 but does not compile against rc.13 (Story 4.1's discovery). Named,
+  no action — it re-opens on the same trigger as the `oar-ocr` pin.
+
+- **The three seconds turned out to be a feedback problem, not a speed problem.** The developer measured it:
+  *"roughly three seconds, but three seconds feels slow when you put an image and have no visual feedback."*
+  Resolved by the already-decided image-appears-immediately behaviour plus an **indeterminate** indicator —
+  deliberately not a progress bar, because ONNX inference reports no progress and a bar filling at an
+  invented rate would be a bluff about our own internals in an app built on *the Bucket never bluffs*.
+
+- **Execution providers, after the developer correctly pushed back on a too-narrow framing:** six
+  compile-time Cargo features exist (`coreml`, `cuda`, `directml`, `openvino`, `tensorrt`, `webgpu`) and
+  Umbra enables none. Sorted by *does the end user have to install a vendor runtime* — CoreML (macOS),
+  DirectML (Windows 10+, any DX12 GPU) and WebGPU (the only genuinely cross-platform one) are viable;
+  CUDA, TensorRT and OpenVINO are out on **distribution** grounds, not performance. Cut to GitHub with the
+  compile-time-feature constraint and the AD-7 re-audit it triggers.
+
+- **A final audit round, at the developer's request** (*"you tell me if something is missing"*) — three findings,
+  all verified against the vendored `image` 0.25.10 source, and all landing on *photos of documents*:
+  1. **EXIF orientation is never applied — a live bug.** `image::load_from_memory` is
+     `ImageReader::with_guessed_format().decode()`, and `decode()` does not apply EXIF orientation; the crate
+     requires calling `orientation()` / `apply_orientation()` explicitly. So a photo taken with a phone held
+     sideways reaches the detector rotated 90°, detection largely fails, and the user gets *"no text found"*
+     on an image visibly full of text — confidently wrong output, exactly what FR26 exists to prevent.
+     **Folded in**, with a new EXIF-carrying fixture.
+  2. **The format claim has been under-stating the code since Story 4.1.** FR23, the registry description and
+     the drop hint all say *"PNG, JPEG, or WebP"*; `image`'s `default-formats` actually decodes **fifteen**,
+     TIFF and BMP included — and scanners produce TIFF, which matters for the scans use. The error sentence
+     drafted earlier in the session (*"PNG, JPEG, and WebP are supported"*) **would have been false**.
+     Developer's call: **stop enumerating** — *"Drop an image"* / *"That file isn't an image this tool can
+     read."* Vague and true beats specific and wrong, and avoids a list that drifts with the `image` crate's
+     default features. FR23 revised accordingly.
+  3. **HEIC is not supported** — iPhone photos are HEIC by default, `image` has AVIF but not HEIC, so an
+     unexported phone photo fails as unreadable. Cut to personal backlog; the fix is `libheif`, the same class
+     of native-dependency cost as the PDF rasterizer.
+
+- **A quality regression corpus is in scope** (developer's call). This story changes `limit_side_len`, adds a
+  reading-order sort and applies EXIF orientation — and today the only quality assertion in the codebase is
+  `contains("UMBRA")` on one short fixture. A small corpus of real images with properly asserted expected text
+  is the only way to know whether any of it helped; it also converts the model-tier revisit gate from a
+  judgement into a measurement. **Detection-threshold tuning** (`box_threshold`, `unclip_ratio`, the
+  `text_type` presets) is deliberately cut to backlog *behind* the corpus — tuning thresholds without a way to
+  measure regression is guessing with extra steps.
+
+- **The model choice is now a first-class section, not a footnote** (developer's third catch). Verified against
+  Hugging Face: there are **three** tiers, not two — tiny **6.0 MB** (shipped), small **29.6 MB** (~5×, never
+  previously named by anyone), medium **132.2 MB** (~22×). `ARCHITECTURE-SPINE.md` records **medium** as the
+  documented fallback; at 132 MB of models for a small offline utility that is not a fallback, and the spine
+  line needs correcting to name `small`. **Decision: tiny stays — now for a reason.** The direction of cost is
+  known (a 5× model on top of the already-raised resize limit, against a measured 3 s baseline, plausibly
+  reaches the ~10 s point where a user disengages) while the benefit is unmeasured, and the cheaper lever
+  (960 → 1600, ~4× the pixels for the existing model) was pulled first. A **concrete revisit gate** replaces
+  the broken one: if quality is still poor at 1600 with reading order fixed, evaluate `small` during Task 2b's
+  render reviews. Also surfaced: PP-OCRv5 ships **language-specific** rec models (`latin_`, `en_`, …) — most of
+  our 6,904-entry dictionary is Chinese, serving a script this app has never claimed to support, so a
+  Latin-script recogniser is *better-targeted rather than bigger*. Cut #17, personal backlog.
+
+- **AC3 capture route — developer's decision: split** (the 8.6 precedent). The two cuts with real future
+  weight — OCR-a-scanned-PDF, QR codes and hardware-accelerated inference — are filed as `backlog-candidate`
+  GitHub issues on `dipaneb/umbra` linking back to the record; the rest go to the developer's own
+  backlog and are logged in the record's Cut table so nothing is silently dropped.
+
+- **Not yet done, deliberately:** the AC2 propagation of the FR23–FR26 revisions into `prd.md` and
+  `epics.md`, the `epics.md` corrections, and the filing of the two GitHub issues. All wait on the
+  developer's sign-off of the record — AC2 requires the propagation to land *in this story*, not before
+  the scope it encodes has been approved. Nothing has been written upstream or pushed anywhere.
+
 ### File List
+
+- `_bmad-output/implementation-artifacts/8-7-ocr-decision-record.md` (new) — Task 1 decision record
+- `_bmad-output/implementation-artifacts/8-7-reimagine-the-bucket-ocr.md` (modified) — task checkboxes, Dev Agent Record, File List, Change Log
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — story status `ready-for-dev` → `in-progress`
+- `_bmad-output/party-mode/memories/installed/.memlog.md` (modified) — session memory (party-mode artifact, not story scope)
 
 ### Change Log
 
 | Date | Change |
 | --- | --- |
+| 2026-09-06 | Task 0 complete (`bmad-dev-story`). Baseline `d576c3e` re-verified against `origin/main`; branch `feat/story-8-7-reimagine-the-bucket-ocr` cut; story file + sprint-status committed as `936f32f`. AC1's mandatory drift re-read found the code matching Dev Notes exactly, and two stale claims in the Dev Notes themselves (a second `cron-*` translatable code; the `epics.md` `oar-ocr` drift is 3 places, not 4). |
+| 2026-09-06 | Task 1 complete. `bmad-party-mode` discovery session (developer's AC1 method choice). Decision record written to `8-7-ocr-decision-record.md`. Scope: three separate registry tools (binds 8.8/8.9), full split with PDF/Images moving verbatim, **Live Text** — the image displayed with selectable text positioned on it — replacing the editable textarea, low-confidence regions marked on the image, a file picker and an in-flight state closing two live `EXPERIENCE.md` violations, the `OcrEngine` trait widened to region-structured output, and the Tauri asset protocol enabled with a scope (a recorded spine amendment). AC2 propagation and AC3 capture pend developer sign-off. |
 | 2026-09-06 | Story created (`bmad-create-story`) from `epics.md`'s Epic 8 shared shape, at baseline `d576c3e`. Task 1 ACs written real (AC1–AC6); Task 2 ACs deliberately deferred per the epic's own gate. AC4 added beyond the 8.1–8.6 template to force explicit resolution of the shared-`BucketView.vue` container, split, registry/drop/paste and AD-16 runner questions that 8.7 inherits on behalf of 8.8 and 8.9. AC2 extended with a same-story FR-propagation requirement, from Story 8.6's upstream-drift correct-course. |
