@@ -392,9 +392,10 @@ rather than silently corrected, since Dev Notes is not a section this workflow m
   Latin-script recogniser is *better-targeted rather than bigger*. Cut #17, personal backlog.
 
 - **AC3 capture route — developer's decision: split** (the 8.6 precedent). The two cuts with real future
-  weight — OCR-a-scanned-PDF, QR codes and hardware-accelerated inference — are filed as `backlog-candidate`
-  GitHub issues on `dipaneb/umbra` linking back to the record; the rest go to the developer's own
-  backlog and are logged in the record's Cut table so nothing is silently dropped.
+  weight are filed as `backlog-candidate` GitHub issues on `dipaneb/umbra`, each carrying its full cost
+  sheet: **#132** (OCR a scanned PDF page), **#133** (QR / barcode decoding), **#134** (hardware-accelerated
+  inference). The remaining cuts go to the developer's own backlog and are logged in the record's Cut table
+  so nothing is silently dropped.
 
 - **Not yet done, deliberately:** the AC2 propagation of the FR23–FR26 revisions into `prd.md` and
   `epics.md`, the `epics.md` corrections, and the filing of the two GitHub issues. All wait on the
