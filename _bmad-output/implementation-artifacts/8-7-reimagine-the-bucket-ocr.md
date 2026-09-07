@@ -39,29 +39,216 @@ so that the redesign reflects a deliberately chosen scope, not a visual reskin o
 
 6. **Given** Task 1 has not yet produced its decision record, **when** this story starts, **then** Task 2 (redesign, and its own Given/When/Then acceptance criteria) has not begun — no implementation starts before the decision record exists. **Boundary note from epics.md: Task 1 gates Task 2.**
 
+## Acceptance Criteria — Task 2 (Redesign)
+
+**Written at Task 2a (2026-09-07), scoped strictly to `8-7-ocr-decision-record.md` plus the developer's three opening calls this session (sequencing, the `useCopyFeedback` hoist, the asset-protocol scope). Per the developer's sequencing call, AC7–AC30 — which have no visual dependency — were written first, then the design canvas was built, then AC31–AC42 were written from its picks; one sign-off covers the whole set. Every non-island file this set authorises is enumerated in *Authorised file surface* below; that table is normative, not a summary. Design canvas: <https://claude.ai/code/artifact/cd67d1db-4126-41a6-a9bb-d5c2cb9969f5> — nine artboards, resolving the record's open items #3, #4, #5, #11 and #14.**
+
+### Group A — The split (AC4a–4c executed)
+
+7. **Given** the `bucket` registry entry today declares `drop`, `paste` and `clipboardMatch` — all three OCR-only — under one id spanning three unrelated tools, **when** Task 2b completes, **then** `src/stores/registry.ts` contains **three** entries in place of it: `ocr` (`name: "Image to Text"`), `pdf` and `image`; the `bucket` entry and the `/tools/bucket` route no longer exist; `drop`, `paste` and `clipboardMatch` (`test: matchesImage, specificity: 4`) sit on the `ocr` entry **only**; and the 16 aliases partition as **OCR** — `ocr`, `screenshot`, `text`, `capture d'écran`, `texte` — **PDF** — `pdf`, `merge`, `split`, `fusionner`, `diviser` — **Images** — `image`, `convert`, `compress`, `png`, `jpeg`, `webp`, `convertir`, `compresser`. The retired `bucket` alias is not carried onto any entry. **Verifiable:** typing `merge` in `⌘K` returns a result named for the PDF tool, and typing `ocr` returns "Image to Text" — neither returns "Bucket", because no such tool exists.
+
+8. **Given** `src/tools/bucket/BucketView.vue` is one 713-line flat scroll of three unrelated tools, **when** Task 2b completes, **then** it is deleted and replaced by `src/tools/ocr/OcrView.vue`, `src/tools/pdf/PdfView.vue` and `src/tools/image/ImageView.vue`, each reachable at its own route; `src/tools/bucket/` no longer exists; `ocrOutcome.ts` moves to `src/tools/ocr/` and `imageTargetFormat.ts` to `src/tools/image/`. **PDF and Images move verbatim** — their `<script>` logic, template markup and `<style>` rules are transplanted unchanged, including `pdfFilters()` being a function not a const, the two Images runners, the 200 ms debounced estimate and its `onUnmounted` cancel, and every in-file comment. No tokenisation, no `AppButton`, no command rename, no copy change in the moved sections; 8.8 and 8.9 own their improvement.
+
+9. **Given** Amelia's move gate — *if a moved PDF or Images test needs rewriting, it stopped being a move* — **when** `BucketView.spec.ts`'s 33 `it()` blocks are split, **then** the **13** blocks in `describe("PDF section")` and the **8** in `describe("Image section")` move to `src/tools/pdf/PdfView.spec.ts` and `src/tools/image/ImageView.spec.ts` **with nothing changed but the import path and the mount target** — every assertion string, every mock, every `bucket_*` command name they invoke stays byte-identical. The **12** root-`describe` OCR blocks move to `src/tools/ocr/OcrView.spec.ts` and are rewritten against the new shape (AC28 governs which behaviours must survive that rewrite and which are deliberately retired). A moved PDF/Images assertion that had to change is a failed AC9, not a judgement call.
+
+10. **Given** AD-3 requires `<tool>_<verb>` and there will be no tool called bucket, **when** Task 2b completes, **then** OCR's own command and error names — and only its own — are corrected: commands `bucket_extract_text` → `ocr_extract_text` and `bucket_extract_text_from_clipboard` → `ocr_extract_text_from_clipboard` (both `use` lines and both `generate_handler!` entries in `src-tauri/src/lib.rs` follow); `src-tauri/src/commands/bucket.rs` → `src-tauri/src/commands/ocr.rs`; codes `bucket-engine-init-failed` → `ocr-engine-init-failed`, `bucket-malformed-image-buffer` → `ocr-malformed-image-buffer`, `bucket-malformed-request` → `ocr-malformed-request`, `bucket-ocr-failed` → `ocr-extraction-failed`, `bucket-unsupported-format` → `ocr-unsupported-format`. **`bucket-internal` and `bucket-input-too-large` are NOT renamed** — verified in-session that `commands/pdf.rs` and `commands/image.rs` emit both, so renaming them would rewrite tests in two tools that must move verbatim (AC9). OCR instead emits **new** codes `ocr-internal` and `ocr-input-too-large` at its own call sites; the `bucket-*` pair stays live for PDF and Images until 8.8/8.9 retire it. The nine remaining `bucket_*` PDF/Images commands are untouched.
+
+### Group B — Shell surface
+
+11. **Given** the OCR view must display the source image, and **verified this session** that Tauri 2.11.5's asset protocol consults `app.asset_protocol_scope()` alone and never the capability ACL (`tauri-2.11.5/src/protocol/asset.rs`), **when** Task 2b completes, **then** `src-tauri/tauri.conf.json` declares `app.security.assetProtocol` with `enable: true` and a **statically empty** `scope`, and the Rust side grants access **one file at a time**: on each accepted drop or picker selection the command layer calls `asset_protocol_scope().allow_file(path)` for that path and `forbid_file(...)` for the previously granted one, so the webview can read exactly the file the user just handed it and nothing else. **The `tauri-plugin-persisted-scope` plugin is NOT added** — it writes granted paths to disk across restarts, which contradicts this story's own "a second drop replaces the first, nothing accumulates" decision. `src-tauri/capabilities/default.json` is **not** modified; the CSP line already permits `asset:` / `http://asset.localhost` (Story 8.2) and is not modified either. **Verifiable:** a path never handed to the tool is refused by the protocol, and the grant does not survive a restart.
+
+12. **Given** the paste path has **no file on disk** — `DropZone.vue`'s `dispatchPaste` reads `{ rgba, width, height }` via `readClipboardImage()`, ships the bytes as a raw IPC body and discards them — so `convertFileSrc` has nothing to convert and Live Text would silently work on drop and pick but not on paste, **when** Task 2b completes, **then** the shell **publishes what it has already read**: `src/stores/registry.ts` gains a `pasteSourceImage` signal (`{ toolId, rgba, width, height }`, the same one-shot shape as the existing `dropSourcePath`), `src/shell/DropZone.vue` sets it alongside `pasteResult` on success and clears it on error, and the view renders it via `ImageData` on a canvas. **The view does not read the clipboard itself** — AD-14 gives the shell the OS I/O edge exactly once, `navigator.clipboard` is forbidden, and a second read is racy because the clipboard may have changed during the ~3 s inference. **Verifiable:** pasting a screenshot shows that screenshot, not a blank surface.
+
+13. **Given** `EXPERIENCE.md` Flow 2 step 5 scripts the demo around a file-picker that has never existed, and keyboard-only OCR today requires an image already on the clipboard, **when** Task 2b completes, **then** `OcrView.vue` has an `open()` file picker that is reachable and operable by keyboard alone, and it is a **third** write-trigger on the same extraction state alongside drop and paste. Per AD-16's amended one-runner-per-independent-state rule, the view calls `registry.getLatestWinsRunner("ocr")` **directly** (the first view in the codebase to do so) rather than creating a local runner, so a pick landing after an in-flight drop supersedes it. **Verifiable:** the whole extract-and-copy flow completes with no pointer and nothing pre-placed on the clipboard (NFR5).
+
+14. **Given** the resting state is the most-seen state in the app and is currently a sentence where an affordance should be, **when** Task 2b completes, **then** `src/shell/DropZone.vue` exposes a drag-enter state the active tool's view can consume (a `registry`-published boolean, set on the webview's `dragEnter`/`dragLeave`/`dragOver` payload types and cleared on `drop` and on cancel), so the OCR view's drop target can highlight while a drag is over the window. Drop dispatch itself stays window-level and unchanged — the target is an affordance, not a hit area. `src/shell/dropZone.ts` gains whatever pure routing helper this needs, with `dropZone.spec.ts` coverage. The visual treatment of the highlight is AC31+'s.
+
+15. **Given** `src/tools/json/useCopyFeedback.ts` has carried a hoist-candidate comment since Story 8.1 and five consecutive stories declined the hoist on the grounds that they were not shared-infrastructure stories, and **given** 8.7 is one, **when** Task 2b completes, **then** it moves to `src/shell/useCopyFeedback.ts` (with its spec) — the destination `src/shell/debounce.ts` already establishes: a generic view-level utility in `shell/`, imported by tool islands. All **seven** existing import sites update to the new path (`json/JsonView.vue`, `json/JsonTree.vue`, `base64/Base64View.vue`, `uuid/UuidView.vue`, `hash/HashView.vue`, `jwt/JwtView.vue`, `cron/CronView.vue`), `OcrView.vue` becomes the eighth, **no re-export shim is left behind**, and the hoist-candidate comment is deleted rather than reworded. Behaviour is unchanged: no test in any of those five islands may need an assertion change.
+
+### Group C — The core trait and the command layer (AC5 executed)
+
+16. **Given** `OcrOutcome { text: String, confidence: Option<f32> }` destroys, at the core boundary, per-region data the adapter already holds — `run_ocr` builds two parallel vectors, averages one and joins the other — **when** Task 2b completes, **then** `crates/umbra-core/src/ocr.rs` returns a region-structured outcome from **both** `OcrEngine` methods:
+
+    ```rust
+    pub struct OcrOutcome {
+        pub regions: Vec<OcrRegion>,
+        /// Dimensions of the image recognition actually ran against, AFTER EXIF
+        /// orientation is applied (AC18) — the space `OcrRegion` coordinates live in.
+        pub image_width: u32,
+        pub image_height: u32,
+    }
+    pub struct OcrRegion {
+        /// `None` means the detector found a text region and recognition FAILED on it —
+        /// never "was filtered for being uncertain" (recognition `score_threshold` is 0.0,
+        /// so nothing is discarded). Kept, not skipped: see AC17.
+        pub text: Option<String>,
+        pub confidence: Option<f32>,
+        /// `TextRegion.bounding_box.points`, verbatim, in `image_width`/`image_height` space.
+        pub polygon: Vec<OcrPoint>,
+    }
+    pub struct OcrPoint { pub x: f32, pub y: f32 }
+    ```
+
+    `dt_poly`, `rec_poly`, `word_boxes`, `label` and `orientation_angle` do **not** cross the boundary — the first two are redundant with `bounding_box` for this use, `word_boxes` is unpopulated (`return_word_box = false`), `label` is unused, and `orientation_angle` is always `None` in our configuration. **No whole-text accessor is added to core** (AD-1: joining regions into one string for a Copy button is presentation); the view derives it. `src/tools/ocr/ocrOutcome.ts` is updated as the hand-synced TS mirror of the whole shape. The change is **subtraction** — the adapter stops discarding — not new computation.
+
+17. **Given** the empty-outcome contract is FR26 / Story 4.3's honesty guarantee, **when** the shape changes, **then** "no text found" stays anchored to **text**, not to region count: the state fires when no region carries a `Some(text)` with non-whitespace content. A region whose `text` is `None` is **retained in `regions`** so the view can mark it on the image — which makes "no text found" on an image visibly full of text a diagnosis (*we located writing here and could not read it*) rather than today's lie of omission. `run_ocr`'s current `if let Some(text) = &region.text` skip is removed.
+
+18. **Given** `image::load_from_memory` is `ImageReader::with_guessed_format().decode()` and **`decode()` does not apply EXIF orientation** — the crate requires calling `orientation()` / `apply_orientation()` explicitly, and we never have — so a phone photo taken sideways reaches the detector rotated 90°, detection largely fails, and the user is told "no text found" about an image full of text, **when** Task 2b completes, **then** `extract_text` reads the decoder's EXIF orientation and applies it **before** recognition, and `image_width`/`image_height` (AC16) report the **oriented** dimensions. A new fixture carrying real EXIF rotation is added, and its test asserts the text is recovered — not merely that the call returned `Ok`. The RGBA clipboard path is unaffected (already-decoded pixels carry no EXIF).
+
+19. **Given** `OarOcrEngine::new` calls `OAROCRBuilder::new(det, rec, dict).build()` and nothing else — six inherited defaults, in the app's only AI feature — **when** Task 2b completes, **then** the pipeline is configured explicitly for the first time: `.text_detection_config(...)` with **`limit_side_len = 1600`** (raised from the inherited 960; a 3024 px screenshot goes from a 3.1× downscale to 1.9×), and `.text_recognition_config(...)` with **`max_text_length` set explicitly** to the value AC20 establishes. Every remaining default stays put **deliberately and with an in-file comment saying so** — recognition `score_threshold = 0.0` (nothing filtered, and load-bearing for AC17), `return_word_box = false`, no text-line orientation classifier, no execution provider. A value inherited without a comment is a failed AC19.
+
+20. **Given** `max_text_length` is genuinely ambiguous in the vendored source — `TextRecognitionConfig::default()` says 25, the predictor builder says 100, the crate's own test fixture says 128 — and if 25 bounds CTC decoding then long lines truncate silently while every existing fixture assertion is `contains("UMBRA")` on a short fixture, **when** Task 2b completes, **then** a test extracts a fixture line **well over 25 characters** and asserts the **full string** survives. **This test lands regardless of its outcome.** If it fails, that is a shipping bug more severe than the reading-order one and setting the value explicitly is the fix; if it passes, the explicit setting is what stops it drifting. Asserting "it extracted something" is a failed AC20.
+
+21. **Given** `run_ocr` emits `lines.join("\n")` in the model's **detection** order rather than reading order — a latent bug since Story 4.1, invisible because the tool never showed the image and every assertion is `contains("UMBRA")` — and given one sort serves three requirements (Copy fidelity, screen-reader DOM order under NFR5, and `⌘F` match ordering), **when** Task 2b completes, **then** `regions` are sorted geometrically **in core** before they leave it, to this bounded definition: regions whose vertical centres fall within a tolerance derived from their own height are banded into one row; rows are ordered top-to-bottom; regions within a row are ordered left-to-right. **The stated limit is part of the AC:** this handles a dialog's button row, a sidebar and an interleaved layout; it does **not** claim to handle a true multi-column magazine spread, which needs layout analysis (Cut #3). A fixture with genuinely interleaving regions asserts the **full ordered string**, not `contains`.
+
+22. **Given** one shared `OAROCR` sits behind `&self` and a superseded latest-wins request still runs to completion, so two inference jobs genuinely overlap, **when** Task 2b completes, **then** this is **recorded, not fixed**: `Sync` is compiler-enforced so it is safe, and whether two concurrent ONNX sessions contend badly on CPU is unmeasured. An in-file comment in the command layer states the overlap explicitly, and the question is revisited only if the AC23 corpus shows contention. Adding cancellation is out of scope.
+
+### Group D — Recognition quality
+
+23. **Given** this story raises `limit_side_len`, adds a reading-order sort, applies EXIF orientation and may touch `max_text_length` — and the only quality signal in the codebase today is `contains("UMBRA")` on one short fixture — **when** Task 2b completes, **then** a quality regression corpus exists under `crates/umbra-core/tests/fixtures/`, covering at minimum: a Retina-resolution error dialog, a photo of a document, a two-column or otherwise interleaved layout, and a scan. Each fixture asserts its **expected text**, with an explicit, documented tolerance model — normalise whitespace and case, and assert per-line containment against an expected ordered line list rather than byte equality, since OCR output is not byte-exact. **Ordering is asserted separately from content**, so a reading-order regression fails distinctly from a recognition regression. This corpus is what converts the model-tier revisit gate from a judgement into a measurement, and it is what lets anyone who is not the developer touch this pipeline.
+
+### Group E — Errors, voice and i18n
+
+24. **Given** `ocr-unsupported-format` currently renders the **`image` crate's own raw English decode error** — the single most-hit error in the tool, reached by dropping any non-image — and given the format claim has been *under*-stating the code since Story 4.1 (`image`'s `default-formats` decodes fifteen formats, TIFF and BMP included, while FR23, the registry description and the drop hint all said "PNG, JPEG, or WebP"), **when** Task 2b completes, **then** the code carries a project-authored, value-free, **non-enumerating** sentence — *"That file isn't an image this tool can read."* — it joins `TRANSLATABLE_CODES` in `src/shell/toolError.ts`, and it gains an `errors.ocr-unsupported-format` key in **both** `src/locales/en.json` and `src/locales/fr.json`. Story 4.3's corrupt-PNG test, which currently asserts on the `image` crate's phrase *"unexpected end of file"*, is updated to assert the code rather than third-party prose.
+
+25. **Given** the developer predicted users will try dropping PDFs and today that fails with the `image` crate's raw decode error, **when** Task 2b completes, **then** a PDF is recognised by **magic bytes** (`%PDF-`) before decode is attempted and answered with its own project-authored code and sentence — *"PDFs open in the PDF tool."* — which also joins `TRANSLATABLE_CODES` with keys in both locales. **It is a sentence, not a routing offer** — developer's call, 2026-09-07, and the reason is theirs: *a button would be a good idea, but it cannot route to somewhere that is not built yet.* A navigation button is cheap (`router.push`, no dependency) and would land the user on an empty PDF view to re-pick the file they just dropped — implying a hand-off the app does not have. Carrying the file across is the version worth building, and it is handed to **Story 8.8**, which will know what the PDF tool's entry state looks like after its own redesign. No new Rust dependency: a byte check and a string.
+
+26. **Given** 8.6's stated criterion for `TRANSLATABLE_CODES` — *a fixed, value-free sentence we wrote ourselves* — **when** it is applied to every OCR code, **then** exactly the two codes in AC24 and AC25 are added, and each exclusion is recorded in `toolError.ts`'s own comment with its reason: `ocr-engine-init-failed` and `ocr-internal` wrap a Rust error; `ocr-extraction-failed` wraps `oar-ocr`'s; `ocr-input-too-large` and `ocr-malformed-image-buffer` embed byte counts and dimensions; and **`ocr-malformed-request` is excluded for a distinct reason worth stating** — it carries **four** different sentences (missing header / header not UTF-8 / header not a `u32` / JSON body where raw bytes were expected) under **one** code, so a single `errors.<code>` lookup cannot express it without splitting the code four ways or misreporting three of the four, and it is unreachable by users in any case since it fires only if our own shell sends a malformed IPC request. "Not yet done" is not an acceptable recorded reason for any exclusion.
+
+27. **Given** the `tools.bucket.*` block holds 32 keys serving three tools, **when** Task 2b completes, **then** it is partitioned into `tools.ocr.*`, `tools.pdf.*` and `tools.image.*` in both locales with `en`/`fr` parity preserved (`src/locales/locales.spec.ts` compiles every message and is the gate); the 16 PDF keys and 11 Images keys move **verbatim** under their new prefix, `tools.bucket.description` is replaced by three real descriptions rather than the current inventory sentence, and `dropHint` is rewritten format-agnostically (*"Drop an image"*, not an enumeration). Any new string containing `{` or `}` uses vue-i18n's `{'{'}` / `{'}'}` escape.
+
+### Group F — Icons, tests and the gate
+
+28. **Given** `src/shell/icons.ts` is a `Record<IconName, Component>` so a missing entry is a compile-time error, **when** Task 2b completes, **then** `IconName` drops `"bucket"` and gains `"ocr"`, `"pdf"` and `"image"`, each mapped to a Phosphor pictogram (DESIGN.md's Base64 `64` glyph remains the one deliberate non-pictogram exception), and `src/shell/icons.spec.ts`'s coverage assertion follows. Provisional `name` values ship for the PDF and Images entries on day one — 8.8 and 8.9 may rename them, but the registry cannot hold a placeholder.
+
+29. **Given** existing OCR coverage encodes behaviours that must survive a shape change, **when** `OcrView.spec.ts` and the Rust tests are rewritten, **then** every one of these is still covered: real-fixture end-to-end extraction on **both** entry points; oversize rejection **without reading the file**; non-image rejection; corrupt/truncated input → `ToolError` not panic, **plus a new near-full-length truncation case** (gap #6 — a materially different `image`-crate decode path); missing path → read error; the 8-thread `OnceLock` race (`src-tauri/tests/ocr_engine_race.rs`, renamed with its command module); the clipboard RGBA round-trip, oversize and malformed-length cases; a drop or paste result routed to a different tool being ignored; and the explicit no-text-found state. **Two behaviours are deliberately retired, and only these two:** *"lets the extracted text be edited, and Copy writes the current edited value"* and *"re-seeds the editable field from a new outcome, discarding unsaved edits"* — both describe the `<textarea>` this story removes, and the second describes a stale-snapshot bug class (8.6's lesson 5) that removing it structurally dissolves.
+
+30. **Given** NFR5 is behavioural and checked at PR review, **when** Task 2b completes, **then** a real `pnpm tauri dev` screen-reader pass is performed and recorded in the Dev Agent Record — covering the pre-existing, never-manually-verified no-text-found `role="status"` region (gap #5) **and** the in-flight start/completion announcements this story adds. A passing Vitest spec does not satisfy this AC. The full local gate (`pnpm lint` · `pnpm exec vue-tsc --noEmit` · `pnpm test` · `pnpm build` · `cargo fmt --check` · `cargo clippy --workspace --all-targets -- -D warnings` · `cargo test --workspace`) passes before every commit, and every slice gets a render review in **both** light and dark.
+
+### Authorised file surface (normative — AC7–AC42)
+
+**Built at Task 2a from a repo-wide sweep (`grep -rli bucket`, excluding `_bmad-output/` and vendored trees), not from a recollection of what the split touches. Story 8.6's equivalent list was found incomplete twice — once at correct-course, once at code review — and the sweep found seven files beyond the set named in the story's own Project Structure Notes. Those seven are marked ⚠. A file touched in Task 2b that is not on this list is an AC gap to be raised, not absorbed.**
+
+**New**
+
+| File | Why |
+| --- | --- |
+| `src/tools/ocr/OcrView.vue`, `OcrView.spec.ts`, `ocrOutcome.ts` | AC8, AC16 — the redesigned tool |
+| `src/tools/pdf/PdfView.vue`, `PdfView.spec.ts` | AC8, AC9 — verbatim move |
+| `src/tools/image/ImageView.vue`, `ImageView.spec.ts`, `imageTargetFormat.ts` | AC8, AC9 — verbatim move |
+| `src/shell/useCopyFeedback.ts` + `useCopyFeedback.spec.ts` | AC15 — the hoist |
+| `src-tauri/src/commands/ocr.rs` | AC10 — renamed from `bucket.rs` |
+| `crates/umbra-core/tests/fixtures/*` | AC18 (EXIF-rotated), AC20 (long line), AC21 (interleaved), AC23 (corpus) |
+
+**Deleted**
+
+| File | Why |
+| --- | --- |
+| `src/tools/bucket/` — `BucketView.vue`, `BucketView.spec.ts`, `ocrOutcome.ts`, `imageTargetFormat.ts` | AC8 |
+| `src-tauri/src/commands/bucket.rs` | AC10 |
+| `src/tools/json/useCopyFeedback.ts` (+ spec) | AC15 — moved, **no shim** |
+
+**Modified — shell and cross-island (the AD-6 boundary this story stretches)**
+
+| File | Why | |
+| --- | --- | --- |
+| `src/stores/registry.ts` | AC7 three entries; AC12 `pasteSourceImage` | |
+| `src/stores/registry.spec.ts` | AC7 — asserts `["base64","bucket","json","jwt"]` and a `bucket` `clipboardMatch`; **breaks on the split** | ⚠ |
+| `src/shell/icons.ts` + `icons.spec.ts` | AC28 — `IconName` loses `bucket`, gains three | |
+| `src/shell/DropZone.vue` | AC12 publish paste image; AC14 drag-enter state | |
+| `src/shell/dropZone.ts` | AC14 routing helper | |
+| `src/shell/dropZone.spec.ts` | AC12, AC14 — and its `bucketTool` fixture hard-codes `bucket_extract_text*` and `bucket-malformed-image-buffer`; **breaks on the rename** | ⚠ |
+| `src/shell/clipboardMatch.ts` | AC7 — the AC12-era comment names Bucket as the image-eligible tool | |
+| `src/shell/toolError.ts` | AC24, AC25 additions; AC26 recorded exclusions | |
+| `src/shell/AppSidebar.spec.ts` | AC7 — asserts the clipboard callout reads "Bucket" and links `/tools/bucket`; **breaks on the split** | ⚠ |
+| `src/shell/CommandPalette.spec.ts` | AC7 — asserts the palette's 7 entries with "Bucket" active; **breaks on the split** | ⚠ |
+| `src/locales/en.json`, `src/locales/fr.json` | AC24, AC25, AC27 | |
+| `src/i18n.ts` | AC8 — its `decimal1` comment cites `BucketView.vue`, a file that ceases to exist | ⚠ |
+| `src/tools/json/JsonView.vue`, `json/JsonTree.vue`, `base64/Base64View.vue`, `uuid/UuidView.vue`, `hash/HashView.vue`, `jwt/JwtView.vue`, `cron/CronView.vue` | AC15 — one import line each, **no behaviour change** | |
+
+**Modified — Rust**
+
+| File | Why | |
+| --- | --- | --- |
+| `crates/umbra-core/src/ocr.rs` | AC16, AC17, AC18, AC19, AC20, AC21 | |
+| `src-tauri/src/lib.rs` | AC10 `use` + `generate_handler!`; AC11 the per-file scope grant | |
+| `src-tauri/src/commands/mod.rs` | AC10 — `pub mod bucket;` → `pub mod ocr;` | ⚠ |
+| `src-tauri/tests/ocr_engine_race.rs` | AC10 — imports `commands::bucket::{…}` | ⚠ |
+| `src-tauri/Cargo.toml` | AC10 — three comments cite `bucket.rs` / `bucket_extract_text`; **comments only, and stale comments are 8.6's lesson 4** | ⚠ |
+
+**Modified — config and docs**
+
+| File | Why | |
+| --- | --- | --- |
+| `src-tauri/tauri.conf.json` | AC11 — `assetProtocol` enabled, empty static scope | |
+| `docs/release-checklist.md` | AC7 — the AD-7 network-audit procedure and the manual QA step both name a "Bucket" tool that will not exist, and the QA step says "also exercise the PDF section" of a view being deleted | ⚠ |
+| `.../ARCHITECTURE-SPINE.md` | The AD-14/AD-15 asset-protocol amendment, **owed at build time not before** (8.6 precedent), now recording AC11's per-file runtime grant rather than a static scope | |
+| `_bmad-output/implementation-artifacts/deferred-work.md` | Gaps #3, #5, #6 resolved (`:120`, `:121`, `:122`); gap #4 (`:116`) restated as deferred with **raised** priority, since the unchecked `as OcrOutcome` assertion now covers a nested region list | |
+
+**Explicitly NOT modified — ruled out with a reason, not by omission**
+
+| File | Why not |
+| --- | --- |
+| `src-tauri/capabilities/default.json` | **Verified**: `tauri-2.11.5/src/protocol/asset.rs` consults the scope only and never the capability ACL. The asset protocol needs no permission entry. |
+| `crates/umbra-core/src/pdf.rs`, `image_convert.rs` | Their `bucket-pdf-*` / `bucket-image-*` codes are **deliberately kept** (AC10) — renaming them breaks AC9's verbatim-move gate. 8.8 and 8.9 retire them. |
+| `src-tauri/src/commands/pdf.rs`, `commands/image.rs` | Same. They also emit `bucket-internal` / `bucket-input-too-large`, which is why AC10 **adds** `ocr-*` rather than renaming. |
+| `src/components/AppTabs.vue` | AC4a resolved to three tools, not tabs. No consumer added. |
+| `Cargo.toml` / `Cargo.lock` (dependency lines) | **No new Rust dependency** (AC25's PDF check is a byte comparison). The AD-7 `cargo tree -i reqwest` audit is therefore N/A, as it was for 8.5. |
+| `tauri-plugin-persisted-scope` | Not added — AC11. It would persist granted paths to disk, contradicting "nothing accumulates". |
+
+### Group G — The Live Text surface
+
+**Written after the design canvas (2026-09-07), which resolved the decision record's open items #3, #4, #5, #11 and #14. Canvas: nine artboards — resting, drag-enter + in-flight, Live Text, low-confidence in light *and* dark, `⌘F`, no-text-found, error, and an image larger than the pane.**
+
+31. **Given** the resting state is the most-seen state in the app and is today an `h1` plus one sentence with nothing to aim at, **when** Task 2b completes, **then** it is a visible drop target: a dashed-border area (`HashView`'s existing drop language, used here **literally** — 8.5 established that the dashed box means *drop* and must not be borrowed as decoration; this is the one place it belongs), containing an image glyph, the sentence, the **file picker inside it** as the keyboard path, and the paste hint as the third door. It occupies the **same frame** the image will occupy, so nothing jumps on drop.
+
+32. **Given** AC14 exposes a drag-enter state from the shell, **when** a drag enters the window with the OCR view active, **then** the target's border goes **solid** `--color-accent-signature` and its fill takes `--color-accent-signature-tint`, in both themes, reverting on drag-leave, on drop and on cancel.
+
+33. **Given** the ~3 s wait is a feedback problem rather than a speed problem, **when** an extraction starts, **then** the image renders **in the first frame** — before recognition returns — and an **indeterminate** indicator runs over it with a status line. The indicator is a travelling bar, **never a filling one**: ONNX inference reports no progress, and a bar advancing at an invented rate is a bluff about our own internals in an app built on *the Bucket never bluffs*. A `role="status"` announcement fires on start and on completion.
+
+34. **Given** recognised regions carry polygons in `image_width`/`image_height` space (AC16), **when** the result renders, **then** each region becomes a **transparent, selectable** span positioned over the image, scaled by a **single uniform factor** (`renderedWidth / image_width`) applied to both axes. Spans sit in the DOM in the reading order core produced (AC21) — which is what makes a native drag-select from one region through to a later one pick up everything between them. **The extracted text is rendered exactly once**, on the image: no textarea, no second pane, no transcript below.
+
+    **Each span's text is fitted to its own region box** — `font-size` derived from the region's scaled height, and `letter-spacing` (or a horizontal transform) adjusted so the span's rendered text width matches the region's scaled width. This is not cosmetic: it is what makes a browser-native selection highlight land on the words underneath it, and anything that highlights *part* of a region (AC38's match marking) inherits exactly that accuracy. A span that is not width-fitted produces selection highlights visibly offset from the pixels — the one failure mode that would make Live Text feel broken rather than approximate. Per-word geometry is **not** available to do better: `return_word_box` is `false` (AC19) and enabling it is Cut #4, so region-fitted text is the honest ceiling, and a render review is where its accuracy is judged.
+
+35. **Given** an image can be far larger than the pane, **when** it renders, **then** it is **fit to the pane** — whole image always visible, aspect preserved, **no zoom, no pan, no scroll** — and an image **smaller** than the pane renders at **natural size and is never upscaled**. One scale factor, one coordinate transform: zoom would add a second transform, scroll-position synchronisation and a viewport model, for a job that ends the moment the user pastes. `⌘F` (AC38) is the answer to "now it's too small to find".
+
+36. **Given** FR26's honesty must become continuous rather than terminal, **when** regions render, **then** two markers appear **on the image** and **no confidence number is ever shown**: a region scoring below a single **named threshold constant** gets a **dotted underline**, and a region whose `text` is `None` — found by the detector, failed by the recogniser — gets a **dashed outline box**. The two signals differ in **shape, not hue**, so they survive a colour-blind viewer and a greyscale screenshot (DESIGN.md's diff-colour precedent: icons and strikethrough carry the signal independently of colour). Both are verified in **light and dark** at a render review. This is honest by construction because recognition's `score_threshold` stays `0.0` (AC19) — the view sees every region the model saw.
+
+37. **Given** the job is copy-and-leave, **when** a result is on screen, **then** **"Copy all text"** is a **24px ghost icon-button** pinned to the image's top-right — the anatomy already used by JsonTree, Base64View, HashView, JwtView and CronView, with `useCopyFeedback` confirmation (AC15) and an `aria-label` carrying the name — **not** a labelled button competing with the surface it sits on, and **not** placed below the image where it would reopen a second zone. **`⌘A` with focus inside the overlay selects every recognised region**, so `⌘C` yields the whole result without touching the control and copy-and-leave has a pure keyboard path (NFR5).
+
+38. **Given** the first job named was finding an error code in a dense screenshot, **when** `⌘F` is pressed with the OCR view active, **then** a find field opens in the **same top-right cluster** as Copy, filtering the recognised text and marking matches **on the image**: a match highlights the **matched substring**, not the whole line — derived from AC34's width-fitted span, so it carries the same accuracy as a selection highlight rather than introducing a second, less honest positioning mechanism. A match takes `--color-accent-signature-tint`, and the **current** match adds a solid 2px `--color-accent-signature` outline so "which one am I on" does not rest on tint alone. A match count is shown; `Enter` / `⇧Enter` step forward and back; `Esc` closes. **The handler is scoped to this view, not intercepted app-wide** — no other tool has a find, and a global interceptor would be shell surface this story does not need to claim. Match order follows the same reading-order sort as everything else (AC21).
+
+39. **Given** AC17 retains regions recognition failed on, **when** no region carries readable text, **then** the no-text-found state says so **and draws the unreadable-region boxes on the image** — turning today's bare sentence into a diagnosis (*we located writing here and could not read it*) rather than a lie of omission on an image visibly full of text. The existing `role="status"` live region is preserved and is covered by AC30's manual screen-reader pass.
+
+40. **Given** an error must explain without removing the way back in, **when** an extraction fails, **then** the message renders in a `role="alert"` region **below the resting drop target, which stays on screen** — the tool does not become a dead end. The message is the project-authored sentence from AC24 or AC25, never a third-party error string.
+
+41. **Given** this redesign deletes the one unambiguously accessible element in the tool — a labelled `<textarea>` — and replaces it with transparent spans over an image, **when** Task 2b completes, **then** NFR5 is met behaviourally: the image carries an accessible name that is **not the filename** and that says its text is available; the overlay container carries a role that does **not** announce "image" and stop; every region span is real, focusable-reachable DOM text in reading order; and `⌘A` / `⌘C` inside the overlay work with no pointer. Verified in AC30's `pnpm tauri dev` screen-reader pass, not by a passing spec.
+
+42. **Given** the OCR view is 100% pre-Epic-7 — `#666`, `#ccc`, `#b00020`, `border-radius: 6px`, bare `font-family: monospace`, `em`-based spacing, and **zero `AppButton` usage** — **when** Task 2b's first slice completes, **then** every hardcoded value is replaced by its token (`--color-text-secondary`, `--color-border-hairline`, `--color-accent-destructive`, `--radius-*`, `--font-code-*`) and every control is an `AppButton` or the app's ghost icon-button pattern. `base.css` already styles bare `<textarea>` / `<input>` — what it covers is not re-styled. Same starting condition and same first slice as `CronView.vue` (8.6) and `JwtView.vue` (8.5).
+
 ## Tasks / Subtasks
 
 - [x] **Task 0: Branch setup (AC: all)**
   - [x] Confirm `baseline_commit` (`d576c3e`) is still `origin/main`'s real tip before branching (`git rev-parse origin/main` — was `d576c3ebc450d278f000abf112cc2f810e8be400` at story-creation; `HEAD == origin/main == main`, working tree clean apart from the pre-existing untracked `.claude/workflows/`).
   - [x] `git checkout -b feat/story-8-7-reimagine-the-bucket-ocr` from the story-creation working tree, so the story file + decision record travel with the implementation branch (matches how 8.1–8.6 were branched; the story file is uncommitted at creation, so `git checkout -b` from `main`'s tip carries it and the `sprint-status.yaml` edit onto the new branch). Every subsequent commit lands on that branch.
 
-- [ ] **Task 1: Discovery — produce the decision record (AC1–6)**
+- [x] **Task 1: Discovery — produce the decision record (AC1–6)**
   - [x] Run `bmad-party-mode` (installed roster — Mary, John, Sally, Winston, Amelia, Paige; `session` mode; party memory on, resuming the 8.1–8.6 Epic 8 history) **or** `bmad-forge-idea` for a narrower persona-driven pressure-test — **the developer's choice for this story.** Frame it explicitly as: *open scope discovery for the Bucket's OCR sub-feature — the existing implementation is reference material, not a decision to preserve.*
   - [x] Feed the session the current, real state so it starts from fact. Re-read every file listed under **Dev Notes → Shipped implementation** at session start and confirm no drift vs. what is written there (Story 8.6's session found a stale corpus count doing exactly this; the check is not ceremony).
   - [x] Ground the session in what Epic 7 + Stories 8.1–8.6 locked — read `src/styles/tokens.css`, `src/styles/base.css`, `src/components/AppButton.vue`, `src/components/AppTabs.vue`, `src/components/AppPopover.vue` + `appPopoverPlacement.ts`, `src/App.vue`, `src/shell/icons.ts`, `src/shell/debounce.ts`, `src/shell/invoke.ts`, `src/shell/DropZone.vue` + `dropZone.ts`, `src/shell/clipboardMatch.ts`, `src/tools/json/useCopyFeedback.ts`, and `DESIGN.md` + `EXPERIENCE.md`.
   - [x] **Read the three prior Bucket stories as the record of what was already decided and why** — `4-1-drag-an-image-in-get-its-text.md`, `4-2-paste-a-screenshot-copy-the-text.md`, `4-3-the-bucket-never-bluffs.md`. AC4c's drop/paste shape and AC5's `OnceLock`/trait shape were reasoned there; reopening them is allowed, re-deriving them from scratch is waste.
   - [x] Run a competitive sweep for evidenced scope candidates — macOS Live Text / Preview's text selection, Windows PowerToys Text Extractor, Google Lens, `tesseract.js` front-ends, Shottr / CleanShot X OCR, ABBYY / Adobe Acrobat OCR, and OCR-to-structured tools (table → CSV/JSON). Candidates to weigh, not commitments: region/crop selection before extraction, per-region confidence display, preserved layout vs. flat text, multi-page/batch, language selection, deskew/preprocess, side-by-side image ↔ text view, re-run at higher effort, drag-out of the extracted text.
   - [x] Resolve **AC4a–4d** as explicit named decisions. Do not let the container question resolve itself by implementation drift — it binds two unstarted stories.
-  - [ ] Resolve **AC2**'s FR23–FR26 verdicts, and if any FR is revised, **write the revision into `prd.md` and `epics.md` in this story**, not only into the decision record (AC2's second half).
+  - [x] Resolve **AC2**'s FR23–FR26 verdicts, and if any FR is revised, **write the revision into `prd.md` and `epics.md` in this story**, not only into the decision record (AC2's second half).
   - [x] Decide each item under **Dev Notes → Known gaps in the shipped OCR path** — every one is in scope for this story by subject matter, and each needs an explicit fold-in / defer / reject call in the record. The two EXPERIENCE.md conflicts (no file-picker button, no in-flight state) are **live spec violations in shipped code**, not new feature ideas.
   - [x] Produce the written decision record to `_bmad-output/implementation-artifacts/8-7-ocr-decision-record.md`, mirroring `8-1`…`8-6`: **Kept / Changed / Added / Cut (backlog)** with rationale, plus the AC4 coupling decisions, the AC2 FR verdicts, and the AC5 AD-1 core split.
-  - [ ] AC3: capture each cut idea — draft a max-context body per idea in the record, then file as `backlog-candidate` GitHub issues on `dipaneb/umbra` linking back to it — **or** take the personal-backlog route if the developer directs it (the 8.3/8.4 precedent), logging the deviation.
+  - [x] AC3: capture each cut idea — draft a max-context body per idea in the record, then file as `backlog-candidate` GitHub issues on `dipaneb/umbra` linking back to it — **or** take the personal-backlog route if the developer directs it (the 8.3/8.4 precedent), logging the deviation.
   - [x] Optional: build a container-shape comparison canvas (one enriched view / `AppTabs` / three separate tools), with interaction states, as an Artifact. Given AC4a binds two other stories, this is a stronger canvas candidate than it was for 8.6, where the container was reasoned without one.
-  - [ ] Developer confirms the scope decisions and open questions before Task 2 begins.
+  - [x] Developer confirms the scope decisions and open questions before Task 2 begins.
 
-- [ ] **Task 2a: Redesign ACs — write real Given/When/Then** (after Task 1's record exists; canvas picks in)
-  - [ ] In the same discovery room, resolve the decision record's open items and write real AC7+ into a new `## Acceptance Criteria — Task 2 (Redesign)` section above, scoped strictly to `8-7-ocr-decision-record.md` plus the developer's canvas picks and the files AC4 authorises (see Project Structure Notes — the AD-6 island boundary is **wider than usual for this story**, and the AC set must name every non-Bucket file it touches, the way 8.6's AC26 did; 8.6's code review found that AC list incomplete twice, so build it deliberately).
-  - [ ] Await the developer's sign-off on the AC set before Task 2b.
+- [x] **Task 2a: Redesign ACs — write real Given/When/Then** (after Task 1's record exists; canvas picks in)
+  - [x] In the same discovery room, resolve the decision record's open items and write real AC7+ into a new `## Acceptance Criteria — Task 2 (Redesign)` section above, scoped strictly to `8-7-ocr-decision-record.md` plus the developer's canvas picks and the files AC4 authorises (see Project Structure Notes — the AD-6 island boundary is **wider than usual for this story**, and the AC set must name every non-Bucket file it touches, the way 8.6's AC26 did; 8.6's code review found that AC list incomplete twice, so build it deliberately).
+  - [x] Await the developer's sign-off on the AC set before Task 2b.
 
 - [ ] **Task 2b: Redesign — implementation** (after the AC set is confirmed)
   - [ ] Follow the delivery pattern Stories 8.1–8.6 established: **vertical slices, developer render-review after each slice.** Per slice: pure Rust fn + regression tests → `bucket_<verb>` command (`spawn_blocking`, `Result<T, ToolError>`, AD-3/AD-4, only if the command surface changes) → Vue → full local gate.
@@ -402,17 +589,117 @@ rather than silently corrected, since Dev Notes is not a section this workflow m
   developer's sign-off of the record — AC2 requires the propagation to land *in this story*, not before
   the scope it encodes has been approved. Nothing has been written upstream or pushed anywhere.
 
+- **Task 2a complete (2026-09-07): AC7–AC42 written, awaiting developer sign-off.** Same
+  `bmad-party-mode` room, party memory resumed. Three opening calls taken by the developer:
+  **sequencing** — write the ~two-thirds of the AC set with no visual dependency first, then build
+  the canvas, then the visual ACs, with one sign-off over the whole set; **`useCopyFeedback`** —
+  hoist it to `src/shell/` and update all seven existing import sites, no re-export shim (the
+  precedent is `src/shell/debounce.ts`: a generic view-level utility in `shell/`, imported by tool
+  islands, `BucketView.vue` among them); **asset-protocol scope** — see below.
+
+- **The asset-protocol scope resolved tighter than the record imagined.** Verified against the
+  vendored `tauri-2.11.5`: `app.asset_protocol_scope()` returns a `scope::fs::Scope` exposing
+  `allow_file()` / `forbid_file()` (`src/scope/mod.rs:29`), and `src/protocol/asset.rs` consults
+  **only** that scope — never the capability ACL. So `tauri.conf.json` declares an **empty static
+  scope** and Rust grants exactly the one file the user just handed us, revoking the previous one:
+  strictly tighter than any `$HOME/**/*` glob. Two consequences recorded rather than assumed:
+  `src-tauri/capabilities/default.json` needs **no** change (ruled out with evidence, not by
+  omission), and the `tauri-plugin-persisted-scope` plugin — which Tauri's own docs recommend for
+  runtime-picked paths — is **deliberately not added**, because it writes granted paths to disk
+  across restarts and contradicts this story's own "a second drop replaces the first, nothing
+  accumulates" decision.
+
+- **A gap in the signed-off decision record, found in the first round and fixed in the ACs.** The
+  record resolved how the **drop** and **picker** paths get pixels into the webview
+  (`convertFileSrc` on `registry.dropSourcePath`) and left the **paste** path with no display path
+  at all: `DropZone.vue`'s `dispatchPaste` reads `{ rgba, width, height }`, ships the bytes as a raw
+  IPC body and discards them — there is no file, so no path, so nothing for `convertFileSrc` to
+  convert. That is the exact mirror of route C, which the room rejected unanimously because *"a
+  feature that silently works on paste and not on drop is the worst option on the table."* **AC12**
+  fixes it the AD-14 way: the shell publishes what it has **already** read (`registry.pasteSourceImage`,
+  the same one-shot shape as `dropSourcePath`) and the view builds an `ImageData` canvas from it.
+  The view does **not** read the clipboard itself — that would be a second OS I/O edge, and racy,
+  since the clipboard can change during the ~3 s inference.
+
+- **Two shape decisions that make FR26 stronger than the record described.** `TextRegion.text` is
+  `Option<String>` and `run_ocr` currently **discards** the `None` regions. Keeping them (AC17)
+  costs nothing — recognition's `score_threshold` is `0.0`, so nothing was filtered behind our
+  backs — and it turns a detected-but-unreadable region into the strongest "I'm unsure here" the
+  pipeline produces. It also converts no-text-found on an image visibly full of text from a lie of
+  omission into a **diagnosis** (AC39). Second: the reading-order sort lives in **core**, not the
+  view (AC21), because it serves three consumers — Copy fidelity, screen-reader DOM order, and `⌘F`
+  match ordering — and its definition is **bounded in the AC text**: it handles a dialog button row
+  and a sidebar, and explicitly does not claim a true multi-column spread, which is Cut #3.
+
+- **Open items resolved this session, with where each landed:** #1 asset scope → AC11 · #2
+  `OcrOutcome` shape → AC16 (`dt_poly` / `rec_poly` / `word_boxes` / `label` / `orientation_angle`
+  do not cross the boundary; no whole-text accessor in core, per AD-1) · #3 low-confidence
+  threshold and treatment → AC36 · #4 and #14 coordinate scaling and oversized images → AC35 ·
+  #5 selection ergonomics → AC37 · #6 icons and aliases → AC7, AC28 · #7 provisional PDF/Images
+  names → AC28 · #8 `ocr-malformed-request` → AC26 · #9 the hoist → AC15 · #10 spec split plan →
+  AC9, AC29 · #11 the `⌘F` surface → AC38 · #12 drag-enter → AC14, AC32 · #13 PDF tier 1 → AC25 ·
+  #15 corpus contents and tolerance → AC23 · #16 concurrency → AC22 (recorded, not fixed) ·
+  #17 the canvas → built.
+
+- **`ocr-malformed-request` is excluded from `TRANSLATABLE_CODES` for a reason worth recording.**
+  Its four call sites are all our own sentences, so it looks eligible — but one code carries **four**
+  different messages (missing header / not UTF-8 / not a `u32` / JSON body where raw bytes were
+  expected) and `toolErrorMessage` does a single `errors.<code>` lookup. Translating it means
+  splitting the code four ways or misreporting three of the four. It is also unreachable by users:
+  it only fires if our own shell sends a malformed IPC request. AC26 requires that reason be written
+  into `toolError.ts` rather than left as an omission.
+
+- **The AC set's file list was built from a repo-wide sweep, not from recollection**, because 8.6's
+  equivalent list was found incomplete twice. The sweep found **seven files beyond** the set named in
+  this story's own Project Structure Notes — four of which contain assertions that **break** on the
+  split: `src/stores/registry.spec.ts` (asserts `["base64","bucket","json","jwt"]`),
+  `src/shell/dropZone.spec.ts` (a `bucketTool` fixture hard-coding `bucket_extract_text*` and
+  `bucket-malformed-image-buffer`), `src/shell/AppSidebar.spec.ts` (asserts the clipboard callout
+  reads "Bucket" and links `/tools/bucket`) and `src/shell/CommandPalette.spec.ts` (asserts the
+  palette's seven entries with "Bucket" active). The other three are
+  `src-tauri/src/commands/mod.rs`, `src-tauri/tests/ocr_engine_race.rs` and
+  `docs/release-checklist.md` — the last of which describes a "Bucket" tool, and its PDF section, in
+  both the AD-7 network-audit procedure and the manual QA step.
+
+- **Design canvas built** (developer's sequencing call): <https://claude.ai/code/artifact/cd67d1db-4126-41a6-a9bb-d5c2cb9969f5>
+  — nine artboards using the real tokens from `src/styles/tokens.css` and the existing Epic 8 view
+  vocabulary. The picks it settled are AC31–AC42. The one worth naming here: low confidence and
+  unreadable are distinguished by **shape** (dotted underline vs. dashed box), not by hue, so the
+  signal survives a colour-blind viewer and a greyscale screenshot — DESIGN.md's own diff-colour
+  precedent.
+
+- **Developer decisions taken on the AC set, 2026-09-07.** **AC35 confirmed** — fit-to-pane with no
+  zoom or pan, never upscale. **AC25 confirmed as a sentence only**, in the developer's own framing:
+  *"a button would be a good idea, but it cannot route to somewhere that is not built yet."* Recorded
+  in AC25 itself, since that reason is stronger than the hand-off-quality argument the room made.
+
+- **AC set SIGNED OFF by the developer, 2026-09-07.** AC7–AC42 approved as written, after AC35
+  (fit-to-pane, no zoom or pan) and AC25 (sentence only) were confirmed individually. Task 2b is
+  unblocked.
+
+- **Task 1 checkbox correction (not a scope change).** Task 1's last three sub-items and its own
+  header were still unticked, though the work landed on this branch: AC2's FR23–FR26 propagation
+  into `prd.md` / `epics.md` / `ARCHITECTURE-SPINE.md` in `585349b`, and AC3's filed issue URLs in
+  `2d5b387`. Verified against those commits this session before ticking, rather than trusted from
+  the session log.
+
+- **Still not done, deliberately, and unchanged from Task 1:** nothing has been pushed, and no
+  outward-facing action has been taken this session. Task 2b has not begun.
+
 ### File List
 
 - `_bmad-output/implementation-artifacts/8-7-ocr-decision-record.md` (new) — Task 1 decision record
 - `_bmad-output/implementation-artifacts/8-7-reimagine-the-bucket-ocr.md` (modified) — task checkboxes, Dev Agent Record, File List, Change Log
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — story status `ready-for-dev` → `in-progress`
 - `_bmad-output/party-mode/memories/installed/.memlog.md` (modified) — session memory (party-mode artifact, not story scope)
+- Design canvas (published Artifact, not a repo file) — `https://claude.ai/code/artifact/cd67d1db-4126-41a6-a9bb-d5c2cb9969f5`
 
 ### Change Log
 
 | Date | Change |
 | --- | --- |
+| 2026-09-07 | **Task 2a signed off.** Developer approved AC7–AC42 as written. AC35 confirmed (fit-to-pane, no zoom or pan, never upscale) and AC25 confirmed as a sentence only, on the developer's own reasoning — *a button cannot route to somewhere that is not built yet* — which is now the reason AC25 records, and which hands "carry the dropped file across into the PDF tool" to Story 8.8. Task 1's stale checkboxes corrected after verifying its AC2 propagation (`585349b`) and AC3 issue filing (`2d5b387`) actually landed. **Task 2b not started; nothing pushed.** |
+| 2026-09-07 | **Task 2a complete.** AC7–AC42 written into a new `## Acceptance Criteria — Task 2 (Redesign)` section, plus a normative *Authorised file surface* table built from a repo-wide sweep (which found seven files beyond the story's own Project Structure Notes, four carrying assertions that break on the split). Developer's three opening calls: split sequencing (non-visual ACs → canvas → visual ACs), `useCopyFeedback` hoisted to `src/shell/` with all seven import sites updated and no shim, and an asset-protocol scope that is **empty statically** with a per-file runtime grant (verified against vendored `tauri-2.11.5`; `capabilities/default.json` needs no change, `persisted-scope` deliberately not added). One gap found in the signed-off record and closed: the paste path had no image-display route at all (AC12). Nine-artboard design canvas built and published. **Awaiting developer sign-off before Task 2b.** |
 | 2026-09-06 | Task 0 complete (`bmad-dev-story`). Baseline `d576c3e` re-verified against `origin/main`; branch `feat/story-8-7-reimagine-the-bucket-ocr` cut; story file + sprint-status committed as `936f32f`. AC1's mandatory drift re-read found the code matching Dev Notes exactly, and two stale claims in the Dev Notes themselves (a second `cron-*` translatable code; the `epics.md` `oar-ocr` drift is 3 places, not 4). |
 | 2026-09-06 | Task 1 complete. `bmad-party-mode` discovery session (developer's AC1 method choice). Decision record written to `8-7-ocr-decision-record.md`. Scope: three separate registry tools (binds 8.8/8.9), full split with PDF/Images moving verbatim, **Live Text** — the image displayed with selectable text positioned on it — replacing the editable textarea, low-confidence regions marked on the image, a file picker and an in-flight state closing two live `EXPERIENCE.md` violations, the `OcrEngine` trait widened to region-structured output, and the Tauri asset protocol enabled with a scope (a recorded spine amendment). AC2 propagation and AC3 capture pend developer sign-off. |
 | 2026-09-06 | Story created (`bmad-create-story`) from `epics.md`'s Epic 8 shared shape, at baseline `d576c3e`. Task 1 ACs written real (AC1–AC6); Task 2 ACs deliberately deferred per the epic's own gate. AC4 added beyond the 8.1–8.6 template to force explicit resolution of the shared-`BucketView.vue` container, split, registry/drop/paste and AD-16 runner questions that 8.7 inherits on behalf of 8.8 and 8.9. AC2 extended with a same-story FR-propagation requirement, from Story 8.6's upstream-drift correct-course. |
