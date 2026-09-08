@@ -116,6 +116,20 @@ const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   // lands there — and until this story it rendered the `image` crate's own English prose.
   "ocr-unsupported-format",
   "ocr-pdf-wrong-tool",
+  // Code review 2026-09-08. Both meet the same criterion as the two above — a fixed,
+  // value-free sentence we wrote ourselves, with no runtime value baked into the prose.
+  //
+  // `paste-no-image` is shell-level, not `ocr-*`: `DropZone.vue` raises it when the clipboard
+  // holds no image at all, which is a failure of the paste itself rather than of any tool's
+  // handling of it. It previously surfaced as the clipboard plugin's own untranslated English.
+  // `ocr-asset-grant-failed` is raised by `ocr_grant_asset` when the asset-protocol scope
+  // refuses a path; it used to reach the user as an `eprintln!` a packaged `.app` discards,
+  // while they got a blank image pane with no explanation.
+  "paste-no-image",
+  "ocr-asset-grant-failed",
+  // Raised view-side by `OcrView.vue`'s `<img> @error` when the source image cannot be
+  // rendered at all — a refused asset request, or a file moved between the drop and the paint.
+  "ocr-image-unreadable",
 ]);
 
 // Story 8.7 AC26: the `ocr-*` codes deliberately NOT in the set above, each with its reason.

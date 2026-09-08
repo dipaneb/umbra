@@ -3,7 +3,18 @@ import type { OcrRegion } from "./ocrOutcome";
 export interface FindMatch {
   /** Index into the outcome's `regions` array — already in reading order (AC21). */
   regionIndex: number;
-  /** Character offsets into that region's `text`. */
+  /**
+   * Offsets into that region's text, counted in **Unicode code points** — the same unit
+   * `char_polygons` is indexed by, one polygon per Rust `char`.
+   *
+   * Code review 2026-09-08: these used to be `String.indexOf` results, i.e. UTF-16 code units.
+   * Any astral-plane character earlier in a region (an emoji in a screenshot, a rare CJK
+   * extension glyph) shifts every later code-unit offset by +1 per surrogate pair relative to
+   * the polygon index, so `charRunPlacement` returned a plausible-looking box over the wrong
+   * characters rather than declining — not even flagged `approximate`. `realOutcome.spec.ts`
+   * could not catch it either: it compares against `[...text].length`, code points, while the
+   * consumer indexed with code units.
+   */
   start: number;
   end: number;
 }
@@ -24,23 +35,34 @@ export interface FindMatch {
  * they carry their own marker.
  */
 export function findMatches(regions: OcrRegion[], query: string): FindMatch[] {
-  const needle = query.toLowerCase();
+  // Scanned over ARRAYS of code points rather than over the strings themselves, so the offsets
+  // reported are the ones `char_polygons` is indexed by. See `FindMatch.start`.
+  //
+  // Each code point is folded on its own and compared one-to-one. The cost is exact and worth
+  // naming: a code point whose lowercase form is longer than itself (`İ` U+0130 folds to two
+  // code points) will not match a plain `i`. That is a missed match, never a misplaced
+  // highlight — and a highlight sitting on the wrong characters is the worse failure for a tool
+  // whose entire claim is that the text you select is the text that is there.
+  const needle = [...query].map((c) => c.toLowerCase());
   if (needle.length === 0) return [];
 
   const matches: FindMatch[] = [];
   regions.forEach((region, regionIndex) => {
     const text = region.text;
     if (text === null) return;
-    const haystack = text.toLowerCase();
+    const haystack = [...text].map((c) => c.toLowerCase());
 
     let from = 0;
-    for (;;) {
-      const at = haystack.indexOf(needle, from);
-      if (at === -1) break;
-      matches.push({ regionIndex, start: at, end: at + needle.length });
+    while (from + needle.length <= haystack.length) {
+      const hit = needle.every((c, k) => haystack[from + k] === c);
+      if (!hit) {
+        from += 1;
+        continue;
+      }
+      matches.push({ regionIndex, start: from, end: from + needle.length });
       // Advance past this match so overlapping occurrences ("aa" in "aaa") are reported once
       // each rather than at every offset.
-      from = at + needle.length;
+      from += needle.length;
     }
   });
   return matches;

@@ -389,6 +389,9 @@
     "cron-six-field-unsupported": "This tool handles standard 5-field cron expressions. Seconds-precision (6-field) expressions aren't supported yet.",
     "cron-no-upcoming-runs": "This expression has no upcoming occurrences — the date it specifies may never exist (for example February 30th).",
     "ocr-unsupported-format": "That file isn't an image this tool can read.",
-    "ocr-pdf-wrong-tool": "PDFs open in the PDF tool."
+    "ocr-pdf-wrong-tool": "PDFs open in the PDF tool.",
+    "paste-no-image": "There's no image on the clipboard.",
+    "ocr-asset-grant-failed": "Couldn't open that image for display.",
+    "ocr-image-unreadable": "That image couldn't be displayed."
   }
 }

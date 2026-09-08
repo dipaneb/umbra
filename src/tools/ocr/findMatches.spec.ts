@@ -82,4 +82,17 @@ describe("wrapIndex", () => {
     expect(wrapIndex(0, 0)).toBe(0);
     expect(wrapIndex(-1, 0)).toBe(0);
   });
+
+  it("reports offsets in code points, so an astral character before a match does not shift it", () => {
+    // Code review 2026-09-08. `char_polygons` carries one polygon per Rust `char`, i.e. per
+    // Unicode code point; these offsets index into it. An emoji is two UTF-16 code units and one
+    // code point, so a code-unit scan would report `start: 5` here and paint the highlight one
+    // character to the right of the word it matched — and `charRunPlacement` would return a
+    // plausible box rather than declining, so nothing downstream would notice.
+    const text = "\u{1F600} cat";
+    const [match] = findMatches([region(text)], "cat");
+
+    expect([...text].slice(match.start, match.end).join("")).toBe("cat");
+    expect(match.start).toBe(2);
+  });
 });

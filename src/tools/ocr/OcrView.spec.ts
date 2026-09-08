@@ -290,7 +290,11 @@ describe("OcrView", () => {
 
     it("shows the indicator for the file picker too", async () => {
       openMock.mockResolvedValueOnce("/tmp/picked.png");
-      invokeMock.mockReturnValueOnce(new Promise(() => {})); // never resolves
+      // The picker path invokes twice now (code review 2026-09-08): `ocr_grant_asset` first,
+      // awaited so the asset-protocol grant cannot lose the race to the `<img>` request it
+      // authorises, then the extraction itself.
+      invokeMock.mockResolvedValueOnce(undefined); // ocr_grant_asset
+      invokeMock.mockReturnValueOnce(new Promise(() => {})); // ocr_extract_text: never resolves
       mountView();
 
       await wrapper!.find(".drop-target button").trigger("click");
@@ -465,13 +469,17 @@ describe("OcrView", () => {
       // the same extraction outcome, so this view calls registry.getLatestWinsRunner("ocr")
       // directly rather than creating a local runner.
       openMock.mockResolvedValueOnce("/tmp/picked.png");
+      invokeMock.mockResolvedValueOnce(undefined); // ocr_grant_asset (code review 2026-09-08)
       invokeMock.mockResolvedValueOnce(SAMPLE_OUTCOME);
       mountView();
 
       await wrapper!.find(".drop-target button").trigger("click");
       await flushPromises();
 
-      expect(invokeMock).toHaveBeenCalledWith("ocr_extract_text", { path: "/tmp/picked.png" });
+      // The grant is awaited BEFORE the src is set, which is what makes the ordering a
+      // guarantee rather than a race the webview usually happens to win.
+      expect(invokeMock).toHaveBeenNthCalledWith(1, "ocr_grant_asset", { path: "/tmp/picked.png" });
+      expect(invokeMock).toHaveBeenNthCalledWith(2, "ocr_extract_text", { path: "/tmp/picked.png" });
       expect(convertFileSrcMock).toHaveBeenCalledWith("/tmp/picked.png");
       expect(spans()).toHaveLength(1);
     });
@@ -483,12 +491,13 @@ describe("OcrView", () => {
       await wrapper!.find(".drop-target button").trigger("click");
       await flushPromises();
 
-      expect(invokeMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled(); // not even the grant
       expect(wrapper!.find(".drop-target").exists()).toBe(true);
     });
 
     it("renders a picker failure as a ToolError rather than throwing", async () => {
       openMock.mockResolvedValueOnce("/tmp/picked.png");
+      invokeMock.mockResolvedValueOnce(undefined); // ocr_grant_asset (code review 2026-09-08)
       invokeMock.mockRejectedValueOnce({
         code: "ocr-input-too-large",
         message: "file is too big",
@@ -969,6 +978,149 @@ describe("OcrView", () => {
 
       expect(wrapper!.find(".toolbar [role='alert']").exists()).toBe(true);
       expect(wrapper!.find(".surface").exists()).toBe(true);
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // Code review 2026-09-08. Everything below covers a hole the review found: three no-text
+  // sub-cases AC29 retired without saying so, the two keyboard paths that had no coverage at
+  // all (one of which turned out to be unreachable), and the error states that reached the user
+  // silently or not at all.
+  // ------------------------------------------------------------------------------------------
+  describe("no-text sub-cases restored from the baseline (AC29)", () => {
+    function announcer() {
+      return wrapper!.find("p.sr-only").text();
+    }
+
+    it("states no text found for an empty PASTE, not only an empty drop", async () => {
+      // The baseline had this as its own block. The rewrite collapsed drop and paste into one
+      // generic empty case, and the paste path reaches `applyOcrResult` through a different
+      // watcher with a different source signal — the two are not interchangeable.
+      mountView();
+      await deliverPasteSource(40, 20);
+      store().pasteResult = { toolId: "ocr", value: EMPTY_OUTCOME };
+      await flushPromises();
+
+      expect(wrapper!.find(".toolbar .no-text").exists()).toBe(true);
+      expect(announcer()).toContain("No text was found");
+    });
+
+    it("treats a whitespace-only recognition as no text, not as a result", async () => {
+      // FR26 is anchored to TEXT, not to region count: a region can recognise successfully and
+      // still contain nothing readable. No test on either side of the stack covered it.
+      mountView();
+      await deliverDrop(outcome([region("   ")]));
+
+      expect(wrapper!.find(".toolbar .no-text").exists()).toBe(true);
+      expect(announcer()).not.toContain("Text extracted");
+    });
+  });
+
+  describe("the keyboard paths (AC37/AC38)", () => {
+    it("focuses the find field on Cmd-F once there is text to find", async () => {
+      mountView();
+      await deliverDrop(SAMPLE_OUTCOME);
+
+      // Asserted through `select()` rather than `document.activeElement`: jsdom implements
+      // `HTMLInputElement.select()` without moving focus, so the real-browser side effect this
+      // relies on is not observable here.
+      const input = wrapper!.find(".findbar input").element as HTMLInputElement;
+      const select = vi.spyOn(input, "select");
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "f", metaKey: true }));
+      await flushPromises();
+
+      expect(select).toHaveBeenCalled();
+    });
+
+    it("selects every recognised region on Cmd-A with the overlay focused", async () => {
+      // This branch was unreachable until the review: it gates on the overlay containing
+      // `document.activeElement`, and the overlay had no `tabindex`, so nothing inside it could
+      // ever hold focus and Cmd-A fell through to the browser's select-the-document default.
+      mountView();
+      await deliverDrop(SAMPLE_OUTCOME);
+
+      const overlay = wrapper!.find(".overlay").element as HTMLElement;
+      expect(overlay.getAttribute("tabindex")).toBe("0");
+      overlay.focus();
+      expect(overlay.contains(document.activeElement)).toBe(true);
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "a", metaKey: true }));
+      await flushPromises();
+
+      expect(window.getSelection()?.rangeCount).toBeGreaterThan(0);
+    });
+  });
+
+  describe("errors that used to arrive silently", () => {
+    function announcer() {
+      return wrapper!.find("p.sr-only").text();
+    }
+
+    it("announces a failure instead of leaving the live region on the previous result", async () => {
+      // The error branch returned without touching `announcement`, and because it clears the
+      // image, `extracting` went false without the watcher firing — so a screen reader was left
+      // reading "Extracting text…", or the last run's "Text extracted.", after a failure whose
+      // only other channel is a `v-if`-inserted role="alert" that announces nothing.
+      mountView();
+      await deliverDrop(SAMPLE_OUTCOME);
+      expect(announcer()).toContain("Text extracted");
+
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/doc.pdf" };
+      store().dropResult = {
+        toolId: "ocr",
+        error: { code: "ocr-pdf-wrong-tool", message: "PDFs open in the PDF tool.", position: null, context: null },
+      };
+      await flushPromises();
+
+      expect(announcer()).toContain("PDF");
+      expect(announcer()).not.toContain("Text extracted");
+    });
+
+    it("says so when the source image cannot be rendered, instead of floating text over nothing", async () => {
+      // Without an @error handler a refused asset request produced transparent spans and dashed
+      // unreadable boxes painted over an empty rectangle, with no way to tell whether
+      // recognition or the render had failed.
+      mountView();
+      await deliverDrop(SAMPLE_OUTCOME);
+      expect(spans().length).toBeGreaterThan(0);
+
+      await wrapper!.find("img.source-image").trigger("error");
+      await flushPromises();
+
+      expect(wrapper!.find("[role='alert']").text()).toContain("couldn't be displayed");
+      expect(spans()).toHaveLength(0);
+      expect(announcer()).toContain("couldn't be displayed");
+    });
+
+    it("keeps a good result on screen when the clipboard holds no image", async () => {
+      // Nothing new arrived, so nothing should be replaced — and the message is ours, not the
+      // clipboard plugin's untranslated English.
+      mountView();
+      await deliverDrop(SAMPLE_OUTCOME);
+
+      store().pasteResult = {
+        toolId: "ocr",
+        error: { code: "paste-no-image", message: "raw plugin text", position: null, context: null },
+      };
+      await flushPromises();
+
+      expect(wrapper!.find(".surface").exists()).toBe(true);
+      expect(spans().length).toBeGreaterThan(0);
+      expect(wrapper!.find("[role='alert']").text()).toContain("no image on the clipboard");
+    });
+
+    it("does not claim success for a result delivered to a view that never saw its source", async () => {
+      // `DropZone.vue`'s isStillActive() checks the ROUTE, not the instance: navigate away and
+      // back during a ~3 s inference and the outcome lands on a fresh instance whose source
+      // signal was already consumed. Every result surface is behind v-if="hasImage", so it
+      // rendered nothing while the announcer said "Text extracted."
+      mountView();
+      store().dropResult = { toolId: "ocr", value: SAMPLE_OUTCOME };
+      await flushPromises();
+
+      expect(wrapper!.find(".drop-target").exists()).toBe(true);
+      expect(announcer()).not.toContain("Text extracted");
     });
   });
 });

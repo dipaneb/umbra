@@ -17,7 +17,7 @@ use commands::json::{
     json_diff, json_format, json_minify, json_parse, json_query, json_repair, json_transform,
 };
 use commands::jwt::jwt_decode;
-use commands::ocr::{ocr_extract_text, ocr_extract_text_from_clipboard};
+use commands::ocr::{ocr_extract_text, ocr_extract_text_from_clipboard, ocr_grant_asset};
 use commands::pdf::{bucket_extract_pdf_pages, bucket_extract_pdf_text, bucket_merge_pdfs};
 use commands::uuid::{uuid_export, uuid_generate};
 
@@ -64,6 +64,7 @@ pub fn run() {
             hash_compute_file,
             ocr_extract_text,
             ocr_extract_text_from_clipboard,
+            ocr_grant_asset,
             jwt_decode,
             cron_explain,
             bucket_merge_pdfs,

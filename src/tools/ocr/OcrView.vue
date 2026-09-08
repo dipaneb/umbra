@@ -125,6 +125,26 @@ function onImageLoad(event: Event) {
   }
 }
 
+/**
+ * Code review 2026-09-08: only `@load` was bound, so a source image that failed to render did so
+ * in total silence — `onImageLoad` never fired, the surface was still sized from the outcome's
+ * own `image_width`/`image_height`, and the transparent region spans and dashed unreadable boxes
+ * were painted over an empty rectangle. The user could not tell whether recognition had failed or
+ * the render had. Reachable from a refused asset request, a file moved or deleted between the
+ * drop and the paint, or a permission change — none of which the extraction itself would notice.
+ */
+function onImageError() {
+  imageSrc.value = null;
+  outcome.value = null;
+  error.value = {
+    code: "ocr-image-unreadable",
+    message: t("errors.ocr-image-unreadable"),
+    position: null,
+    context: null,
+  };
+  announcement.value = t("errors.ocr-image-unreadable");
+}
+
 const naturalSize = computed(() => ({
   width: outcome.value?.image_width ?? pastedImage.value?.width ?? loadedSize.value?.width ?? 0,
   height: outcome.value?.image_height ?? pastedImage.value?.height ?? loadedSize.value?.height ?? 0,
@@ -244,24 +264,58 @@ const matchOverlays = computed<RenderedMatch[]>(() =>
 //   over the new one, pointing at text that is not there.
 //
 // A second image replaces the first: no history, no accumulation.
+// Code review 2026-09-08: whether THIS instance ever received a source of its own — not whether
+// an image is currently on screen, which is a different question with a window in it (the drop
+// path now awaits the asset grant before the `<img>` src is set). `DropZone.vue`'s `isStillActive`
+// checks the ROUTE, so a result can be delivered to a fresh instance that mounted after the
+// original one consumed the one-shot source signal. Without this, that outcome rendered nothing
+// at all while the announcer said "Text extracted."
+const hasOwnSource = ref(false);
+
 function resetForNewSource() {
   error.value = null;
   outcome.value = null;
   loadedSize.value = null;
   findQuery.value = "";
   currentMatch.value = 0;
+  hasOwnSource.value = true;
 }
 
 function applyOcrResult(result: OcrResult) {
   if ("error" in result) {
-    outcome.value = null;
     error.value = result.error;
-    imageSrc.value = null;
-    pastedImage.value = null;
+    // Code review 2026-09-08: a clipboard holding no image never replaced the source, so it must
+    // not clear it. Every other error DID arrive with a new file or new pixels, and clearing is
+    // right for those — the thing on screen is the thing that just failed.
+    if (result.error.code !== "paste-no-image") {
+      outcome.value = null;
+      imageSrc.value = null;
+      pastedImage.value = null;
+    }
+    // Code review 2026-09-08: this branch used to return without touching `announcement`, and
+    // because it clears the image, `extracting` went false without the watcher firing — so after
+    // any failure the one always-mounted live region still read "Extracting text…", or the
+    // PREVIOUS run's "Text extracted." The visible error is a `v-if`-inserted `role="alert"`,
+    // which is exactly the pattern documented below as producing no announcement at all, and is
+    // why this announcer exists. The no-text case was fixed at the 2026-09-08 screen-reader
+    // pass; the error case had the same hole.
+    announcement.value = toolErrorMessage(result.error, t);
     return;
   }
   error.value = null;
   outcome.value = result.value as OcrOutcome;
+  // Code review 2026-09-08: `isStillActive()` in the shell checks the ROUTE, not the component
+  // instance. Drop an image, navigate away, navigate back before the ~3 s inference resolves,
+  // and the result is delivered to a FRESH instance that never saw the source signal (the
+  // watchers are not `immediate`, and the old instance already consumed it). Every result
+  // surface in the template sits behind `v-if="hasImage"`, so the outcome rendered nothing at
+  // all — while the announcer said "Text extracted." That is the tool bluffing about its own
+  // result, in the one view built around never doing that.
+  if (!hasOwnSource.value) {
+    outcome.value = null;
+    announcement.value = "";
+    return;
+  }
   // Announce the RESULT, not the event. Two reasons, and the first one is why this changed
   // after the 2026-09-08 screen-reader pass found the no-text case silent:
   //
@@ -312,9 +366,33 @@ watch(
     // always precedes the outcome it belongs to and can never wipe a fresh one.
     resetForNewSource();
     pastedImage.value = null;
-    imageSrc.value = convertFileSrc(source.path);
+    void showFileSource(source.path);
   },
 );
+
+/**
+ * Grants the webview read access to `path`, then renders it.
+ *
+ * Code review 2026-09-08. `tauri.conf.json` ships `assetProtocol.scope` statically EMPTY, so a
+ * path is unreadable until the Rust side allows it. That grant used to be made inside
+ * `ocr_extract_text`'s `spawn_blocking`, while this line set the `<img>` src in the same tick the
+ * drop was published — an asset request needing one Vue flush and a custom-scheme handler call,
+ * racing a grant sitting behind an IPC hop, a runtime scheduling decision, a blocking-pool
+ * dispatch and a `metadata()` stat. Nothing ordered the two, and losing the race was permanent:
+ * the protocol returns 403 and the `src` never changes, so the browser never retries.
+ *
+ * Awaiting a grant command of its own makes the ordering a guarantee. It costs one IPC round
+ * trip before the image appears, against an inference measured in seconds.
+ */
+async function showFileSource(path: string) {
+  try {
+    await invoke("ocr_grant_asset", { path });
+  } catch (err) {
+    applyOcrResult({ toolId: "ocr", error: toToolError(err) });
+    return;
+  }
+  imageSrc.value = convertFileSrc(path);
+}
 
 watch(
   () => registry.pasteSourceImage,
@@ -340,7 +418,20 @@ async function drawPastedImage() {
   if (!ctx) return;
   canvas.width = image.width;
   canvas.height = image.height;
-  ctx.putImageData(new ImageData(new Uint8ClampedArray(image.rgba), image.width, image.height), 0, 0);
+  // Code review 2026-09-08: `ImageData` throws `DataError` when the buffer length does not match
+  // width * height * 4, and the only call site is a bare `void drawPastedImage()`. The throw
+  // surfaced as an unhandled rejection, the canvas stayed blank, and the view depended entirely
+  // on Rust independently rejecting the same bytes with `ocr-malformed-image-buffer`. The two
+  // validations agree today; the view should not need them to.
+  try {
+    ctx.putImageData(
+      new ImageData(new Uint8ClampedArray(image.rgba), image.width, image.height),
+      0,
+      0,
+    );
+  } catch (err) {
+    applyOcrResult({ toolId: "ocr", error: toToolError(err) });
+  }
 }
 
 // AC13: the file picker is a THIRD write-trigger on the same extraction state, alongside drop
@@ -355,7 +446,8 @@ async function onChooseImage() {
 
     resetForNewSource();
     pastedImage.value = null;
-    imageSrc.value = convertFileSrc(path);
+    await showFileSource(path);
+    if (error.value) return; // the grant was refused; it already said why
 
     const result = await registry.getLatestWinsRunner("ocr")(() =>
       invoke<unknown>("ocr_extract_text", { path }),
@@ -439,6 +531,14 @@ watch(findQuery, () => {
 // interceptor would be shell surface this story does not need to claim.
 // AC37: ⌘A inside the overlay selects every recognised region, so ⌘C yields the whole result
 // without touching the Copy control — the pure keyboard path for copy-and-leave (NFR5).
+//
+// Code review 2026-09-08: this branch was unreachable as shipped. It gates on
+// `overlayEl.contains(document.activeElement)`, but the overlay was a `role="group"` with no
+// `tabindex` and only `span`/`div` children, none focusable — so `activeElement` was `<body>`
+// (or the find input, which is outside the overlay) at all times, `contains` was always false,
+// and ⌘A fell through to the browser's select-the-whole-document default. The overlay now
+// carries `tabindex="0"`, which is what makes AC37's stated path exist. The focus-order and
+// screen-reader consequences of a focusable overlay belong to AC30's owed VoiceOver pass.
 function onKeydown(event: KeyboardEvent) {
   const meta = event.metaKey || event.ctrlKey;
   if (!meta) return;
@@ -686,6 +786,7 @@ onUnmounted(() => {
           :class="{ unresolved: extracting }"
           :alt="t('tools.ocr.imageAccessibleName')"
           @load="onImageLoad"
+          @error="onImageError"
         >
         <canvas
           v-else
@@ -702,6 +803,7 @@ onUnmounted(() => {
           ref="overlayEl"
           class="overlay"
           role="group"
+          tabindex="0"
           :aria-label="t('tools.ocr.overlayLabel')"
         >
           <div
@@ -871,7 +973,16 @@ h1 {
   position: absolute;
   white-space: pre;
   color: transparent;
-  font-family: var(--font-sans);
+  /* Code review 2026-09-08: this was `var(--font-sans)`, which tokens.css resolves to the
+     bundled "Geist Sans" webfont — while `measureOverlayText` measures with
+     OVERLAY_FONT_STACK (the system stack), whose own doc says it is exported "so the two
+     cannot drift". They had drifted. `fitLetterSpacing` solves (target - naturalSF)/len but
+     the span then renders at naturalGeist + spacing*len, and the residual is absorbed
+     nowhere — so a native drag-selection highlight, which is the entire premise of Live Text,
+     slides progressively off the words toward the end of every line. Invisible to the suite:
+     jsdom has no canvas 2d context, so `measure` returns NaN and letterSpacingPx is 0 in all
+     963 tests. Bound to the constant rather than the token so the drift cannot recur. */
+  font-family: v-bind(OVERLAY_FONT_STACK);
   line-height: 1;
   transform-origin: 0 0;
   cursor: text;

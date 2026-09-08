@@ -18,7 +18,18 @@ describe("a real OcrOutcome from the core crate", () => {
     for (const region of outcome.regions) {
       expect(Array.isArray(region.polygon)).toBe(true);
       expect(Array.isArray(region.char_polygons)).toBe(true);
-      expect(region.char_polygons).toHaveLength([...(region.text ?? "")].length);
+      // Code review 2026-09-08: NOT an unconditional length equality. `measure_char_polygons`
+      // returns an EMPTY vector by design whenever it is not confident of its measurement —
+      // tilt beyond ~2 degrees, fewer columns than characters, gaps it cannot resolve — which is
+      // the documented "honest imprecise" fallback that `ocr.rs`'s own
+      // `declines_to_measure_characters_on_a_photographed_page` asserts. Requiring every region
+      // to be measurable encoded an invariant the Rust side explicitly does not offer, and
+      // passed only because this fixture happens to be a clean screenshot: regenerate it from a
+      // photo or a tilted capture and the test fails for correct behaviour.
+      const charCount = [...(region.text ?? "")].length;
+      expect(
+        region.char_polygons.length === 0 || region.char_polygons.length === charCount,
+      ).toBe(true);
       expect(region.polygon[0]).toHaveProperty("x");
     }
   });

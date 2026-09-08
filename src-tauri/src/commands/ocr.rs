@@ -110,11 +110,10 @@ pub async fn ocr_extract_text<R: Runtime>(
         // without ever being materialized in memory (same ordering as hash.rs's own
         // check_file_size).
         check_file_size(&path)?;
-        // AC11: the webview needs to render this image, and `tauri.conf.json` declares the
-        // asset protocol with a statically EMPTY scope — every grant is made here, at runtime,
-        // for a file the user has just handed us by drop or by picker. Granted AFTER the size
-        // guard, so an oversized file is never made readable to the webview at all.
-        grant_asset_access(&app, &path);
+        // The asset-protocol grant used to be made here. Code review 2026-09-08 moved it into
+        // `ocr_grant_asset` below, which the view awaits *before* it sets the `<img>` src:
+        // granting from inside this `spawn_blocking` raced the very asset request it was meant
+        // to authorise, and a lost race is permanent because the `src` never changes afterwards.
         let bytes = crate::fs_helper::read_file_bytes(&path)?;
         match ocr_engine(&app) {
             Ok(engine) => engine.extract_text(&bytes),
@@ -125,40 +124,140 @@ pub async fn ocr_extract_text<R: Runtime>(
     .map_err(map_join_error)?
 }
 
-/// AC11: grants the webview read access to exactly the file the user just handed the tool.
+/// AC11: grants the webview read access to a file the user just handed the tool.
 ///
 /// `tauri.conf.json` declares `assetProtocol` with an empty static scope, so nothing is
 /// readable until this runs — strictly tighter than any `$HOME/**/*` glob, and nothing is
 /// persisted (`tauri-plugin-persisted-scope` is deliberately not installed, so no grant
 /// survives a restart).
 ///
+/// **Why both the literal and the canonicalised path are granted** (code review 2026-09-08).
+/// Verified against `tauri-2.11.5/src/scope/fs.rs`: `allow_file` (`:369`) stores the path
+/// *exactly as given*, while `is_allowed` (`:420`) runs `try_resolve_symlink_and_canonicalize`
+/// on the requested path **before** matching it against those patterns. On macOS `/var` and
+/// `/tmp` are symlinks to `/private/var` and `/private/tmp`, so a file dragged out of Safari,
+/// Preview or Quick Look — which lands in `/var/folders/…/TemporaryItems/`, the single most
+/// common drag source on this platform — was granted as `/var/folders/…` and then checked as
+/// `/private/var/folders/…`, matching nothing. The protocol returned 403, the OCR text still
+/// arrived, and the overlay rendered over an empty rectangle with no error attached. Granting
+/// the canonical form is the fix; the literal form is kept too, since `canonicalize` can fail
+/// (a broken symlink, a race with the file being moved) and the literal grant is still correct
+/// whenever the two forms coincide.
+///
 /// **Why this only ever calls `allow_file`, never `forbid_file`.** The AC as written said to
-/// forbid the previously granted path so only one file is ever readable. Verified against
-/// `tauri-2.11.5/src/scope/fs.rs` that this cannot work: `is_allowed` checks the forbidden
-/// patterns FIRST and returns `false` unconditionally on a match (`:432`), and the `Scope` API
-/// exposes only appending operations — `allow_file`, `forbid_file`, `allow_directory`,
-/// `forbid_directory` — with no way to remove a pattern once added (`allowed_patterns()` and
-/// `forbidden_patterns()` return copies, not handles). So forbidding a path *permanently*
-/// poisons it for the life of the process: drop A, drop B, drop A again, and A silently stops
-/// rendering forever. Comparing two screenshots and going back to the first is an ordinary
-/// thing to do, and it would look like a bug with no error attached.
+/// forbid the previously granted path so only one file is ever readable. Verified against the
+/// same source that this cannot work: `is_allowed` checks the forbidden patterns FIRST and
+/// returns `false` unconditionally on a match (`:432`), and the `Scope` API exposes only
+/// appending operations — `allow_file`, `forbid_file`, `allow_directory`, `forbid_directory` —
+/// with no way to remove a pattern once added (`allowed_patterns()` and `forbidden_patterns()`
+/// return copies, not handles). So forbidding a path *permanently* poisons it for the life of
+/// the process: drop A, drop B, drop A again, and A silently stops rendering forever. Comparing
+/// two screenshots and going back to the first is an ordinary thing to do, and it would look
+/// like a bug with no error attached.
 ///
 /// The cost of allow-only, stated plainly: the webview retains read access to every image the
-/// user has opened in *this session*. That is in-memory only, dies with the process, and
-/// covers exactly the files the user chose — but it is wider than "one file at a time", and
-/// a custom URI scheme serving a single path from Rust is the version that would achieve the
-/// original intent. Recorded rather than quietly rescoped.
-fn grant_asset_access<R: Runtime>(app: &tauri::AppHandle<R>, path: &str) {
+/// user has opened in *this session*. That is in-memory only, dies with the process, and covers
+/// exactly the files the user chose — but it is wider than "one file at a time", and a custom
+/// URI scheme serving a single path from Rust is the version that would achieve the original
+/// intent. Recorded rather than quietly rescoped.
+fn grant_asset_access<R: Runtime>(app: &tauri::AppHandle<R>, path: &str) -> Result<(), ToolError> {
     // Imported locally: this module's top-level `Manager` import is cfg-gated to the non-test
     // build (the two `models_dir` variants), and this grant runs in every build.
     use tauri::Manager;
 
-    // A failed grant is not a reason to fail the extraction: the text still comes back, only
-    // the on-image rendering would be missing. Surfacing an asset-scope error as an OCR error
-    // would misattribute it.
-    if let Err(err) = app.asset_protocol_scope().allow_file(path) {
-        eprintln!("ocr: could not grant asset access to {path}: {err}");
+    let scope = app.asset_protocol_scope();
+    let grant = |p: &std::path::Path| {
+        scope.allow_file(p).map_err(|err| ToolError {
+            code: "ocr-asset-grant-failed".to_string(),
+            message: format!("{}: {err}", p.display()),
+            position: None,
+            context: None,
+        })
+    };
+
+    grant(std::path::Path::new(path))?;
+    // `canonicalize` resolving to the same path is the common case on Linux and Windows; the
+    // duplicate pattern is harmless (the scope is a pattern list, matched by `any`).
+    if let Ok(canonical) = std::fs::canonicalize(path)
+        && canonical != std::path::Path::new(path)
+    {
+        grant(&canonical)?;
     }
+    Ok(())
+}
+
+/// Grants the webview read access to one image, and reports whether it worked.
+///
+/// Split out of `ocr_extract_text` at code review 2026-09-08, for three reasons that all point
+/// the same way:
+///
+/// 1. **Ordering.** The view sets the `<img>` src from `convertFileSrc(path)` in the same tick
+///    the drop is published. Granting from inside the extraction command — behind an IPC hop, a
+///    runtime scheduling decision, a blocking-pool dispatch and a `metadata()` stat — raced that
+///    request with nothing ordering the two, and a lost race is permanent because the `src` never
+///    changes afterwards. The view now `await`s this before setting the src, which makes the
+///    ordering a guarantee rather than a hope.
+/// 2. **Validation.** The grant is made only for a file that passes the size guard *and* opens
+///    with a container signature the engine can actually decode, so dropping `id_rsa`, a `.docx`
+///    or a PDF no longer widens the process's asset allow-list on the way to an error.
+/// 3. **Diagnosis.** A failed grant used to go to `eprintln!`, a stream a packaged `.app`
+///    discards, while the user got a permanently blank pane with text floating over it. It is
+///    returned now, so the view can say so.
+#[tauri::command]
+pub async fn ocr_grant_asset<R: Runtime>(
+    path: String,
+    app: tauri::AppHandle<R>,
+) -> Result<(), ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let header = read_signature_bytes(&path)?;
+        if !umbra_core::ocr::looks_like_a_supported_image(&header) {
+            // Deliberately the same two codes `extract_text` itself would raise for these
+            // bytes, so the view's existing translated messages cover this path unchanged.
+            return Err(if header.starts_with(b"%PDF-") {
+                ToolError {
+                    code: "ocr-pdf-wrong-tool".to_string(),
+                    message: "PDFs open in the PDF tool.".to_string(),
+                    position: None,
+                    context: None,
+                }
+            } else {
+                ToolError {
+                    code: "ocr-unsupported-format".to_string(),
+                    message: format!("{path} is not a PNG, JPEG or WebP image."),
+                    position: None,
+                    context: None,
+                }
+            });
+        }
+        grant_asset_access(&app, &path)
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+/// Reads just enough of a file to identify its container format (see
+/// [`umbra_core::ocr::looks_like_a_supported_image`]). Reading the head rather than the whole
+/// file is what keeps the pre-grant validation cheap enough to sit in front of the render.
+fn read_signature_bytes(path: &str) -> Result<Vec<u8>, ToolError> {
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).map_err(|err| ToolError {
+        code: "file-read-error".to_string(),
+        message: format!("{path}: {err}"),
+        position: None,
+        context: None,
+    })?;
+    let mut header = [0u8; 32];
+    // A short read is not an error: a file smaller than the buffer simply cannot carry a
+    // signature this engine recognises, and `guess_format` will say so.
+    let read = file.read(&mut header).map_err(|err| ToolError {
+        code: "file-read-error".to_string(),
+        message: format!("{path}: {err}"),
+        position: None,
+        context: None,
+    })?;
+    Ok(header[..read].to_vec())
 }
 
 // AD-15: the sanctioned raw-IPC-body exception for clipboard-pasted image bytes — width/height

@@ -41,7 +41,25 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-08  # story 8-7 COMPLETE -> review. Task 2b shipped in five slices, each render-
+last_updated: 2026-09-08  # story 8-7 review -> done (bmad-code-review, three parallel layers: Blind
+# Hunter / Edge Case Hunter / Acceptance Auditor, all against `git diff -M main...HEAD` code paths).
+# 40 raw findings -> 30 after dedup; 5 decisions ruled by the developer, 23 patches applied, 3 deferred,
+# 4 dismissed. Gate 974 Vitest / 373 cargo, from 963 / 371.
+# THE FINDING WORTH CARRYING FORWARD: both HIGH findings were the same shape -- a correctness property
+# that depends on two components agreeing, with nothing enforcing the agreement. Tauri's `allow_file`
+# stores a path literally while `is_allowed` canonicalizes before matching, so on macOS every file
+# dragged out of Safari/Preview (`/var/folders/...`, checked as `/private/var/...`) was granted under one
+# name and refused under another -- silently, because the `<img>` had no `@error`. And `pasteSourceImage`
+# was published from inside the runner task, ordered by clipboard-read completion while results were
+# ordered by dispatch: two channels, two clocks, reachable both ways (one image's regions painted over
+# another's pixels, or a permanent in-flight state). NEITHER is visible to a passing test suite, and the
+# suite was passing 963/963. A third of the same kind: the overlay measured text in the system font and
+# rendered it in Geist Sans -- invisible because jsdom has no canvas context, so letter-spacing was 0 in
+# every test. AC30's VoiceOver lesson generalises past screen readers: a green gate is evidence about the
+# gate. OWED BEFORE MERGE: a `pnpm tauri dev` render-review (light + dark) and a VoiceOver re-check --
+# the patches made the overlay focusable, changed the font every region span renders in, and gave two
+# previously-silent error states a voice. AC30's pass predates all three.
+# (previous) 2026-09-08  # story 8-7 COMPLETE -> review. Task 2b shipped in five slices, each render-
 # reviewed: hoist (AC15), the three-way split with PDF/Images moving verbatim (AC7-10/27/28), the Rust core
 # (AC16-23: region-structured outcome, EXIF, reading-order sort, quality corpus), Live Text (AC11-14/31-42:
 # the textarea is gone, text is selectable on the image, find-in-image, low-confidence marked on the pixels),
@@ -1546,7 +1564,7 @@ development_status:
   # honest), describe() staying a project-owned templater. Open container question: cron is
   # the only bidirectional two-state-group tool in Epic 8, so AppTabs is genuinely on the
   # table (weighed vs. 8.2's smart-detection choice). Not committed.
-  8-7-reimagine-the-bucket-ocr: review
+  8-7-reimagine-the-bucket-ocr: done
   8-8-reimagine-the-bucket-pdf: backlog
   8-9-reimagine-the-bucket-images: backlog
   epic-8-retrospective: optional

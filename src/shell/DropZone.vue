@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { readClipboardImage } from "./clipboard";
 import { useRegistryStore } from "../stores/registry";
-import { toToolError } from "./toolError";
+import { toToolError, type ToolError } from "./toolError";
 import { isEditableTarget, resolveActiveTool, routeDragState, routeDrop, routePaste } from "./dropZone";
 
 const route = useRoute();
@@ -38,12 +38,42 @@ async function dispatchPaste(toolId: string, handler: string) {
     // The runner returns the outcome AND the pixels it was recognised from, rather than the
     // closure assigning to a captured `let`: reading the clipboard twice would be a second OS
     // I/O edge (AD-14) and racy, since the clipboard can change during the ~3 s inference.
-    const result = await runLatestWins(async () => {
-      const image = await readClipboardImage();
+    const result = await runLatestWins(async (isLatest) => {
+      let image;
+      try {
+        image = await readClipboardImage();
+      } catch (err) {
+        // Code review 2026-09-08: a clipboard that holds no image is a DIFFERENT failure from a
+        // tool rejecting content it was given, and it was being reported as the latter. The
+        // plugin's own rejection carries no `code`, so `toolErrorMessage` fell through to raw
+        // third-party English prose — in a tool whose most-hit error the story went to real
+        // lengths to translate — and the view's error branch then wiped a perfectly good result
+        // off the screen. Copying a URL and pressing Cmd-V is at least as common as dropping a
+        // PDF. Giving it our own code makes it translatable and lets the view leave the
+        // standing result alone, because nothing new actually arrived.
+        throw {
+          code: "paste-no-image",
+          message: String(err),
+          position: null,
+          context: null,
+        } satisfies ToolError;
+      }
       const { rgba, width, height } = image;
       // AC33: published as soon as the pixels are read, before the inference — same reason as
-      // the drop path above. Last write wins, which is exactly latest-wins semantics for a
-      // display: if a second paste lands, its image is the one on screen.
+      // the drop path above.
+      //
+      // Code review 2026-09-08: guarded by `isLatest()`. The drop path publishes
+      // `dropSourcePath` synchronously BEFORE the runner starts, so it is ordered by dispatch.
+      // This one published from inside the task, after `await readClipboardImage()` resolved —
+      // ordered by clipboard-read COMPLETION, with no supersession check at all. Two channels
+      // carrying halves of one event under two different clocks, and both interleavings were
+      // reachable. Paste A, then drop B while A's read is pending: A's pixels land late and the
+      // view paints B's regions over them — geometry from one image on another, silently, which
+      // is the confidently-wrong output FR26 exists to prevent. The other order is no better:
+      // A's late write triggers the view's `resetForNewSource()`, nulling the outcome, while A's
+      // own invoke is superseded and so never writes a result — leaving the in-flight indicator
+      // true forever, a spinner with no exit.
+      if (!isLatest()) return { value: undefined, image };
       registry.pasteSourceImage = { toolId, ...image };
       const value = await invoke<unknown>(handler, rgba, {
         headers: { "x-image-width": String(width), "x-image-height": String(height) },
@@ -55,8 +85,12 @@ async function dispatchPaste(toolId: string, handler: string) {
     }
   } catch (err) {
     if (isStillActive()) {
-      registry.pasteResult = { toolId, error: toToolError(err) };
-      registry.pasteSourceImage = null;
+      const error = toToolError(err);
+      registry.pasteResult = { toolId, error };
+      // A clipboard with no image never replaced the source, so it must not clear it either.
+      if (error.code !== "paste-no-image") {
+        registry.pasteSourceImage = null;
+      }
     }
   }
 }

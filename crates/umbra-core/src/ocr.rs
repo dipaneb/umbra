@@ -165,12 +165,41 @@ fn reject_pdf(image_bytes: &[u8]) -> Result<(), ToolError> {
     Ok(())
 }
 
+/// Whether `header` opens with a container signature this engine can actually decode.
+///
+/// Code review 2026-09-08: the command layer grants the webview read access to a dropped file
+/// so it can render it, and it did so *before* anything validated the file — dropping `id_rsa`
+/// or a `.docx` put it on the process's asset allow-list even though extraction failed
+/// immediately and the view never rendered it. This is the guard that lets the grant be made
+/// only for files the engine would accept.
+///
+/// It lives here, next to [`reject_pdf`] and sharing [`OcrEngine::extract_text`]'s own
+/// `image::guess_format` sniffing, so grant-validation and decode-validation agree **by
+/// construction** rather than by two hand-synced format lists drifting apart. Only the leading
+/// bytes are needed: every format signature `image` recognises fits well inside 32 bytes (WebP's
+/// `RIFF....WEBP` is the longest at 12).
+pub fn looks_like_a_supported_image(header: &[u8]) -> bool {
+    reject_pdf(header).is_ok() && image::guess_format(header).is_ok()
+}
+
 /// Fraction of a region's own height within which two vertical centres count as the same row.
 /// Half a line height: comfortably groups a dialog's body text with the sidebar entry beside
 /// it, without merging two genuinely stacked lines.
 const ROW_BAND_FRACTION: f32 = 0.5;
 
 fn vertical_bounds(polygon: &[OcrPoint]) -> (f32, f32) {
+    // Code review 2026-09-08: the fold's identity is (MAX, MIN), so an EMPTY polygon returned
+    // (MAX, MIN) unchanged and `polygon_height` then computed (MIN - MAX).abs(), which overflows
+    // f32 to +inf. That made `tolerance` infinite in `sort_into_reading_order`, banding every
+    // region on the page into one row and re-sorting the whole thing purely left-to-right —
+    // breaking Copy fidelity, NFR5 screen-reader order and find ordering in a single step, with
+    // no error anywhere. Polygons come straight from the detector's `bounding_box.points` with
+    // no filter, so this is near-unreachable; the failure if it is reached is total, and the
+    // guard is one line. `measure_char_polygons` already refuses `polygon.len() < 4` for the
+    // same reason, and the TypeScript side's `quadPlacement` guards its own empty case.
+    if polygon.is_empty() {
+        return (0.0, 0.0);
+    }
     polygon.iter().fold((f32::MAX, f32::MIN), |(lo, hi), p| {
         (lo.min(p.y), hi.max(p.y))
     })
@@ -415,6 +444,33 @@ fn measure_char_polygons(
                 spans[index] = (s, s + each);
             }
             left = b;
+        }
+    }
+
+    // Code review 2026-09-08: every character starts at (0.0, 0.0) and only two things ever
+    // overwrite that — the characters inside a word, and the whitespace in a gap BETWEEN two
+    // words. `separators` holds exactly `words.len() - 1` entries, so a line that OPENS or
+    // CLOSES with whitespace left those characters as zero-width boxes pinned at the crop's left
+    // edge, while the doc comment above promised an index-aligned vector. Length-aligned it was;
+    // positionally it lied at both ends. The visible consequence was a find match whose run
+    // touched an edge blank: `charRunPlacement` built its quad from a `last` box sitting at x0,
+    // giving atan2(0, x0 - first.x) = pi — a highlight drawn rotated 180 degrees and running
+    // backwards across the line. Padding gets the space outside the ink, which is where it is.
+    let lead = words[0].0;
+    if lead > 0 {
+        let each = ink_start as f32 / lead as f32;
+        for (n, span) in spans[..lead].iter_mut().enumerate() {
+            let a = each * n as f32;
+            *span = (a, a + each);
+        }
+    }
+    let tail_from = words[words.len() - 1].1;
+    if tail_from < chars.len() {
+        let a0 = (ink_end + 1) as f32;
+        let each = (w as f32 - a0).max(0.0) / (chars.len() - tail_from) as f32;
+        for (n, span) in spans[tail_from..].iter_mut().enumerate() {
+            let a = a0 + each * n as f32;
+            *span = (a, a + each);
         }
     }
 
@@ -841,6 +897,101 @@ mod tests {
         assert!(sort_into_reading_order(vec![]).is_empty());
         let one = vec![region_at(0.0, 0.0, 10.0, 10.0, "only")];
         assert_eq!(texts(&sort_into_reading_order(one)), ["only"]);
+    }
+
+    #[test]
+    fn edge_whitespace_is_measured_outside_the_ink_not_pinned_to_the_left_edge() {
+        // Code review 2026-09-08. `spans` starts as (0.0, 0.0) for every character, and only two
+        // things ever overwrote that: the characters inside a word, and the whitespace in a gap
+        // BETWEEN two words. `separators` holds exactly words.len() - 1 entries, so a line that
+        // OPENS or CLOSES with whitespace left those characters as zero-width boxes at the
+        // crop's left edge — while the function's doc promised an index-aligned vector.
+        //
+        // The visible consequence was a find match whose run touched an edge blank:
+        // `charRunPlacement` built its quad from a `last` box sitting at x0, giving
+        // atan2(0, x0 - first.x) = pi — a highlight drawn rotated 180 degrees, running backwards
+        // across the line.
+        //
+        // Two ink bars on white, with deliberate padding either side, and a text that has both a
+        // leading and a trailing space.
+        // Antialiased edges rather than pure black on pure white: a perfectly bimodal
+        // histogram drives Otsu to t=0, and the ink test is `value < threshold`, so nothing
+        // reads as ink and the function takes its honest decline path — which would make this
+        // test vacuous. Real glyph edges are never bimodal. (The `<` vs `<=` boundary that
+        // makes the bimodal case degenerate is recorded in deferred-work.md.)
+        let mut image = image::RgbImage::from_pixel(100, 20, image::Rgb([240, 240, 240]));
+        let bar = |image: &mut image::RgbImage, x0: u32, x1: u32| {
+            for y in 5..15 {
+                for x in x0..x1 {
+                    let edge = x == x0 || x == x1 - 1;
+                    let v = if edge { 120 } else { 25 };
+                    image.put_pixel(x, y, image::Rgb([v, v, v]));
+                }
+            }
+        };
+        bar(&mut image, 20, 40);
+        bar(&mut image, 60, 80);
+        let polygon = vec![
+            OcrPoint { x: 0.0, y: 0.0 },
+            OcrPoint { x: 100.0, y: 0.0 },
+            OcrPoint { x: 100.0, y: 20.0 },
+            OcrPoint { x: 0.0, y: 20.0 },
+        ];
+        let text = " ab cd ";
+        let polygons = measure_char_polygons(&image, &polygon, text);
+        assert_eq!(polygons.len(), text.chars().count());
+
+        let left_of = |q: &Vec<OcrPoint>| q.iter().fold(f32::MAX, |m, p| m.min(p.x));
+        let right_of = |q: &Vec<OcrPoint>| q.iter().fold(f32::MIN, |m, p| m.max(p.x));
+
+        // The leading blank owns the padding before the ink — it must have real width, and must
+        // not extend into the first word.
+        let leading = &polygons[0];
+        assert!(
+            right_of(leading) > left_of(leading),
+            "leading blank is zero-width"
+        );
+        assert!(
+            right_of(leading) <= 21.0,
+            "leading blank runs into the first word"
+        );
+
+        // The trailing blank owns the padding after the ink, at the RIGHT edge — the bug put it
+        // at x0, which is what made the highlight quad point backwards.
+        let trailing = &polygons[text.chars().count() - 1];
+        assert!(
+            right_of(trailing) > left_of(trailing),
+            "trailing blank is zero-width"
+        );
+        assert!(
+            left_of(trailing) >= 79.0,
+            "trailing blank sits at {}, not after the ink",
+            left_of(trailing)
+        );
+    }
+
+    #[test]
+    fn a_degenerate_polygon_does_not_collapse_every_row_into_one() {
+        // Code review 2026-09-08. `vertical_bounds` folds from (f32::MAX, f32::MIN), so an EMPTY
+        // polygon returned that identity unchanged and `polygon_height` computed
+        // (MIN - MAX).abs(), which overflows f32 to +inf — an infinite row-banding tolerance,
+        // which swallowed every region on the page into one row and re-sorted the whole thing
+        // left-to-right. Copy fidelity, NFR5 screen-reader order and find ordering all break
+        // together, with nothing raised anywhere. Three stacked lines are the smallest case that
+        // shows it: with the bug they come back as one row, ordered by x.
+        let mut degenerate = region_at(0.0, 0.0, 0.0, 0.0, "degenerate");
+        degenerate.polygon = Vec::new();
+        let sorted = sort_into_reading_order(vec![
+            region_at(300.0, 130.0, 100.0, 24.0, "third"),
+            region_at(200.0, 95.0, 100.0, 24.0, "second"),
+            region_at(100.0, 60.0, 100.0, 24.0, "first"),
+            degenerate,
+        ]);
+        // The degenerate region sorts to the top (its centre is 0), and — the point of the
+        // test — the three real lines keep their own reading order behind it.
+        let order = texts(&sorted);
+        let lines: Vec<&str> = order.into_iter().filter(|t| *t != "degenerate").collect();
+        assert_eq!(lines, ["first", "second", "third"]);
     }
 
     // --- the trait's own contract ----------------------------------------------------------

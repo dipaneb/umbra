@@ -389,6 +389,9 @@
     "cron-six-field-unsupported": "Cet outil prend en charge les expressions cron standard à 5 champs. Les expressions à précision de secondes (6 champs) ne sont pas encore prises en charge.",
     "cron-no-upcoming-runs": "Cette expression n’a aucune occurrence à venir — la date qu’elle indique n’existe peut-être jamais (par exemple le 30 février).",
     "ocr-unsupported-format": "Ce fichier n'est pas une image que cet outil sait lire.",
-    "ocr-pdf-wrong-tool": "Les PDF s'ouvrent dans l'outil PDF."
+    "ocr-pdf-wrong-tool": "Les PDF s'ouvrent dans l'outil PDF.",
+    "paste-no-image": "Le presse-papiers ne contient aucune image.",
+    "ocr-asset-grant-failed": "Impossible d'ouvrir cette image pour l'affichage.",
+    "ocr-image-unreadable": "Cette image n'a pas pu être affichée."
   }
 }

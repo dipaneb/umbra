@@ -450,6 +450,48 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
     expect(registry.pasteResult).toEqual({ toolId: "ocr", value: { text: "UMBRA", confidence: 0.9 } });
   });
 
+  // Code review 2026-09-08: the two regressions below are the seam the existing latest-wins
+  // tests could not reach. They interleave the INVOKE promises; these interleave the CLIPBOARD
+  // READ, which is what `pasteSourceImage` used to be ordered by.
+  it("settles the source image on the run that won, not the clipboard read that finished last", async () => {
+    // Paste A's clipboard read resolves AFTER paste B's, so the in-task write leaves A's pixels
+    // standing while B's outcome wins. Painting B's recognised geometry over A's pixels is
+    // silent, confidently-wrong output — exactly what FR26 exists to prevent.
+    const imageA = { rgba: new Uint8Array([9, 9, 9, 9]), width: 1, height: 1 };
+    const imageB = { rgba: new Uint8Array([1, 2, 3, 4]), width: 1, height: 1 };
+    let resolveA: (v: unknown) => void;
+    readClipboardImageMock.mockReturnValueOnce(new Promise((r) => { resolveA = r; }));
+    readClipboardImageMock.mockResolvedValueOnce(imageB);
+    invokeMock.mockResolvedValue({ regions: [], image_width: 1, image_height: 1 });
+    const { pinia } = await setupDropZone("/tools/ocr");
+    const registry = useRegistryStore(pinia);
+
+    dispatchPasteKeydown(); // A
+    await flushPromises();
+    dispatchPasteKeydown(); // B
+    await flushPromises();
+    resolveA!(imageA); // A's pixels arrive late
+    await flushPromises();
+
+    expect(registry.pasteSourceImage).toEqual({ toolId: "ocr", ...imageB });
+  });
+
+  it("leaves the source image alone when the clipboard holds no image", async () => {
+    // Nothing new arrived, so nothing may be replaced — and the error carries our own code, so
+    // it can be translated instead of surfacing the clipboard plugin's raw English.
+    readClipboardImageMock.mockRejectedValueOnce(new Error("no image in clipboard"));
+    const { pinia } = await setupDropZone("/tools/ocr");
+    const registry = useRegistryStore(pinia);
+    registry.pasteSourceImage = { toolId: "ocr", ...SAMPLE_CLIPBOARD_IMAGE };
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    const settled = registry.pasteResult;
+    expect(settled && "error" in settled ? settled.error.code : null).toBe("paste-no-image");
+    expect(registry.pasteSourceImage).not.toBeNull();
+  });
+
   it("stores a ToolError on the registry when the paste handler rejects", async () => {
     readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
     invokeMock.mockRejectedValueOnce({

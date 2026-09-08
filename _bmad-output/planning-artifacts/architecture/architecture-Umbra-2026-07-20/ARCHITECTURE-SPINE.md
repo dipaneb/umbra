@@ -193,6 +193,18 @@ The rule stays `[ADOPTED]` and, for the cron tool, is now met in full.
 - **Prevents:** every tool wiring its own document-level listener, with shortcuts and drop handling colliding across tools
 - **Rule:** window-level Tauri-native drops dispatch to the active tool's registry-declared handler — a pure `{ accepted mime types, handler command name }` declaration the shell's single generic dispatcher invokes; tools never receive live drop-event callbacks directly (this closes the same seam AD-5's registry entry opens). One clipboard service wraps the Tauri clipboard plugin — `navigator.clipboard` is forbidden. Pasted images are dispatched to that same registry-declared handler directly via the AD-15 raw-IPC-body exception (not the path-based drop mechanism, since clipboard images have no filesystem path). `⌘K` is one capture-phase handler at app scope. Tools register no document-level listeners of their own. `[ADOPTED]`
 
+**Exception (2026-09-08, Story 8.7 code review — developer's ruling):** a tool view **may**
+register a `window`-level `keydown` listener for a shortcut that is meaningful only inside that
+view, provided it is **mount-scoped** — added in `onMounted`, removed in `onUnmounted` — and
+handles only keys no other tool claims. `src/tools/ocr/OcrView.vue` is the precedent and, at the
+time of writing, the only instance: `⌘F` opens its find bar and `⌘A` selects the recognised-text
+overlay, neither of which any other tool has a use for. The rule's purpose is to stop shortcuts
+and drop handling **colliding across tools**, and a listener that exists only while its own view
+is mounted cannot collide with a tool that is not on screen. What stays forbidden is unchanged:
+a listener that outlives its view, one that claims a key another tool or the shell uses (`⌘K`,
+`⌘V`), or a tool receiving live drop or clipboard callbacks — those still route through the
+shell's single generic dispatcher.
+
 **Amendment (2026-09-07, Story 8.7 — the OCR redesign):** a **third OS I/O edge** joins drops,
 clipboard and shortcuts: Tauri's **asset protocol**, which lets the webview read one image file
 directly off disk so the Live Text surface can display the source image the recognised text is
@@ -206,10 +218,22 @@ The shape is **deny-by-default plus a per-file runtime grant**, not a static dir
 
 - `tauri.conf.json` enables `assetProtocol` with an **empty** static `scope: []` — so on a cold
   start the webview can read nothing, and no directory is ever blanket-granted.
-- `ocr_extract_text` calls `app.asset_protocol_scope().allow_file(path)` for the one file the
-  user actually chose, at the moment they choose it. A failed grant is logged, not surfaced as
-  an OCR error: the text still comes back, only the on-image rendering would be missing, and
-  reporting a scope failure as an extraction failure would misattribute it.
+- `ocr_grant_asset` calls `app.asset_protocol_scope().allow_file(path)` for the one file the
+  user actually chose, at the moment they choose it, and the view **awaits it before setting the
+  `<img>` src**. *(Revised at the Story 8.7 code review, 2026-09-08. Three corrections, all of
+  which produced the same user-visible failure — a blank pane with recognised text floating over
+  it, and no error anywhere. First, the grant lived inside `ocr_extract_text`'s `spawn_blocking`
+  and therefore **raced** the asset request it authorised, with a lost race permanent because the
+  `src` never changes afterwards. Second, `allow_file` stores the path **as given** while
+  `is_allowed` **canonicalizes before matching** — verified in `tauri-2.11.5/src/scope/fs.rs` —
+  so on macOS, where `/var` and `/tmp` are symlinks to `/private/...`, a file dragged out of
+  Safari or Preview was granted under one name and checked under another; both forms are granted
+  now. Third, the grant was made **before** the file was validated as an image, so a rejected
+  drop still widened the allow-list; it is now made only for a file that passes the size guard
+  and opens with a decodable container signature.)* A failed grant is **returned** rather than
+  logged to a stderr stream a packaged `.app` discards — the text still comes back, but the user
+  is told why the image is not there, instead of being left to guess whether recognition or the
+  render failed.
 - `src-tauri/capabilities/default.json` needs **no** entry. Verified against the vendored
   `tauri-2.11.5/src/protocol/asset.rs`: the asset protocol consults the scope only and never the
   capability ACL.
