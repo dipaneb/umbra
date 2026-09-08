@@ -750,12 +750,18 @@ onUnmounted(() => {
         <p class="drop-label">
           {{ isDragOver ? t('tools.ocr.dropToExtract') : t('tools.ocr.dropTargetLabel') }}
         </p>
+        <p class="or-separator">
+          {{ t('tools.ocr.orSeparator') }}
+        </p>
         <AppButton
           variant="default"
           @click="onChooseImage"
         >
           {{ t('tools.ocr.chooseImage') }}
         </AppButton>
+        <p class="or-separator">
+          {{ t('tools.ocr.orSeparator') }}
+        </p>
         <p class="paste-hint">
           {{ t('tools.ocr.pasteHint') }}
         </p>
@@ -926,18 +932,24 @@ h1 {
   color: var(--color-text-tertiary);
 }
 
-.drop-label {
+/* The two ways in that are plain sentences read as one voice — the paste hint is
+   an equal door, not a footnote to the drop label. */
+.drop-label,
+.paste-hint {
   margin: 0;
   font-family: var(--font-body-family);
   font-size: var(--font-body-size);
   color: var(--color-text-primary);
 }
 
-.paste-hint {
-  margin: 0;
+/* The two "or" lines are connectors, not content: caption weight, and half the
+   stack's gap on each side so each one reads as binding the pair it sits between
+   rather than as a third instruction. */
+.or-separator {
+  margin: calc(var(--spacing-3) / -2) 0;
   font-family: var(--font-caption-family);
   font-size: var(--font-caption-size);
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
 }
 
 .surface {

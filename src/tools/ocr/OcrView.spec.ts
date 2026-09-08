@@ -144,6 +144,8 @@ describe("OcrView", () => {
       expect(wrapper!.text()).toContain("Drop an image here");
       expect(wrapper!.text()).toContain("Choose an image…");
       expect(wrapper!.text()).toContain("paste with ⌘V");
+      // …joined by two "or" lines, so the three read as one choice, not three steps.
+      expect(wrapper!.findAll(".or-separator")).toHaveLength(2);
     });
 
     it("does not show the drop target once an image is on screen", async () => {
