@@ -193,11 +193,47 @@ The rule stays `[ADOPTED]` and, for the cron tool, is now met in full.
 - **Prevents:** every tool wiring its own document-level listener, with shortcuts and drop handling colliding across tools
 - **Rule:** window-level Tauri-native drops dispatch to the active tool's registry-declared handler — a pure `{ accepted mime types, handler command name }` declaration the shell's single generic dispatcher invokes; tools never receive live drop-event callbacks directly (this closes the same seam AD-5's registry entry opens). One clipboard service wraps the Tauri clipboard plugin — `navigator.clipboard` is forbidden. Pasted images are dispatched to that same registry-declared handler directly via the AD-15 raw-IPC-body exception (not the path-based drop mechanism, since clipboard images have no filesystem path). `⌘K` is one capture-phase handler at app scope. Tools register no document-level listeners of their own. `[ADOPTED]`
 
+**Amendment (2026-09-07, Story 8.7 — the OCR redesign):** a **third OS I/O edge** joins drops,
+clipboard and shortcuts: Tauri's **asset protocol**, which lets the webview read one image file
+directly off disk so the Live Text surface can display the source image the recognised text is
+positioned over. It is an AD-14 concern because it is an OS edge the shell opens, and an AD-15
+concern because it is the second sanctioned route by which image bytes reach the webview without
+riding the JSON IPC bridge (the first being clipboard-pasted bytes via the raw IPC body). Base64
+data URIs were the alternative and were rejected: a 4 MB screenshot becomes ~5.4 MB of string
+copied through IPC and held in JS memory for as long as the view is mounted.
+
+The shape is **deny-by-default plus a per-file runtime grant**, not a static directory scope:
+
+- `tauri.conf.json` enables `assetProtocol` with an **empty** static `scope: []` — so on a cold
+  start the webview can read nothing, and no directory is ever blanket-granted.
+- `ocr_extract_text` calls `app.asset_protocol_scope().allow_file(path)` for the one file the
+  user actually chose, at the moment they choose it. A failed grant is logged, not surfaced as
+  an OCR error: the text still comes back, only the on-image rendering would be missing, and
+  reporting a scope failure as an extraction failure would misattribute it.
+- `src-tauri/capabilities/default.json` needs **no** entry. Verified against the vendored
+  `tauri-2.11.5/src/protocol/asset.rs`: the asset protocol consults the scope only and never the
+  capability ACL.
+- `tauri-plugin-persisted-scope` is deliberately **not** added. It would write granted paths to
+  disk, so the set of images a user had ever opened would accumulate across sessions — the
+  opposite of what this app promises.
+
+**Recorded limitation — the grant is allow-only, and this is a deviation from the story's
+original intent.** The AC as written called for revoking each grant once the image was no longer
+displayed. That is not implementable against this Tauri version, verified in
+`tauri-2.11.5/src/scope/fs.rs`: `Scope` exposes no pattern-*removal* API, and `is_allowed` checks
+forbidden patterns **first** (`:432`), so calling `forbid_file` would not undo the allow — it
+would permanently poison that path for the rest of the process, including a file the user
+deliberately returns to. **The cost of shipping allow-only:** the webview retains read access to
+every image opened during the session. That set lives in memory only and is gone on quit, and
+every path in it is one the user chose themselves in this session. The only construction that
+achieves the original intent is a custom URI scheme serving exactly one path at a time, which
+requires the CSP change this story's AC forbids. Recorded rather than quietly rescoped — and **ruled on by the developer 2026-09-08: allow-only ships.** The reasoning, so a future reader does not have to re-derive it: the grant list is reachable only by code running inside our own webview, which has no network scope (AD-7) and a CSP that blocks external scripts, so exploiting the retained grants presupposes arbitrary JS execution in the app — at which point the image currently on screen is readable anyway. The delta between *one file* and *the files opened this session* is small, and every path in it was chosen by the user minutes earlier. A custom URI scheme remains the construction that achieves the original intent, and is a backlog candidate if the threat model changes.
+
 ### AD-15 — Files cross IPC as paths; core never touches the filesystem
 
 - **Binds:** file I/O
 - **Prevents:** raw bytes bloating the JSON IPC bridge, or core reaching into the filesystem directly and breaking AD-2
-- **Rule:** files cross the IPC bridge as absolute paths. `src-tauri` owns all file reads/writes through one shared save-dialog-plus-write helper. `umbra-core` never touches the filesystem. Byte arrays above ~64KB never ride the JSON IPC bridge — the one sanctioned exception is clipboard-pasted image bytes via the raw IPC body. `[ADOPTED]`
+- **Rule:** files cross the IPC bridge as absolute paths. `src-tauri` owns all file reads/writes through one shared save-dialog-plus-write helper. `umbra-core` never touches the filesystem. Byte arrays above ~64KB never ride the JSON IPC bridge — the one sanctioned exception is clipboard-pasted image bytes via the raw IPC body. `[ADOPTED]` *(See the asset-protocol amendment above, 2026-09-07, Story 8.7: image bytes now also reach the webview by a second route that bypasses the IPC bridge entirely — Tauri's asset protocol, deny-by-default with a per-file runtime grant. The rule above still binds everything that does cross IPC.)*
 
 ### AD-16 — Slow commands are request-ID'd and latest-wins
 

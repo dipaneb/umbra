@@ -21,7 +21,7 @@ static OCR_ENGINE: OnceLock<Result<OarOcrEngine, ToolError>> = OnceLock::new();
 // Where the bundled OCR models live, split by build config rather than by a fifth
 // platform-conditional test hack (previously `ensure_bundled_models_are_discoverable`, which
 // hand-copied files into wherever `resource_dir()` resolved — and on Linux that resolves to
-// `/usr/lib/{app_name}`, unwritable outside a real install, which is what made every bucket
+// `/usr/lib/{app_name}`, unwritable outside a real install, which is what made every OCR
 // test fail there with `EACCES`; confirmed against `tauri-utils`'s own
 // `platform::resource_dir_from`). Production always resolves through Tauri's real bundle
 // resource lookup; tests always read straight from this crate's own `resources/models/`,
@@ -33,7 +33,7 @@ fn models_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, ToolErro
     app.path()
         .resolve("resources/models", BaseDirectory::Resource)
         .map_err(|err| ToolError {
-            code: "bucket-engine-init-failed".to_string(),
+            code: "ocr-engine-init-failed".to_string(),
             message: format!("failed to resolve bundled models resource directory: {err}"),
             position: None,
             context: None,
@@ -63,6 +63,18 @@ fn resolve_model_path<R: Runtime>(
 pub static OCR_ENGINE_INIT_CALLS: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
 
+// Concurrency, recorded rather than fixed (Story 8.7). One shared `OAROCR` sits behind `&self`,
+// and a superseded latest-wins request still runs to completion — the shell stops *delivering* a
+// stale result, it does not cancel the work. So two inference jobs genuinely overlap whenever a
+// user drops a second image while the first is still running.
+//
+// This is SAFE: `OcrEngine: Send + Sync` is compiler-enforced, so the sharing is sound. What is
+// unmeasured is whether two concurrent ONNX sessions contend badly for CPU — plausibly they do,
+// since `ort` is running on CPU with no execution provider configured. Adding cancellation is
+// deliberately out of scope: it would mean threading a cancellation token through `oar-ocr`'s
+// single `predict()` call, which the crate does not expose. Revisit only if the quality corpus
+// or a render review shows real contention, not on suspicion.
+//
 // `pub`: reachable from `tests/ocr_engine_race.rs` (an integration-test binary, external to this
 // crate) as well as this module's own unit tests below.
 pub fn ocr_engine<R: Runtime>(
@@ -89,7 +101,7 @@ pub fn ocr_engine<R: Runtime>(
 // against `tauri-docs`. Wry is still what the real app actually builds and runs with; nothing
 // about production behavior changes.
 #[tauri::command]
-pub async fn bucket_extract_text<R: Runtime>(
+pub async fn ocr_extract_text<R: Runtime>(
     path: String,
     app: tauri::AppHandle<R>,
 ) -> Result<OcrOutcome, ToolError> {
@@ -98,6 +110,11 @@ pub async fn bucket_extract_text<R: Runtime>(
         // without ever being materialized in memory (same ordering as hash.rs's own
         // check_file_size).
         check_file_size(&path)?;
+        // AC11: the webview needs to render this image, and `tauri.conf.json` declares the
+        // asset protocol with a statically EMPTY scope — every grant is made here, at runtime,
+        // for a file the user has just handed us by drop or by picker. Granted AFTER the size
+        // guard, so an oversized file is never made readable to the webview at all.
+        grant_asset_access(&app, &path);
         let bytes = crate::fs_helper::read_file_bytes(&path)?;
         match ocr_engine(&app) {
             Ok(engine) => engine.extract_text(&bytes),
@@ -108,6 +125,42 @@ pub async fn bucket_extract_text<R: Runtime>(
     .map_err(map_join_error)?
 }
 
+/// AC11: grants the webview read access to exactly the file the user just handed the tool.
+///
+/// `tauri.conf.json` declares `assetProtocol` with an empty static scope, so nothing is
+/// readable until this runs — strictly tighter than any `$HOME/**/*` glob, and nothing is
+/// persisted (`tauri-plugin-persisted-scope` is deliberately not installed, so no grant
+/// survives a restart).
+///
+/// **Why this only ever calls `allow_file`, never `forbid_file`.** The AC as written said to
+/// forbid the previously granted path so only one file is ever readable. Verified against
+/// `tauri-2.11.5/src/scope/fs.rs` that this cannot work: `is_allowed` checks the forbidden
+/// patterns FIRST and returns `false` unconditionally on a match (`:432`), and the `Scope` API
+/// exposes only appending operations — `allow_file`, `forbid_file`, `allow_directory`,
+/// `forbid_directory` — with no way to remove a pattern once added (`allowed_patterns()` and
+/// `forbidden_patterns()` return copies, not handles). So forbidding a path *permanently*
+/// poisons it for the life of the process: drop A, drop B, drop A again, and A silently stops
+/// rendering forever. Comparing two screenshots and going back to the first is an ordinary
+/// thing to do, and it would look like a bug with no error attached.
+///
+/// The cost of allow-only, stated plainly: the webview retains read access to every image the
+/// user has opened in *this session*. That is in-memory only, dies with the process, and
+/// covers exactly the files the user chose — but it is wider than "one file at a time", and
+/// a custom URI scheme serving a single path from Rust is the version that would achieve the
+/// original intent. Recorded rather than quietly rescoped.
+fn grant_asset_access<R: Runtime>(app: &tauri::AppHandle<R>, path: &str) {
+    // Imported locally: this module's top-level `Manager` import is cfg-gated to the non-test
+    // build (the two `models_dir` variants), and this grant runs in every build.
+    use tauri::Manager;
+
+    // A failed grant is not a reason to fail the extraction: the text still comes back, only
+    // the on-image rendering would be missing. Surfacing an asset-scope error as an OCR error
+    // would misattribute it.
+    if let Err(err) = app.asset_protocol_scope().allow_file(path) {
+        eprintln!("ocr: could not grant asset access to {path}: {err}");
+    }
+}
+
 // AD-15: the sanctioned raw-IPC-body exception for clipboard-pasted image bytes — width/height
 // travel alongside the raw RGBA body as custom request headers (verified against the installed
 // `tauri` 2.11.5 source: `tauri::ipc::Request::headers()` is a plain `http::HeaderMap`).
@@ -116,7 +169,7 @@ const IMAGE_HEIGHT_HEADER: &str = "x-image-height";
 
 fn malformed_request_error(message: impl std::fmt::Display) -> ToolError {
     ToolError {
-        code: "bucket-malformed-request".to_string(),
+        code: "ocr-malformed-request".to_string(),
         message: message.to_string(),
         position: None,
         context: None,
@@ -136,7 +189,7 @@ fn parse_dimension_header(request: &Request<'_>, name: &str) -> Result<u32, Tool
 
 // Extracted synchronously, outside any `async` block: `Request<'_>` borrows from the live IPC
 // invocation and cannot be part of a `Send + 'static` future (the type Tauri's async responder
-// requires) — see `bucket_extract_text_from_clipboard`'s own doc comment for why the command
+// requires) — see `ocr_extract_text_from_clipboard`'s own doc comment for why the command
 // isn't a plain `async fn`. Returning only owned data here is what keeps the future below free
 // of that borrow.
 fn extract_clipboard_request(request: &Request<'_>) -> Result<(Vec<u8>, u32, u32), ToolError> {
@@ -156,7 +209,7 @@ fn extract_clipboard_request(request: &Request<'_>) -> Result<(Vec<u8>, u32, u32
     // megapixels), but that's a reasonable default for FR24's "typical screenshot" scope.
     if rgba.len() > MAX_INPUT_BYTES {
         return Err(ToolError {
-            code: "bucket-input-too-large".to_string(),
+            code: "ocr-input-too-large".to_string(),
             message: format!(
                 "clipboard image is {} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit",
                 rgba.len()
@@ -173,7 +226,7 @@ fn extract_clipboard_request(request: &Request<'_>) -> Result<(Vec<u8>, u32, u32
 // AD-3/AD-15: `<tool>_<verb>_<qualifier>` naming, matching `hash_compute_file`'s `_file`
 // qualifier precedent. This is the first command in the codebase taking `tauri::ipc::Request`
 // (AD-15's raw-body exception), which forces a shape different from every other async command
-// here (including this file's own `bucket_extract_text`): `Request<'_>` borrows from the live
+// here (including this file's own `ocr_extract_text`): `Request<'_>` borrows from the live
 // invocation, so an `async fn` taking it directly would produce a future whose opaque type
 // captures that borrow — Tauri's async responder (`respond_async_serialized`) requires
 // `Send + 'static`, so that future can never satisfy it, regardless of whether the body actually
@@ -184,14 +237,14 @@ fn extract_clipboard_request(request: &Request<'_>) -> Result<(Vec<u8>, u32, u32
 // data from `request` synchronously first, then returns an `impl Future` built only from that
 // owned data, so the future's type never mentions `request`'s lifetime at all.
 #[tauri::command(async)]
-pub fn bucket_extract_text_from_clipboard<R: Runtime>(
+pub fn ocr_extract_text_from_clipboard<R: Runtime>(
     request: Request<'_>,
     app: tauri::AppHandle<R>,
 ) -> impl std::future::Future<Output = Result<OcrOutcome, ToolError>> + Send + 'static {
     let extraction = extract_clipboard_request(&request);
     async move {
         let (rgba, width, height) = extraction?;
-        // AD-4, same as `bucket_extract_text`: OCR inference is CPU-bound and must not run on
+        // AD-4, same as `ocr_extract_text`: OCR inference is CPU-bound and must not run on
         // whatever thread is handling IPC dispatch.
         tauri::async_runtime::spawn_blocking(move || match ocr_engine(&app) {
             Ok(engine) => engine.extract_text_from_rgba(&rgba, width, height),
@@ -213,7 +266,7 @@ fn check_file_size(path: &str) -> Result<(), ToolError> {
         .len();
     if len > MAX_INPUT_BYTES as u64 {
         return Err(ToolError {
-            code: "bucket-input-too-large".to_string(),
+            code: "ocr-input-too-large".to_string(),
             message: format!("file is {len} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit"),
             position: None,
             context: None,
@@ -224,7 +277,7 @@ fn check_file_size(path: &str) -> Result<(), ToolError> {
 
 fn map_join_error(err: tauri::Error) -> ToolError {
     ToolError {
-        code: "bucket-internal".to_string(),
+        code: "ocr-internal".to_string(),
         message: format!("background task failed: {err}"),
         position: None,
         context: None,
@@ -233,12 +286,23 @@ fn map_join_error(err: tauri::Error) -> ToolError {
 
 #[cfg(test)]
 mod tests {
+
+    /// Core deliberately exposes no whole-text accessor (AD-1: joining regions into one string
+    /// is presentation). These tests join for themselves, exactly as the view does.
+    fn joined(outcome: &OcrOutcome) -> String {
+        outcome
+            .regions
+            .iter()
+            .filter_map(|r| r.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
     use super::*;
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     // This is the first command in the codebase needing a real `AppHandle`, so its tests are
     // the first that can't call the command directly the way hash.rs's/base64.rs's own tests
-    // do. Making `bucket_extract_text` generic over `R: Runtime` (Tauri's own documented
+    // do. Making `ocr_extract_text` generic over `R: Runtime` (Tauri's own documented
     // pattern for testable commands — the bare `tauri::AppHandle` alias resolves to the
     // concrete `AppHandle<Wry>`, which doesn't implement the traits `MockRuntime` needs) means
     // it can still be called directly with a mock `AppHandle`, exactly like every other
@@ -259,14 +323,14 @@ mod tests {
 
     fn temp_file_path(name: &str) -> String {
         std::env::temp_dir()
-            .join(format!("umbra-bucket-cmd-{}-{name}", std::process::id()))
+            .join(format!("umbra-ocr-cmd-{}-{name}", std::process::id()))
             .to_str()
             .unwrap()
             .to_string()
     }
 
     #[tokio::test]
-    async fn bucket_extract_text_command_reads_a_real_fixture_image_end_to_end() {
+    async fn ocr_extract_text_command_reads_a_real_fixture_image_end_to_end() {
         let app = mock_app_handle();
 
         let path = temp_file_path("hello-umbra.png");
@@ -274,18 +338,19 @@ mod tests {
             .join("../crates/umbra-core/tests/fixtures/hello-umbra.png");
         std::fs::copy(&fixture, &path).unwrap();
 
-        let outcome = bucket_extract_text(path.clone(), app).await.unwrap();
+        let outcome = ocr_extract_text(path.clone(), app).await.unwrap();
+        let text = joined(&outcome);
         assert!(
-            outcome.text.to_uppercase().contains("UMBRA"),
-            "expected extracted text to contain \"UMBRA\", got: {:?}",
-            outcome.text
+            text.to_uppercase().contains("UMBRA"),
+            "expected extracted text to contain \"UMBRA\", got: {text:?}"
         );
+        assert!(outcome.has_readable_text());
 
         std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
-    async fn bucket_extract_text_command_rejects_a_file_over_the_size_limit_without_reading_it() {
+    async fn ocr_extract_text_command_rejects_a_file_over_the_size_limit_without_reading_it() {
         let app = mock_app_handle();
 
         let path = temp_file_path("oversized.bin");
@@ -293,28 +358,45 @@ mod tests {
         file.set_len(MAX_INPUT_BYTES as u64 + 1).unwrap();
         drop(file);
 
-        let err = bucket_extract_text(path.clone(), app).await.unwrap_err();
-        assert_eq!(err.code, "bucket-input-too-large");
+        let err = ocr_extract_text(path.clone(), app).await.unwrap_err();
+        assert_eq!(err.code, "ocr-input-too-large");
 
         std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
-    async fn bucket_extract_text_command_rejects_a_non_image_file() {
+    async fn ocr_extract_text_command_rejects_a_non_image_file() {
         let app = mock_app_handle();
 
         let path = temp_file_path("not-an-image.txt");
         std::fs::write(&path, "just some text, not an image").unwrap();
 
-        let err = bucket_extract_text(path.clone(), app).await.unwrap_err();
-        assert_eq!(err.code, "bucket-unsupported-format");
+        let err = ocr_extract_text(path.clone(), app).await.unwrap_err();
+        assert_eq!(err.code, "ocr-unsupported-format");
 
         std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
-    async fn bucket_extract_text_command_returns_tool_error_not_a_panic_for_a_corrupt_truncated_file()
-     {
+    async fn ocr_extract_text_command_rejects_a_dropped_pdf_by_name() {
+        // AC25 end-to-end over the real drop path: the guard lives in umbra-core, but it has to
+        // survive this layer's own file read and size check to be the thing the user actually
+        // sees. Written as a command test rather than only a core one for that reason.
+        let app = mock_app_handle();
+
+        let path = temp_file_path("dropped.pdf");
+        std::fs::write(&path, b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n").unwrap();
+
+        let err = ocr_extract_text(path.clone(), app).await.unwrap_err();
+        assert_eq!(err.code, "ocr-pdf-wrong-tool");
+        assert_eq!(err.message, "PDFs open in the PDF tool.");
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn ocr_extract_text_command_returns_tool_error_not_a_panic_for_a_corrupt_truncated_file()
+    {
         let app = mock_app_handle();
 
         let path = temp_file_path("corrupt-truncated.png");
@@ -323,17 +405,17 @@ mod tests {
         let bytes = std::fs::read(&fixture).unwrap();
         std::fs::write(&path, &bytes[..bytes.len() / 2]).unwrap();
 
-        let err = bucket_extract_text(path.clone(), app).await.unwrap_err();
-        assert_eq!(err.code, "bucket-unsupported-format");
+        let err = ocr_extract_text(path.clone(), app).await.unwrap_err();
+        assert_eq!(err.code, "ocr-unsupported-format");
 
         std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
-    async fn bucket_extract_text_command_returns_file_read_error_for_missing_path() {
+    async fn ocr_extract_text_command_returns_file_read_error_for_missing_path() {
         let app = mock_app_handle();
 
-        let err = bucket_extract_text("/nonexistent/path/umbra-test".to_string(), app)
+        let err = ocr_extract_text("/nonexistent/path/umbra-test".to_string(), app)
             .await
             .unwrap_err();
         assert_eq!(err.code, "file-read-error");
@@ -380,14 +462,14 @@ mod tests {
         assert_eq!(TEST_INIT_CALLS.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
-    // `bucket_extract_text_from_clipboard` takes `tauri::ipc::Request`, which — unlike this
+    // `ocr_extract_text_from_clipboard` takes `tauri::ipc::Request`, which — unlike this
     // file's other commands' plain typed params — has no public constructor outside a real IPC
     // invocation (confirmed against the installed `tauri` 2.11.5 source: `Request`'s fields are
     // private, only built via `CommandArg::from_command`). So it can't be called directly with a
     // mock `AppHandle` the way every other command in this file is tested. This is the first
     // command in the codebase needing the full `tauri::test::get_ipc_response` IPC round trip.
     // That normally collides with `generate_context!()` (only callable once per crate, and
-    // `lib.rs` already calls it for the real app — the exact reason `bucket_extract_text`'s own
+    // `lib.rs` already calls it for the real app — the exact reason `ocr_extract_text`'s own
     // tests above avoid it) — but `mock_context(noop_assets())` sidesteps that collision
     // entirely, since it builds a `Context` by hand instead of invoking the macro.
     mod clipboard_command {
@@ -413,7 +495,7 @@ mod tests {
 
         fn clipboard_request(body: InvokeBody, headers: HeaderMap) -> InvokeRequest {
             InvokeRequest {
-                cmd: "bucket_extract_text_from_clipboard".to_string(),
+                cmd: "ocr_extract_text_from_clipboard".to_string(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
                 url: if cfg!(any(windows, target_os = "android")) {
@@ -440,7 +522,7 @@ mod tests {
 
         fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
             mock_builder()
-                .invoke_handler(tauri::generate_handler![bucket_extract_text_from_clipboard])
+                .invoke_handler(tauri::generate_handler![ocr_extract_text_from_clipboard])
                 .build(mock_context(noop_assets()))
                 .expect("failed to build mock app")
         }
@@ -460,11 +542,14 @@ mod tests {
             .expect("command should succeed");
 
             let outcome: OcrOutcome = response.deserialize().unwrap();
+            let text = joined(&outcome);
             assert!(
-                outcome.text.to_uppercase().contains("UMBRA"),
-                "expected extracted text to contain \"UMBRA\", got: {:?}",
-                outcome.text
+                text.to_uppercase().contains("UMBRA"),
+                "expected extracted text to contain \"UMBRA\", got: {text:?}"
             );
+            // The geometry Live Text needs survives the IPC round-trip, not just the text.
+            assert!(outcome.image_width > 0 && outcome.image_height > 0);
+            assert!(outcome.regions.iter().all(|r| r.polygon.len() >= 3));
         }
 
         #[test]
@@ -482,7 +567,7 @@ mod tests {
             .expect_err("command should reject an oversized buffer");
 
             let err: ToolError = serde_json::from_value(response).unwrap();
-            assert_eq!(err.code, "bucket-input-too-large");
+            assert_eq!(err.code, "ocr-input-too-large");
         }
 
         #[test]
@@ -500,7 +585,7 @@ mod tests {
             .expect_err("command should reject a malformed buffer");
 
             let err: ToolError = serde_json::from_value(response).unwrap();
-            assert_eq!(err.code, "bucket-malformed-image-buffer");
+            assert_eq!(err.code, "ocr-malformed-image-buffer");
         }
 
         #[test]
@@ -517,7 +602,7 @@ mod tests {
             .expect_err("command should reject a request with no dimension headers");
 
             let err: ToolError = serde_json::from_value(response).unwrap();
-            assert_eq!(err.code, "bucket-malformed-request");
+            assert_eq!(err.code, "ocr-malformed-request");
         }
     }
 }

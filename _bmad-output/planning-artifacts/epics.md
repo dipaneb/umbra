@@ -71,10 +71,10 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 
 **F7 — The Bucket, v0: local OCR (MVP — flagship demo)**
 
-- FR23: Drop zone accepts images (PNG, JPEG, WebP, pasted screenshots) and extracts text via a local ONNX OCR model (ONNX over macOS Vision, for portability).
-- FR24: Extracted text shown editable with one-click copy; typical screenshot extraction under ~3 s on Apple Silicon.
-- FR25: OCR supports English in v1. Coupling rule: any future French localization must add French to OCR and NL→cron in the same release.
-- FR26: Failed or empty extractions state so explicitly (never a blank result).
+- FR23: Images reach the tool by three paths — a file picker (the canonical keyboard-operable one), drag-and-drop, and paste — and their text is extracted via a local ONNX OCR model (ONNX over macOS Vision, for portability). **Revised 2026-09-06 (Story 8.7):** the picker was added, and the `PNG, JPEG, WebP` enumeration is dropped — the decoder has always accepted fifteen formats, TIFF and BMP included, so the list under-claimed and would drift with the `image` crate's default features. See `prd.md` FR23 for the full revision.
+- FR24: Extracted text is selectable in place on the image (Live Text) with one-click "Copy all text"; typical screenshot extraction under ~3 s on Apple Silicon. **Revised 2026-09-06 (Story 8.7):** no longer editable in the tool — the `<textarea>` (Story 4.2's AC2) is removed. See `prd.md` FR24.
+- FR25: OCR supports English and French. Coupling rule: any future French localization must add French to OCR and NL→cron in the same release. **Revised 2026-09-06 (Story 8.7):** the "English in v1" limitation is retired — it described the documentation, not the bundled multilingual model, whose 6,904-entry dictionary carries the French characters. Character support, not benchmarked accuracy. See `prd.md` FR25.
+- FR26: Failed or empty extractions state so explicitly (never a blank result). **Expanded 2026-09-06 (Story 8.7):** honesty becomes continuous rather than only terminal — low-confidence regions are marked on the image, never as a confidence number. See `prd.md` FR26.
 
 **F8 — Bucket growth (P2)**
 

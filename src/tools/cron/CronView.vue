@@ -10,10 +10,8 @@ import { formatDateTime, resolveLocale } from "../../shell/locale";
 import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import { useSettingsStore } from "../../stores/settings";
 // Per-affordance copy confirmation — the JsonTree / Base64View / HashView /
-// JwtView icon-button pattern (imported cross-tool from the JSON tool with its
-// existing hoist-candidate comment; the hoist is still not done — fifth
-// consumer now).
-import { useCopyFeedback } from "../json/useCopyFeedback";
+// JwtView icon-button pattern.
+import { useCopyFeedback } from "../../shell/useCopyFeedback";
 import CronFieldEditor, { type CronFieldKey } from "./CronFieldEditor.vue";
 import type { CronExplanation } from "./cronExplanation";
 import { cronLocaleFor } from "./describeSchedule";

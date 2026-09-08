@@ -4,7 +4,7 @@ import { createPinia, type Pinia } from "pinia";
 import type { ToolRegistryEntry } from "../stores/registry";
 import { useRegistryStore } from "../stores/registry";
 import { createAppRouter } from "../router";
-import { isEditableTarget, resolveActiveTool, routeDrop, routePaste } from "./dropZone";
+import { isEditableTarget, resolveActiveTool, routeDrop, routePaste, routeDragState } from "./dropZone";
 import DropZone from "./DropZone.vue";
 
 // NOTE: `DropZone.vue`'s component tests live in this same file, rather than
@@ -75,25 +75,25 @@ describe("routeDrop", () => {
   });
 });
 
-const bucketTool: ToolRegistryEntry = {
-  id: "bucket",
-  name: "Bucket",
+const ocrTool: ToolRegistryEntry = {
+  id: "ocr",
+  name: "Image to Text",
   descriptionKey: "test",
-  aliases: ["bucket", "ocr"],
-  route: "/tools/bucket",
-  icon: "bucket",
-  component: () => import("../tools/bucket/BucketView.vue"),
-  drop: { acceptedMimeTypes: [], handler: "bucket_extract_text" },
-  paste: { handler: "bucket_extract_text_from_clipboard" },
+  aliases: ["ocr", "screenshot"],
+  route: "/tools/ocr",
+  icon: "ocr",
+  component: () => import("../tools/ocr/OcrView.vue"),
+  drop: { acceptedMimeTypes: [], handler: "ocr_extract_text" },
+  paste: { handler: "ocr_extract_text_from_clipboard" },
 };
 
 describe("routePaste", () => {
   it("accepts a paste for a tool that declares paste support", () => {
-    const result = routePaste(bucketTool);
+    const result = routePaste(ocrTool);
     expect(result).toEqual({
       accepted: true,
-      toolId: "bucket",
-      handler: "bucket_extract_text_from_clipboard",
+      toolId: "ocr",
+      handler: "ocr_extract_text_from_clipboard",
     });
   });
 
@@ -103,6 +103,33 @@ describe("routePaste", () => {
 
   it("rejects a paste when no tool matches the route", () => {
     expect(routePaste(undefined)).toEqual({ accepted: false });
+  });
+});
+
+describe("routeDragState (AC14)", () => {
+  it("highlights the active tool on enter and while dragging over", () => {
+    expect(routeDragState("enter", ocrTool)).toBe("ocr");
+    expect(routeDragState("over", ocrTool)).toBe("ocr");
+  });
+
+  it("clears on drop, because the result state takes over from the affordance", () => {
+    expect(routeDragState("drop", ocrTool)).toBeNull();
+  });
+
+  it("clears on leave, which is the cancel path", () => {
+    expect(routeDragState("leave", ocrTool)).toBeNull();
+  });
+
+  it("never highlights a tool that does not accept drops", () => {
+    // Lighting up a target on a view that will refuse the file is a lie told a moment before
+    // the refusal.
+    const noDrop: ToolRegistryEntry = { ...ocrTool, id: "pdf", drop: undefined };
+    expect(routeDragState("enter", noDrop)).toBeNull();
+    expect(routeDragState("over", noDrop)).toBeNull();
+  });
+
+  it("never highlights when no tool is active", () => {
+    expect(routeDragState("enter", undefined)).toBeNull();
   });
 });
 
@@ -139,7 +166,15 @@ describe("isEditableTarget", () => {
   });
 });
 
-type DragDropCallback = (event: { payload: { type: string; paths: string[] } }) => void;
+// Mirrors @tauri-apps/api/webview's own `DragDropEvent` union: `over` and `leave` carry no
+// `paths`, which Story 8.7's drag-over state (AC14) is the first code here to exercise.
+type DragDropCallback = (event: {
+  payload:
+    | { type: "enter"; paths: string[] }
+    | { type: "over" }
+    | { type: "drop"; paths: string[] }
+    | { type: "leave" };
+}) => void;
 
 const { onDragDropEventMock, unlistenMock, invokeMock, readClipboardImageMock } = vi.hoisted(() => ({
   onDragDropEventMock: vi.fn(),
@@ -274,7 +309,9 @@ describe("DropZone", () => {
   it("ignores non-drop drag events (e.g. hover/enter)", async () => {
     await setupDropZone("/tools/base64");
 
-    capturedCallback?.({ payload: { type: "over", paths: [] } });
+    // `over` carries no `paths` in Tauri's own event union — the loose local type this spec
+    // used to declare had let an impossible payload through.
+    capturedCallback?.({ payload: { type: "over" } });
     await flushPromises();
 
     expect(invokeMock).not.toHaveBeenCalled();
@@ -397,40 +434,40 @@ describe("DropZone", () => {
 });
 
 describe("DropZone paste dispatch (Story 4.2)", () => {
-  it("dispatches ⌘V as a clipboard-image paste when Bucket is active and the target isn't editable (AC1)", async () => {
+  it("dispatches ⌘V as a clipboard-image paste when Image to Text is active and the target isn't editable (AC1)", async () => {
     readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
     invokeMock.mockResolvedValueOnce({ text: "UMBRA", confidence: 0.9 });
-    const { pinia } = await setupDropZone("/tools/bucket");
+    const { pinia } = await setupDropZone("/tools/ocr");
     const registry = useRegistryStore(pinia);
 
     dispatchPasteKeydown();
     await flushPromises();
 
     expect(readClipboardImageMock).toHaveBeenCalledTimes(1);
-    expect(invokeMock).toHaveBeenCalledWith("bucket_extract_text_from_clipboard", SAMPLE_CLIPBOARD_IMAGE.rgba, {
+    expect(invokeMock).toHaveBeenCalledWith("ocr_extract_text_from_clipboard", SAMPLE_CLIPBOARD_IMAGE.rgba, {
       headers: { "x-image-width": "1", "x-image-height": "1" },
     });
-    expect(registry.pasteResult).toEqual({ toolId: "bucket", value: { text: "UMBRA", confidence: 0.9 } });
+    expect(registry.pasteResult).toEqual({ toolId: "ocr", value: { text: "UMBRA", confidence: 0.9 } });
   });
 
   it("stores a ToolError on the registry when the paste handler rejects", async () => {
     readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
     invokeMock.mockRejectedValueOnce({
-      code: "bucket-malformed-image-buffer",
+      code: "ocr-malformed-image-buffer",
       message: "RGBA buffer is 3 bytes, which does not match 10x10x4 = 400 bytes",
       position: null,
       context: null,
     });
-    const { pinia } = await setupDropZone("/tools/bucket");
+    const { pinia } = await setupDropZone("/tools/ocr");
     const registry = useRegistryStore(pinia);
 
     dispatchPasteKeydown();
     await flushPromises();
 
     expect(registry.pasteResult).toEqual({
-      toolId: "bucket",
+      toolId: "ocr",
       error: {
-        code: "bucket-malformed-image-buffer",
+        code: "ocr-malformed-image-buffer",
         message: "RGBA buffer is 3 bytes, which does not match 10x10x4 = 400 bytes",
         position: null,
         context: null,
@@ -450,11 +487,11 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
 
   // Critical regression-prevention test (Story 4.2 Task 4/6): ⌘V is the standard OS text-paste
   // shortcut, used everywhere in this app (Hash's textarea, JSON's input, Cron's fields, and
-  // Bucket's own editable text-output field). A naive global listener would break normal
+  // the OCR view's own editable text-output field). A naive global listener would break normal
   // text-paste in all of them. This must never fire the image-paste dispatch when focus is
-  // inside an editable element, even with the Bucket route active.
-  it("does NOT intercept ⌘V when the event target is an editable element, even with Bucket active (regression)", async () => {
-    await setupDropZone("/tools/bucket");
+  // inside an editable element, even with the Image to Text route active.
+  it("does NOT intercept ⌘V when the event target is an editable element, even with Image to Text active (regression)", async () => {
+    await setupDropZone("/tools/ocr");
 
     const textarea = document.createElement("textarea");
     document.body.appendChild(textarea);
@@ -471,8 +508,8 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
     }
   });
 
-  it("does NOT intercept ⌘V when focus is inside an <input>, even with Bucket active (regression)", async () => {
-    await setupDropZone("/tools/bucket");
+  it("does NOT intercept ⌘V when focus is inside an <input>, even with Image to Text active (regression)", async () => {
+    await setupDropZone("/tools/ocr");
 
     const input = document.createElement("input");
     document.body.appendChild(input);
@@ -490,7 +527,7 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
   it("does NOT intercept a repeated (held-key) ⌘V keydown, only the initial press", async () => {
     readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
     invokeMock.mockResolvedValueOnce({ text: "UMBRA", confidence: 0.9 });
-    await setupDropZone("/tools/bucket");
+    await setupDropZone("/tools/ocr");
 
     dispatchPasteKeydown(window, { repeat: false });
     await flushPromises();
@@ -510,7 +547,7 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
     readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
     invokeMock.mockResolvedValueOnce({ text: "from paste", confidence: 0.8 });
 
-    const { pinia } = await setupDropZone("/tools/bucket");
+    const { pinia } = await setupDropZone("/tools/ocr");
     const registry = useRegistryStore(pinia);
 
     capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/screenshot.png"] } });
@@ -521,13 +558,13 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
 
     // The paste (dispatched after the drop) resolves and wins...
     expect(registry.dropResult).toBeNull();
-    expect(registry.pasteResult).toEqual({ toolId: "bucket", value: { text: "from paste", confidence: 0.8 } });
+    expect(registry.pasteResult).toEqual({ toolId: "ocr", value: { text: "from paste", confidence: 0.8 } });
 
     // ...then the older, superseded drop resolves after it and must not overwrite the paste's outcome.
     resolveDrop!({ text: "from drop", confidence: 0.7 });
     await flushPromises();
     expect(registry.dropResult).toBeNull();
-    expect(registry.pasteResult).toEqual({ toolId: "bucket", value: { text: "from paste", confidence: 0.8 } });
+    expect(registry.pasteResult).toEqual({ toolId: "ocr", value: { text: "from paste", confidence: 0.8 } });
   });
 
   it("latest-wins: a drop dispatched after an in-flight paste for the same tool wins when it resolves first (AC4, AD-16)", async () => {
@@ -539,7 +576,7 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
     invokeMock.mockReturnValueOnce(pastePromise);
     invokeMock.mockResolvedValueOnce({ text: "from drop", confidence: 0.7 });
 
-    const { pinia } = await setupDropZone("/tools/bucket");
+    const { pinia } = await setupDropZone("/tools/ocr");
     const registry = useRegistryStore(pinia);
 
     dispatchPasteKeydown();
@@ -550,12 +587,138 @@ describe("DropZone paste dispatch (Story 4.2)", () => {
 
     // The drop (dispatched after the paste) resolves and wins...
     expect(registry.pasteResult).toBeNull();
-    expect(registry.dropResult).toEqual({ toolId: "bucket", value: { text: "from drop", confidence: 0.7 } });
+    expect(registry.dropResult).toEqual({ toolId: "ocr", value: { text: "from drop", confidence: 0.7 } });
 
     // ...then the older, superseded paste resolves after it and must not overwrite the drop's outcome.
     resolvePaste!({ text: "from paste", confidence: 0.8 });
     await flushPromises();
     expect(registry.pasteResult).toBeNull();
-    expect(registry.dropResult).toEqual({ toolId: "bucket", value: { text: "from drop", confidence: 0.7 } });
+    expect(registry.dropResult).toEqual({ toolId: "ocr", value: { text: "from drop", confidence: 0.7 } });
+  });
+});
+
+describe("DropZone drag-over state (Story 8.7, AC14)", () => {
+  it("publishes the active tool while a drag is over the window and clears it on drop", async () => {
+    invokeMock.mockResolvedValueOnce({ regions: [], image_width: 1, image_height: 1 });
+    const { pinia } = await setupDropZone("/tools/ocr");
+    const registry = useRegistryStore(pinia);
+
+    expect(registry.dragOverToolId).toBeNull();
+
+    capturedCallback?.({ payload: { type: "enter", paths: ["/tmp/a.png"] } });
+    expect(registry.dragOverToolId).toBe("ocr");
+
+    capturedCallback?.({ payload: { type: "over" } });
+    expect(registry.dragOverToolId).toBe("ocr");
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/a.png"] } });
+    await flushPromises();
+    // The highlight must never outlive the gesture that caused it.
+    expect(registry.dragOverToolId).toBeNull();
+  });
+
+  it("clears the drag state when the drag leaves the window without dropping", async () => {
+    const { pinia } = await setupDropZone("/tools/ocr");
+    const registry = useRegistryStore(pinia);
+
+    capturedCallback?.({ payload: { type: "enter", paths: ["/tmp/a.png"] } });
+    expect(registry.dragOverToolId).toBe("ocr");
+
+    capturedCallback?.({ payload: { type: "leave" } });
+    expect(registry.dragOverToolId).toBeNull();
+  });
+
+  it("does not highlight a tool that declares no drop support", async () => {
+    const { pinia } = await setupDropZone("/tools/pdf");
+    const registry = useRegistryStore(pinia);
+
+    capturedCallback?.({ payload: { type: "enter", paths: ["/tmp/a.pdf"] } });
+
+    expect(registry.dragOverToolId).toBeNull();
+  });
+});
+
+describe("DropZone paste source image (Story 8.7, AC12)", () => {
+  it("publishes the very pixels it read, so the view never reads the clipboard itself", async () => {
+    // AD-14 gives the shell the OS I/O edge exactly once. A second read in the view would also
+    // be racy: the clipboard can change during the ~3 s inference.
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockResolvedValueOnce({ regions: [], image_width: 1, image_height: 1 });
+    const { pinia } = await setupDropZone("/tools/ocr");
+    const registry = useRegistryStore(pinia);
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    expect(readClipboardImageMock).toHaveBeenCalledTimes(1);
+    expect(registry.pasteSourceImage).toEqual({
+      toolId: "ocr",
+      rgba: SAMPLE_CLIPBOARD_IMAGE.rgba,
+      width: 1,
+      height: 1,
+    });
+  });
+
+  it("clears the source image when the paste handler rejects", async () => {
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    invokeMock.mockRejectedValueOnce({
+      code: "ocr-unsupported-format",
+      message: "nope",
+      position: null,
+      context: null,
+    });
+    const { pinia } = await setupDropZone("/tools/ocr");
+    const registry = useRegistryStore(pinia);
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    expect(registry.pasteSourceImage).toBeNull();
+    expect(registry.pasteResult).toMatchObject({ toolId: "ocr" });
+  });
+});
+
+describe("DropZone publishes the source before the handler resolves (Story 8.7, AC33)", () => {
+  it("publishes the dropped path while the command is still in flight", async () => {
+    // The bug this pins: publishing the path inside the success branch meant the view could not
+    // show the image until AFTER inference. On a full-screen Retina capture that was measured at
+    // 13 seconds of blank pane — the exact "did it even take my file?" gap the in-flight state
+    // exists to close.
+    let resolveInvoke: (value: unknown) => void = () => {};
+    invokeMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveInvoke = resolve;
+    }));
+    const { pinia } = await setupDropZone("/tools/ocr");
+    const registry = useRegistryStore(pinia);
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/shot.png"] } });
+    await flushPromises();
+
+    expect(registry.dropSourcePath).toEqual({ toolId: "ocr", path: "/tmp/shot.png" });
+    expect(registry.dropResult).toBeNull();
+
+    resolveInvoke({ regions: [], image_width: 1, image_height: 1 });
+    await flushPromises();
+    expect(registry.dropResult).not.toBeNull();
+  });
+
+  it("publishes the pasted pixels while the command is still in flight", async () => {
+    readClipboardImageMock.mockResolvedValueOnce(SAMPLE_CLIPBOARD_IMAGE);
+    let resolveInvoke: (value: unknown) => void = () => {};
+    invokeMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveInvoke = resolve;
+    }));
+    const { pinia } = await setupDropZone("/tools/ocr");
+    const registry = useRegistryStore(pinia);
+
+    dispatchPasteKeydown();
+    await flushPromises();
+
+    expect(registry.pasteSourceImage).toMatchObject({ toolId: "ocr", width: 1, height: 1 });
+    expect(registry.pasteResult).toBeNull();
+
+    resolveInvoke({ regions: [], image_width: 1, image_height: 1 });
+    await flushPromises();
+    expect(registry.pasteResult).not.toBeNull();
   });
 });

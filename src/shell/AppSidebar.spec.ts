@@ -763,7 +763,7 @@ describe("Clipboard-suggestion surface (Story 7.8)", () => {
     expect(callout.attributes("href")).toBe("/tools/base64");
   });
 
-  it("shows a callout for image content, suggesting Bucket, without ever reading clipboard text (AC12)", async () => {
+  it("shows a callout for image content, suggesting Image to Text, without ever reading clipboard text (AC12)", async () => {
     const { wrapper } = await mountSidebar();
 
     triggerClipboardChange("image");
@@ -771,9 +771,9 @@ describe("Clipboard-suggestion surface (Story 7.8)", () => {
     await flushPromises();
 
     const callout = wrapper.find(".clipboard-match");
-    expect(callout.text()).toContain("Bucket");
+    expect(callout.text()).toContain("Image to Text");
     expect(callout.text()).toContain("Image copied");
-    expect(callout.attributes("href")).toBe("/tools/bucket");
+    expect(callout.attributes("href")).toBe("/tools/ocr");
     expect(readText).not.toHaveBeenCalled();
   });
 

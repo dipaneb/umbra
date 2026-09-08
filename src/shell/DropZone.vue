@@ -6,7 +6,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { readClipboardImage } from "./clipboard";
 import { useRegistryStore } from "../stores/registry";
 import { toToolError } from "./toolError";
-import { isEditableTarget, resolveActiveTool, routeDrop, routePaste } from "./dropZone";
+import { isEditableTarget, resolveActiveTool, routeDragState, routeDrop, routePaste } from "./dropZone";
 
 const route = useRoute();
 const registry = useRegistryStore();
@@ -35,24 +35,36 @@ async function dispatchPaste(toolId: string, handler: string) {
   }
 
   try {
+    // The runner returns the outcome AND the pixels it was recognised from, rather than the
+    // closure assigning to a captured `let`: reading the clipboard twice would be a second OS
+    // I/O edge (AD-14) and racy, since the clipboard can change during the ~3 s inference.
     const result = await runLatestWins(async () => {
-      const { rgba, width, height } = await readClipboardImage();
-      return invoke<unknown>(handler, rgba, {
+      const image = await readClipboardImage();
+      const { rgba, width, height } = image;
+      // AC33: published as soon as the pixels are read, before the inference — same reason as
+      // the drop path above. Last write wins, which is exactly latest-wins semantics for a
+      // display: if a second paste lands, its image is the one on screen.
+      registry.pasteSourceImage = { toolId, ...image };
+      const value = await invoke<unknown>(handler, rgba, {
         headers: { "x-image-width": String(width), "x-image-height": String(height) },
       });
+      return { value, image };
     });
     if (!result.superseded && isStillActive()) {
-      registry.pasteResult = { toolId, value: result.value };
+      registry.pasteResult = { toolId, value: result.value.value };
     }
   } catch (err) {
-    if (isStillActive()) registry.pasteResult = { toolId, error: toToolError(err) };
+    if (isStillActive()) {
+      registry.pasteResult = { toolId, error: toToolError(err) };
+      registry.pasteSourceImage = null;
+    }
   }
 }
 
 // Capture-phase, app-scope listener mirroring `CommandPalette.vue`'s own ⌘K pattern. ⌘V is the
 // standard OS text-paste shortcut used everywhere in this app — this must NOT intercept it while
-// focus is inside an editable element (Hash's textarea, JSON's input, Cron's fields, Bucket's own
-// editable output field); only a non-editable target with a paste-declaring tool active means
+// focus is inside an editable element (Hash's textarea, JSON's input, Cron's fields, the OCR view's
+// find field); only a non-editable target with a paste-declaring tool active means
 // "paste an image" (Story 4.2).
 function onKeydown(event: KeyboardEvent) {
   const isPasteShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v";
@@ -70,9 +82,15 @@ onMounted(async () => {
   window.addEventListener("keydown", onKeydown, true);
   try {
     unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
+      const activeTool = resolveActiveTool(route.path, registry.tools);
+
+      // AC14: publish drag-over state for the active tool's view to render a highlight.
+      // Every event type updates it, including `drop` and `leave`, which clear it — so the
+      // highlight can never outlive the gesture that caused it.
+      registry.dragOverToolId = routeDragState(event.payload.type, activeTool);
+
       if (event.payload.type !== "drop") return;
 
-      const activeTool = resolveActiveTool(route.path, registry.tools);
       const routing = routeDrop(event.payload.paths, activeTool);
 
       if (!routing.accepted) {
@@ -98,13 +116,20 @@ onMounted(async () => {
         return resolveActiveTool(route.path, registry.tools)?.id === toolId;
       }
 
+      // AC33 (Story 8.7): published BEFORE the invoke, not after it resolves. A view that wants
+      // to show the dropped file while the command runs — Image to Text renders the image in the
+      // first frame, so a ~3 s (or, on a full-screen Retina capture, much longer) inference
+      // happens against something recognisable instead of a blank pane — cannot do that if the
+      // path only arrives with the result. Views that merely want the path afterwards (HashView)
+      // are unaffected: they read it, they do not wait on it.
+      registry.dropSourcePath = { toolId, path };
+
       try {
         const result = await runLatestWins(() =>
           invoke<unknown>(activeTool!.drop!.handler, { path, ...extraArgs }),
         );
         if (!result.superseded && isStillActive()) {
           registry.dropResult = { toolId, value: result.value };
-          registry.dropSourcePath = { toolId, path };
         }
       } catch (err) {
         if (isStillActive()) {

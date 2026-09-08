@@ -9,13 +9,10 @@ import AppPopover from "../../components/AppPopover.vue";
 import { writeClipboardText } from "../../shell/clipboard";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
-// Story 8.3 slice 2 (AC13): reuse JSON's per-button "copied" feedback
+// Story 8.3 slice 2 (AC13): reuse the shared per-button "copied" feedback
 // composable — same signature-accent confirm the JSON tree / Base64 output
-// copy buttons use. It sits in src/tools/json/; a third consumer (JSON,
-// Base64, now UUID) is exactly what would justify hoisting it to src/shell/,
-// but that hoist is left to a dedicated refactor so this story stays an
-// island (AD-6) — the cross-tool import is deliberate, not accidental.
-import { useCopyFeedback } from "../json/useCopyFeedback";
+// copy buttons use.
+import { useCopyFeedback } from "../../shell/useCopyFeedback";
 import { useSettingsStore } from "../../stores/settings";
 import type { UuidVersion } from "./uuidVersion";
 

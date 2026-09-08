@@ -1,7 +1,7 @@
 // `pub` (not `mod`): Story 4.3's `tests/ocr_engine_race.rs` integration test needs
-// `commands::bucket::ocr_engine` reachable from outside this crate — an integration-test binary
+// `commands::ocr::ocr_engine` reachable from outside this crate — an integration-test binary
 // links against this crate's ordinarily-compiled rlib, so a private `mod` here would be
-// unreachable to it regardless of visibility inside `commands/bucket.rs` itself.
+// unreachable to it regardless of visibility inside `commands/ocr.rs` itself.
 mod clipboard_watch;
 pub mod commands;
 mod fs_helper;
@@ -10,7 +10,6 @@ use commands::base64::{
     base64_decode, base64_decode_to_file, base64_encode, base64_ingest_file, base64_parse_data_uri,
     base64_sniff,
 };
-use commands::bucket::{bucket_extract_text, bucket_extract_text_from_clipboard};
 use commands::cron::cron_explain;
 use commands::hash::{hash_compute, hash_compute_file};
 use commands::image::{bucket_convert_image, bucket_estimate_image_size};
@@ -18,6 +17,7 @@ use commands::json::{
     json_diff, json_format, json_minify, json_parse, json_query, json_repair, json_transform,
 };
 use commands::jwt::jwt_decode;
+use commands::ocr::{ocr_extract_text, ocr_extract_text_from_clipboard};
 use commands::pdf::{bucket_extract_pdf_pages, bucket_extract_pdf_text, bucket_merge_pdfs};
 use commands::uuid::{uuid_export, uuid_generate};
 
@@ -62,8 +62,8 @@ pub fn run() {
             uuid_export,
             hash_compute,
             hash_compute_file,
-            bucket_extract_text,
-            bucket_extract_text_from_clipboard,
+            ocr_extract_text,
+            ocr_extract_text_from_clipboard,
             jwt_decode,
             cron_explain,
             bucket_merge_pdfs,

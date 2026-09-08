@@ -52,6 +52,7 @@ describe("router", () => {
     expect(matched[0].components?.default).toBe(SettingsView);
 
     const registry = useRegistryStore(pinia);
-    expect(registry.tools).toHaveLength(7);
+    // 9 since Story 8.7 split the `bucket` entry into `ocr` / `pdf` / `image` (AC7).
+    expect(registry.tools).toHaveLength(9);
   });
 });

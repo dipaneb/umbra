@@ -9,12 +9,12 @@ import { debounce } from "../../shell/debounce";
 import { createLatestWinsRunner } from "../../shell/invoke";
 import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import { useRegistryStore } from "../../stores/registry";
-// Story 8.2 slice 1: reuse JSON's per-button "copied" feedback composable
+// Story 8.2 slice 1: reuse the shared per-button "copied" feedback composable
 // rather than reinvent it — same signature-accent confirm pattern
 // `JsonTree.vue` / `JsonView.vue`'s copy buttons already use. A single
 // output-panel Copy button only ever has one thing to confirm, so it keys
 // off one fixed string, exactly like JsonView's Transform-tab copy button.
-import { useCopyFeedback } from "../json/useCopyFeedback";
+import { useCopyFeedback } from "../../shell/useCopyFeedback";
 
 const { t } = useI18n();
 

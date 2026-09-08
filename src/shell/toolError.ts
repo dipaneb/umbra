@@ -27,7 +27,10 @@ export function toToolError(err: unknown): ToolError {
 // authored in English (crates/umbra-core), so this is the one seam that lets
 // the shell show a French error without touching Rust.
 //
-// Deliberately NOT a blanket translation of all 27 ToolError codes. Most of
+// Deliberately NOT a blanket translation of every ToolError code the
+// workspace defines — a count that moves every story, so it is deliberately
+// not written here as a number (it read "27" until Story 8.7, by which point
+// the real figure was seventy-odd). Most of
 // them embed a Rust-side runtime value baked into the message string itself
 // (a byte count, a limit, a raw serde_json/base64-crate error) with no
 // separate field carrying that value — re-translating the sentence around it
@@ -102,7 +105,37 @@ const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   // (cron-input-too-large), so this is the sole cron-* addition here.
   "cron-six-field-unsupported",
   "cron-no-upcoming-runs",
+  // Story 8.7 AC24/AC25: the two `ocr-*` codes that meet 8.6's criterion — a fixed, value-free
+  // sentence we wrote ourselves. Both messages are authored in
+  // `crates/umbra-core/src/ocr.rs` as named constants
+  // (`UNSUPPORTED_FORMAT_MESSAGE` / `PDF_WRONG_TOOL_MESSAGE`) with Rust-side tests asserting
+  // the exact prose, so the sentence a French user gets here cannot silently diverge from the
+  // English one it replaces.
+  //
+  // `ocr-unsupported-format` is the single most-hit error in the tool — every non-image drop
+  // lands there — and until this story it rendered the `image` crate's own English prose.
+  "ocr-unsupported-format",
+  "ocr-pdf-wrong-tool",
 ]);
+
+// Story 8.7 AC26: the `ocr-*` codes deliberately NOT in the set above, each with its reason.
+// "Not yet done" is not one of them — every exclusion here is a property of the code itself:
+//
+// - `ocr-engine-init-failed`, `ocr-internal`  — wrap a Rust-side error (ONNX/model-load
+//   failure, a `spawn_blocking` join failure) whose text is the underlying library's, not ours.
+// - `ocr-extraction-failed`                   — wraps `oar-ocr`'s own error text, same reason.
+// - `ocr-input-too-large`                     — embeds a byte count and the limit in prose.
+// - `ocr-malformed-image-buffer`              — embeds the buffer length and the w x h x 4
+//                                               product it failed to match.
+// - `ocr-malformed-request`                   — excluded for a distinct reason worth stating:
+//   it carries FOUR different sentences under ONE code (missing header / header not UTF-8 /
+//   header not a u32 / a JSON body where raw bytes were expected), and three of them embed the
+//   offending header's name. A single `errors.<code>` lookup cannot express that without
+//   splitting the code four ways or misreporting three of the four. It is also unreachable by
+//   users in any case — it fires only if our own shell sends a malformed IPC request.
+//
+// The `bucket-pdf-*` and `bucket-image-*` codes are out of scope here, not excluded: they
+// belong to the PDF and Images tools, which Stories 8.8 and 8.9 redesign.
 
 export function toolErrorMessage(err: ToolError, t: Translate): string {
   if (TRANSLATABLE_CODES.has(err.code)) {

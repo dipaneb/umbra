@@ -4,7 +4,7 @@ baseline_commit: d576c3e
 
 # Story 8.7: Reimagine the Bucket — OCR
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -95,7 +95,7 @@ so that the redesign reflects a deliberately chosen scope, not a visual reskin o
 
 18. **Given** `image::load_from_memory` is `ImageReader::with_guessed_format().decode()` and **`decode()` does not apply EXIF orientation** — the crate requires calling `orientation()` / `apply_orientation()` explicitly, and we never have — so a phone photo taken sideways reaches the detector rotated 90°, detection largely fails, and the user is told "no text found" about an image full of text, **when** Task 2b completes, **then** `extract_text` reads the decoder's EXIF orientation and applies it **before** recognition, and `image_width`/`image_height` (AC16) report the **oriented** dimensions. A new fixture carrying real EXIF rotation is added, and its test asserts the text is recovered — not merely that the call returned `Ok`. The RGBA clipboard path is unaffected (already-decoded pixels carry no EXIF).
 
-19. **Given** `OarOcrEngine::new` calls `OAROCRBuilder::new(det, rec, dict).build()` and nothing else — six inherited defaults, in the app's only AI feature — **when** Task 2b completes, **then** the pipeline is configured explicitly for the first time: `.text_detection_config(...)` with **`limit_side_len = 1600`** (raised from the inherited 960; a 3024 px screenshot goes from a 3.1× downscale to 1.9×), and `.text_recognition_config(...)` with **`max_text_length` set explicitly** to the value AC20 establishes. Every remaining default stays put **deliberately and with an in-file comment saying so** — recognition `score_threshold = 0.0` (nothing filtered, and load-bearing for AC17), `return_word_box = false`, no text-line orientation classifier, no execution provider. A value inherited without a comment is a failed AC19.
+19. **Given** `OarOcrEngine::new` calls `OAROCRBuilder::new(det, rec, dict).build()` and nothing else — six inherited defaults, in the app's only AI feature — and **given, verified against the vendored `oar-ocr-0.6.3` source during Task 2b's overlay spike, that `build()` wraps the entire `general` preset in `if !has_explicit_det_cfg`**, so passing a `TextDetectionConfig` **at all** opts out of *every field of it*, and `TextDetectionConfig::default()` does **not** reproduce it — `unclip_ratio` 2.0 → 1.5, `max_side_len` 4000 → `None`, and, most seriously, `limit_type` `Max` → `None`, which `DetResizeForTest` resolves to **`Min`** and thereby *inverts* the resize, so `limit_side_len` stops capping the long side and starts padding the short side up to it (measured: a 1520×920 image upscaled to ≈2645×1600 instead of being left alone) — **when** Task 2b completes, **then** the detection pipeline is configured explicitly for the first time and **states all seven fields, none inherited**: `score_threshold = 0.3`, `box_threshold = 0.6`, `unclip_ratio = 2.0`, `max_candidates = 1000`, `max_side_len = 4000` and `limit_type = Max` — each carrying an in-file comment saying it reproduces today's shipped `general` preset rather than being chosen afresh — plus **`limit_side_len = 1600`**, the one deliberate change (raised from the inherited 960; a 3024 px screenshot goes from a 3.1× downscale to 1.9×). `.text_recognition_config(...)` sets **`max_text_length` explicitly** to the value AC20 establishes. Recognition `score_threshold = 0.0` (nothing filtered, and load-bearing for AC17), `return_word_box = false`, no text-line orientation classifier and no execution provider all remain the shape, each with an in-file comment saying so. **A value that reaches the engine without an in-file comment saying why it holds that value is a failed AC19** — and a `..Default::default()` struct-update in the detection config is a failed AC19 *by construction*, because that is exactly how the preset is silently lost.
 
 20. **Given** `max_text_length` is genuinely ambiguous in the vendored source — `TextRecognitionConfig::default()` says 25, the predictor builder says 100, the crate's own test fixture says 128 — and if 25 bounds CTC decoding then long lines truncate silently while every existing fixture assertion is `contains("UMBRA")` on a short fixture, **when** Task 2b completes, **then** a test extracts a fixture line **well over 25 characters** and asserts the **full string** survives. **This test lands regardless of its outcome.** If it fails, that is a shipping bug more severe than the reading-order one and setting the value explicitly is the fix; if it passes, the explicit setting is what stops it drifting. Asserting "it extracted something" is a failed AC20.
 
@@ -208,11 +208,17 @@ so that the redesign reflects a deliberately chosen scope, not a visual reskin o
 
 34. **Given** recognised regions carry polygons in `image_width`/`image_height` space (AC16), **when** the result renders, **then** each region becomes a **transparent, selectable** span positioned over the image, scaled by a **single uniform factor** (`renderedWidth / image_width`) applied to both axes. Spans sit in the DOM in the reading order core produced (AC21) — which is what makes a native drag-select from one region through to a later one pick up everything between them. **The extracted text is rendered exactly once**, on the image: no textarea, no second pane, no transcript below.
 
-    **Each span's text is fitted to its own region box** — `font-size` derived from the region's scaled height, and `letter-spacing` (or a horizontal transform) adjusted so the span's rendered text width matches the region's scaled width. This is not cosmetic: it is what makes a browser-native selection highlight land on the words underneath it, and anything that highlights *part* of a region (AC38's match marking) inherits exactly that accuracy. A span that is not width-fitted produces selection highlights visibly offset from the pixels — the one failure mode that would make Live Text feel broken rather than approximate. Per-word geometry is **not** available to do better: `return_word_box` is `false` (AC19) and enabling it is Cut #4, so region-fitted text is the honest ceiling, and a render review is where its accuracy is judged.
+    **Each span is fitted to its own region using the region's own quadrilateral, not its axis-aligned bounding box.** Measured during Task 2b's spike against real detection output: `oar-ocr`'s `get_mini_boxes` returns a **rotated minimum-area rectangle**, and a photo of a document carries ~3.3° of genuine tilt — which across a 650 px line is ~37 px of vertical drift, a full line-height, enough to walk the span clean off the words by the end of the sentence. So, per region, in render space: the span is positioned at the quad's first point; its **target width** is the length of the quad's top edge; its `font-size` is the length of the perpendicular edge times a **single named calibration constant** — measured ink fills only 57–67 % of box height on screenshots and ~86 % on a document photo, so ≈**0.62** is the starting value, tuned once at a render review, and `font-size` taken as the region's *full* scaled height renders every span about half again too large; its `letter-spacing` is then adjusted so the span's **measured** rendered width matches the target width; and the whole span is rotated by `atan2` of the top edge, `transform-origin` at that same first point. **At 0° this degenerates exactly to the axis-aligned case**, so screenshots are unaffected and there is one code path, not two.
+
+    Width-fitting is what makes a browser-native selection highlight land on the words underneath, and anything that highlights *part* of a region (AC38's match marking) inherits exactly that accuracy. It is achievable, and the spike measured why: ink fills **97 % of the region's width**, median, so `unclip_ratio = 2.0`'s expansion barely touches the axis a selection highlight cares about — the systematic overshoot lands on *height*, which the calibration constant absorbs. A span that is not width-fitted, or that ignores the quad's tilt, produces selection highlights visibly offset from the pixels — the one failure mode that would make Live Text feel broken rather than approximate. Per-word geometry is **not** available to do better: `return_word_box` is `false` (AC19) and enabling it is Cut #4, so region-fitted text is the honest ceiling, and a render review is where its accuracy is judged. **The skew angle used here is not `orientation_angle`** — that is line-*orientation classification*, it needs a third bundled model, and it stays cut (Cut #7); the fine angle is derived from the bounding polygon this story already carries across the core boundary (AC16), at no extra cost and with no new model.
 
 35. **Given** an image can be far larger than the pane, **when** it renders, **then** it is **fit to the pane** — whole image always visible, aspect preserved, **no zoom, no pan, no scroll** — and an image **smaller** than the pane renders at **natural size and is never upscaled**. One scale factor, one coordinate transform: zoom would add a second transform, scroll-position synchronisation and a viewport model, for a job that ends the moment the user pastes. `⌘F` (AC38) is the answer to "now it's too small to find".
 
-36. **Given** FR26's honesty must become continuous rather than terminal, **when** regions render, **then** two markers appear **on the image** and **no confidence number is ever shown**: a region scoring below a single **named threshold constant** gets a **dotted underline**, and a region whose `text` is `None` — found by the detector, failed by the recogniser — gets a **dashed outline box**. The two signals differ in **shape, not hue**, so they survive a colour-blind viewer and a greyscale screenshot (DESIGN.md's diff-colour precedent: icons and strikethrough carry the signal independently of colour). Both are verified in **light and dark** at a render review. This is honest by construction because recognition's `score_threshold` stays `0.0` (AC19) — the view sees every region the model saw.
+36. **Given** FR26's honesty must become continuous rather than terminal, **when** regions render, **then** two markers appear **on the image** and **no confidence number is ever shown**: a region scoring below a single **named threshold constant** — **`LOW_CONFIDENCE_THRESHOLD = 0.90`**, developer's call 2026-09-07, chosen against measurement rather than taste (the design canvas had proposed 0.75, which the measurements showed to be too permissive) — gets a **dotted underline**, and a region whose `text` is `None` — found by the detector, failed by the recogniser — gets a **dashed outline box**. The two signals differ in **shape, not hue**, so they survive a colour-blind viewer and a greyscale screenshot (DESIGN.md's diff-colour precedent: icons and strikethrough carry the signal independently of colour). Both are verified in **light and dark** at a render review. This is honest by construction because recognition's `score_threshold` stays `0.0` (AC19) — the view sees every region the model saw.
+
+    **The threshold's evidence, and the limit it does not cross** (measured at Task 2b, replacing this AC's original unevidenced 0.75): out-of-vocabulary regions score `⌘` **0.0000**, `⇧` **0.4961**, `⌥` **0.5203**, `⌘⇧⌥⌃` **0.6451**, `⌘V` **0.8909**; the 36 correctly-recognised regions across the quality corpus score **0.9504 minimum**, 0.9879 median. So 0.90 marks every out-of-vocabulary region measured — including the two-character `⌘V` case at 0.8909, which both 0.75 and 0.89 would have missed — with **zero false positives** on real text. It sits in a wide gap: 0.25 above the worst garbage region, 0.05 below the lowest correct one.
+
+    **What this marking cannot do, stated because the original rationale over-claimed it.** This AC previously framed low-confidence marking as the primary defence against FR26 "confident nonsense". It is not, and cannot be: region confidence is the **arithmetic mean of per-character probabilities** (`oar-ocr-core-0.6.3/src/processors/decode.rs:236`), so one wrong character in a long line is arithmetically invisible. Measured on the same image, the line *"…or paste (⌘V), to extract its text."* — with `⌘` read as `8` — scored **0.9735** against **0.9763** for the identical line without the symbol. No threshold separates those, since correct regions run down to 0.9504. The corpus already contains an unflagged instance: `Request-Id:4f2a9c1e` recognised as `4f2a9c**l**e` at 0.9531. Catching intra-region substitutions requires **per-character confidence**, which `oar-ocr` computes and averages away before it reaches any public type — filed as backlog candidate [**#135**](https://github.com/dipaneb/umbra/issues/135), not a tuning knob. **The real defence against a confidently-wrong character is architectural, and this story already ships it:** Live Text renders the recognised text *on the pixels*, so the `8` sits directly over a visible `⌘` and the user's eye is one glance from the truth.
 
 37. **Given** the job is copy-and-leave, **when** a result is on screen, **then** **"Copy all text"** is a **24px ghost icon-button** pinned to the image's top-right — the anatomy already used by JsonTree, Base64View, HashView, JwtView and CronView, with `useCopyFeedback` confirmation (AC15) and an `aria-label` carrying the name — **not** a labelled button competing with the surface it sits on, and **not** placed below the image where it would reopen a second zone. **`⌘A` with focus inside the overlay selects every recognised region**, so `⌘C` yields the whole result without touching the control and copy-and-leave has a pure keyboard path (NFR5).
 
@@ -250,11 +256,19 @@ so that the redesign reflects a deliberately chosen scope, not a visual reskin o
   - [x] In the same discovery room, resolve the decision record's open items and write real AC7+ into a new `## Acceptance Criteria — Task 2 (Redesign)` section above, scoped strictly to `8-7-ocr-decision-record.md` plus the developer's canvas picks and the files AC4 authorises (see Project Structure Notes — the AD-6 island boundary is **wider than usual for this story**, and the AC set must name every non-Bucket file it touches, the way 8.6's AC26 did; 8.6's code review found that AC list incomplete twice, so build it deliberately).
   - [x] Await the developer's sign-off on the AC set before Task 2b.
 
-- [ ] **Task 2b: Redesign — implementation** (after the AC set is confirmed)
-  - [ ] Follow the delivery pattern Stories 8.1–8.6 established: **vertical slices, developer render-review after each slice.** Per slice: pure Rust fn + regression tests → `bucket_<verb>` command (`spawn_blocking`, `Result<T, ToolError>`, AD-3/AD-4, only if the command surface changes) → Vue → full local gate.
-  - [ ] First slice is the Epic-7 tokenisation pass + restructure to the chosen container — `BucketView.vue` is **100% pre-Epic-7** (see Dev Notes), the same starting condition `CronView.vue` and `JwtView.vue` were in.
-  - [ ] Full local gate before every commit: `pnpm lint` · `pnpm exec vue-tsc --noEmit` · `pnpm test` · `pnpm build` · `cargo fmt --check` · `cargo clippy --workspace --all-targets -- -D warnings` · `cargo test --workspace`.
-  - [ ] `pnpm tauri dev` render-review in **both light and dark**, per slice, before calling a slice done.
+- [x] **Task 2b: Redesign — implementation** (after the AC set is confirmed)
+  - [x] **Overlay spike (throwaway, pre-slice-1).** Developer's call at session open. Answered AC34's width-fit question against real detection output before four slices assumed it; found the AC19 preset trap as a side effect. Code reverted, nothing committed — findings in the Dev Agent Record.
+  - [x] Follow the delivery pattern Stories 8.1–8.6 established: **vertical slices, developer render-review after each slice.** Per slice: pure Rust fn + regression tests → command layer (`spawn_blocking`, `Result<T, ToolError>`, AD-3/AD-4, only if the command surface changes) → Vue → full local gate.
+  - [x] **Slice order (developer's call, 2026-09-07).** The story's original "first slice is the Epic-7 tokenisation pass + restructure to the chosen container" bullet is **historical** — it predates Task 1's three-way split and contradicts AC9, which requires PDF and Images to move **verbatim**, so tokenising `BucketView.vue` before splitting it would rewrite code the split must transplant unchanged. Tokenisation (AC42) applies to the **OCR view only**, after the split. Agreed order:
+    - [x] **Slice 1 — the hoist (AC15).** `useCopyFeedback` to `src/shell/`, 7 import sites, no shim. Zero behaviour change, landed alone so a broken island import can never be confused with a broken shell spec.
+    - [x] **Slice 2 — split + verbatim move (AC7–AC10, AC27, AC28).** Registry, routes, icons, both locale files, the four shell specs, the OCR-only command/code renames. App still works; nothing redesigned.
+    - [x] **Slice 3 — Rust core (AC16–AC23).** Trait change, EXIF, reading-order sort, the seven-field detection config, `max_text_length`, the quality corpus.
+    - [x] **Slice 4 — Live Text view (AC31–AC42)** + asset protocol (AC11) + paste publication (AC12) + the AC42 tokenisation pass.
+    - [x] **Slice 5 — errors, i18n, a11y (AC24–AC26, AC30).**
+  - [x] **AC42's "when Task 2b's *first slice* completes" is stale text** (developer's call, 2026-09-07): it predates the split decision the same way the bullet above does. Its **substance is unchanged and binding** — the OCR view ships with every hardcoded value tokenised and every control an `AppButton` or the ghost icon-button pattern — but it lands in the Live Text slice, because that slice rewrites the view wholesale and tokenising the doomed `<textarea>` earlier is throwaway work.
+  - [x] Full local gate before every commit: `pnpm lint` · `pnpm exec vue-tsc --noEmit` · `pnpm test` · `pnpm build` · `cargo fmt --check` · `cargo clippy --workspace --all-targets -- -D warnings` · `cargo test --workspace`.
+  - [x] `pnpm tauri dev` render-review in **both light and dark**, per slice, before calling a slice done.
+  - [x] **AC30's manual screen-reader pass** and the **`ARCHITECTURE-SPINE.md` AD-14/AD-15 asset-protocol amendment** both land during Task 2b, not before it.
 
 ## Dev Notes
 
@@ -686,18 +700,688 @@ rather than silently corrected, since Dev Notes is not a section this workflow m
 - **Still not done, deliberately, and unchanged from Task 1:** nothing has been pushed, and no
   outward-facing action has been taken this session. Task 2b has not begun.
 
+- **Task 2b opened 2026-09-07 with three developer calls, in the same `bmad-party-mode` room.**
+  **Slice order** — hoist → split → Rust → Live Text → errors. Rust-first was argued and rejected:
+  the trait change is *subtraction* (the adapter already builds the vectors it discards), so moving
+  it earlier buys a smaller diff at the price of throwaway `regions.map().join()` shim code in the
+  one file the story deletes, and it costs AC9's verbatim-move gate its auditability — a moved PDF
+  assertion could no longer be shown to have changed only because of the move. The four shell specs
+  that break on the split total ~44 lines of assertion (`registry.spec.ts` 6, `dropZone.spec.ts` one
+  fixture object, `AppSidebar.spec.ts` 3, `CommandPalette.spec.ts` 2): the split is broad, not deep.
+  **AC42's "first slice" clause** recorded as stale rather than absorbed. **A pre-slice-1 overlay
+  spike** — deliberately much cheaper than the one proposed: a throwaway `cargo test -- --nocapture`
+  dumping real `TextRegion` geometry, plus a standalone HTML harness. No Tauri, no asset protocol,
+  no split, no trait change. All spike code reverted; `ocr.rs` back to 281 lines, nothing committed.
+
+- **The spike's largest finding is not about the overlay at all — AC19 as signed off was a silent
+  pipeline regression.** `OAROCRBuilder::build()` (vendored `oar-ocr-0.6.3`, `src/oarocr/ocr.rs:259`)
+  wraps the **entire** `general` preset in `if !has_explicit_det_cfg`. Passing a `TextDetectionConfig`
+  — which AC19 instructs — opts out of every field of it, and `TextDetectionConfig::default()` does
+  not reproduce it: `unclip_ratio` 2.0 → 1.5, `max_side_len` 4000 → `None`, and `limit_type`
+  `Max` → `None`, which `DetResizeForTest` resolves to **`Min`**. That inverts the resize — with
+  `Min`, `limit_side_len = 1600` pads the *short* side up rather than capping the long one, and a
+  1520×920 image was measured being **upscaled to ≈2645×1600**. AC19's own clause "every remaining
+  default stays put deliberately" was unsatisfiable: the setter destroys them. Only
+  `score_threshold`/`box_threshold` survived, and only by coincidentally matching `Default`.
+  **AC19 amended** (developer's call) to state all seven detection fields explicitly, each commented
+  as either reproducing today's preset or being the one deliberate change, with `..Default::default()`
+  in the detection config named as a failure by construction.
+
+- **AC34's two halves scored very differently against real geometry, and the AC needed both a
+  correction and an addition.** Measured over two renders (a 1520×920 Retina error dialog and a
+  1520×1120 skewed document photo), comparing each detected region's box against the true ink extent
+  inside it:
+  - **Width is sound** — ink fills **97 %** of box width (median; min 0.76, max 0.99) across every
+    config. `unclip_ratio = 2.0` expands the box, but almost entirely on the *height* axis, so the
+    axis a selection highlight cares about is barely affected. AC34's width-fit is achievable and the
+    failure mode it names as disqualifying does not occur horizontally.
+  - **Height was wrong by ~1.5×** — ink is only **57–67 %** of box height on screenshots (86 % on the
+    document photo). AC34's "`font-size` derived from the region's scaled height", taken literally,
+    renders every span half again too large; the harness showed text bursting its boxes and colliding
+    with neighbours. Fixed with a single named calibration constant, ≈0.62 to start.
+  - **Rotation was missing entirely, and it is the one that would have been noticed.** `get_mini_boxes`
+    returns a **rotated minimum-area rectangle**, not an axis-aligned box; the document photo measured
+    **3.25° median tilt** (max 3.6°). Across a 650 px line that is ~37 px of vertical drift against a
+    35 px ink height — the span walks a full line-height off the words by the end of the sentence, and
+    the harness showed exactly that. **AC34 amended** to derive each span from the quad's own edges:
+    position at point 0, target width = top-edge length, `font-size` = perpendicular-edge length ×
+    the constant, `letter-spacing` fitted to measured width, rotation = `atan2` of the top edge. Exact
+    for a rotated rectangle, **degenerates to the axis-aligned case at 0°** (screenshot panels were
+    pixel-identical), view-side only per AD-1, no core change and no new model.
+
+- **A conflation in the Task 1 record, recorded here rather than edited into it** (developer took the
+  amend-AC34-only option, leaving the decision record as the historical artifact it is). Cut #7
+  rejected deskew because `orientation_angle` is always `None` without a third bundled model. That
+  remains true and Cut #7 remains correct — but `orientation_angle` is line-*orientation
+  classification* (is this text sideways / upside down), which is a different quantity from the **fine
+  skew angle**, and the fine angle is fully derivable from the bounding polygon AC16 already carries
+  across the core boundary. The record cut "we can know the tilt" on grounds that only support cutting
+  "we can know the orientation class."
+
+- **Three AC claims came back clean, which is worth as much as the problems found:**
+  - **AC16's coordinate space is correct.** `db_bitmap.rs:134-144` scales detection points by
+    `dest_width / bitmap_width` where `dest_*` is `ImageScaleInfo.src_w/src_h`, documented in
+    `processors/types.rs:112-115` as *"Original image height/width before resizing"*, then clamps to
+    it. Confirmed empirically — polygons land on the pixels. Live Text's premise holds.
+  - **AC20's test will pass.** A deliberately planted 105-character line came back **complete** under
+    all three configs; `max_text_length` does not truncate at 25 on our construction path (the
+    predictor builder's 100 is what reaches the decoder when the recognition config is unset). AC20
+    said the test lands regardless of outcome — it lands green, so the explicit setting is
+    drift-prevention rather than a bug fix, exactly as AC20's second clause anticipated.
+  - **The record's `unclip_ratio = 2.0` figure is right.** `oar-ocr-core`'s own default is 1.5; the
+    `general` preset overrides it to 2.0, and the preset is what ships. Checked because it looked like
+    a drift, and it is not one.
+
+- **One measurement recorded without acting on it.** At `limit_side_len = 1600` a 1520 px-wide image
+  is not resized at all (long side already under the cap), where the shipped 960 config downscales it
+  by 0.63 — yet recognition confidences were comparable on both spike images, and region counts were
+  identical on the dialog (12 and 12). That is a data point for AC23's corpus, **not** a verdict on
+  the raise; two synthetic renders are not a quality measurement and this record declines to treat
+  them as one.
+
+- **Slice 1 (AC15) complete, gate green, developer render-reviewed.** `useCopyFeedback` moved to
+  `src/shell/` via `git mv` (so the diff records a rename with zero content change and the header
+  rewrite reads as a separate edit); all seven import sites updated; no shim; the hoist-candidate
+  comments in `JwtView`, `UuidView` and `CronView` deleted rather than reworded. **The spec AC15
+  says to move with it did not exist** — the composable has been untested since Story 8.1, so its
+  *New*-table entry is satisfied by writing one (7 cases) and its *Deleted*-table "(+ spec)" names
+  a file that was never there. 845 -> 852 Vitest (the new spec exactly), 345 cargo unchanged, and
+  AC15's hardest clause held: no existing assertion in any of the five islands needed a change.
+
+- **Slice 2 (AC7–AC10, AC27, AC28) complete, gate green.** `BucketView.vue` (713 lines) and
+  `BucketView.spec.ts` (711 lines, 33 `it()`) are deleted and replaced by three routed tools.
+  Block counts land exactly on AC9's: **12 OCR + 13 PDF + 8 Image = 33.**
+  - **AC9's verbatim-move gate, verified by diffing the moved blocks against `HEAD`'s** rather
+    than asserted: **PDF is ONE changed line** — a comment naming `BucketView.vue`, a file the
+    slice deletes — and **zero** assertion, mock or `bucket_*` command-name changes across all 13
+    blocks. Six of the eight Image blocks are likewise byte-identical.
+  - **The one behavioural deviation from AC9, isolated and raised rather than absorbed.** The two
+    remaining Image blocks (`renders an estimate error…` / `renders a convert error…`) each also
+    asserted that the Image error left *the OCR section's textarea* untouched, by seeding
+    `registry.dropResult` and reading `.result`. After the split there is no OCR section in this
+    view to disturb: the isolation those lines guarded is now **structural rather than tested**,
+    the same reasoning AC29 uses to retire the two textarea tests. Each test keeps its Image-side
+    assertions unchanged; three lines and the now-false "without disturbing OCR/PDF state" title
+    fragment were removed. **AC9 says a changed Images assertion is "a failed AC9, not a judgement
+    call"**, so this is recorded as a known deviation for the developer's ruling, not absorbed.
+  - **An eighth breaking file the Task 2a sweep could not have found.** `src/router/index.spec.ts`
+    asserted `expect(registry.tools).toHaveLength(7)` and now fails at 9. It contains **no
+    occurrence of the string "bucket"**, so the repo-wide `grep -rli bucket` that built the
+    *Authorised file surface* was structurally incapable of catching it — the assertion depends on
+    the registry's *cardinality*, not on the retired tool's name. Worth carrying into 8.8/8.9,
+    whose splits change the same count: a name-keyed sweep finds name-coupled files only.
+  - **A second, smaller AC27 consequence:** `OcrView.spec.ts`'s drop-hint test asserted the old
+    `"Drop a PNG, JPEG, or WebP image"` copy. AC27 replaces it with the format-agnostic
+    `"Drop an image"`, so the assertion follows (and now also asserts the enumeration is *absent*).
+    This is an OCR block, which AC9 explicitly allows to be rewritten.
+  - **i18n (AC27):** 32 keys became 35 across `tools.ocr` (5) / `tools.pdf` (18) / `tools.image`
+    (12), `en`/`fr` parity preserved and gated by `locales.spec.ts`. The 16 PDF and 11 Images keys
+    moved verbatim. `tools.bucket.description`'s inventory sentence became three real ones, and
+    `dropHint` was rewritten without an enumeration. **Two structural notes:** the shared
+    `extractedTextLabel` served OCR *and* PDF from one block and is now duplicated, one copy per
+    owning tool, same value; and `tools.bucket.heading` ("Bucket") simply dies — each view's `<h1>`
+    is its own heading, which is why the moved sections' `<h2>` was promoted to `<h1>` (verified
+    first that no test anywhere asserts on a heading, so the move gate is untouched).
+  - **One style rule deliberately not transplanted, in each moved view.** `.pdf-section` and
+    `.image-section` carried `margin-top / padding-top / border-top: 1px solid #ccc` — a
+    *separator between the three siblings* of the old flat scroll, not a property of either
+    section. On a standalone routed view it paints a stray hairline across the top of the page.
+    The classes are kept so the markup stays verbatim and 8.8/8.9 keep their hook; the rule is
+    dropped with an in-file comment saying exactly this.
+  - **AC10 renames confirmed against the tree before executing**: `bucket-internal` and
+    `bucket-input-too-large` really are emitted by `commands/pdf.rs` and `commands/image.rs`, so
+    OCR gained **new** `ocr-internal` / `ocr-input-too-large` rather than renaming them. After the
+    slice, every remaining `bucket` string in Rust belongs to PDF or Images — verified by grep.
+  - Gate: `pnpm lint` clean · `vue-tsc` clean · **852 Vitest** · build clean · `cargo fmt` clean
+    (it re-sorted `pub mod ocr;` and the `use` line alphabetically after the rename) ·
+    `cargo clippy -D warnings` clean · **345 cargo tests**, unchanged from baseline.
+
+- **Slice 3 (AC16–AC23) complete, gate green.** `OcrOutcome` is region-structured, EXIF
+  orientation is applied, regions are sorted into reading order in core, the detection and
+  recognition pipelines are configured explicitly, and the quality corpus exists. **361 cargo
+  tests** (was 345) and **853 Vitest** (was 852).
+  - **AC18's EXIF bug is now proven, not argued.** Building the fixture surfaced the failure
+    directly: on the sideways image the pipeline returned four regions reading
+    `"omohi bunpo"` at confidence **0.22**, `""`, `"0"`, `"0"` — confident nonsense on a
+    boarding pass. With orientation applied, the same bytes return
+    `"Boarding Information"` / `"Gate closes fifteen minutes before departure"` /
+    `"Reference PNR 7XQ4LM"` / `"Seat 14A window"` at **0.987–0.999**. That is the FR26
+    violation the record predicted, reproduced and fixed.
+  - **Two fixture-construction findings worth keeping.** `sips` writes its own EXIF APP1, and
+    `zune-jpeg` (which `image` delegates metadata to) returned *that* chunk rather than an
+    appended one — so the fixture had to be built by walking the JPEG's marker segments,
+    dropping the existing `Exif\0\0` APP1, and inserting ours after SOI/APP0. Appending a
+    second Exif segment silently does nothing. The fixture also had to be rendered at 2x:
+    at 1x the recovered text was too soft to assert on even once correctly oriented.
+  - **AC20 lands green, which is the outcome the AC anticipated but could not assume.** A
+    planted 105-character line survives intact, so `max_text_length` does not bound CTC
+    decoding at 25 on our construction path — the predictor builder's 100 is what reaches the
+    decoder when the recognition config is unset. It is now set explicitly at 100, so the
+    behaviour is pinned rather than inherited, exactly as AC20's second clause asked.
+  - **AC21's sort is a pure function with its own unit tests**, separate from the corpus: a
+    sidebar banding case, a button row misaligned by two pixels, a stacked-lines case proving
+    adjacent lines are *not* banded, and the degenerate zero/one-region case. `ROW_BAND_FRACTION`
+    is a named constant (0.5 of a region's own height).
+  - **AC23's corpus asserts content and order through separate helpers**, so a reading-order
+    regression fails distinctly from a recognition regression — `assert_contains_lines`
+    (whitespace-collapsed, case-folded, per expected line) and `assert_order` (relative order,
+    independent of what else was recognised). Five fixtures: `screenshot-error-dialog.png`
+    (Retina, dense, carries both the long line and a sidebar), `document-photo.png` (~3.3° skew,
+    soft focus), `two-column.png`, `scan.png` (greyscale, softened) and `exif-rotated.jpg`.
+  - **The two-column fixture is a CHARACTERISATION test, deliberately.** AC21 states the sort
+    does not claim to handle a true multi-column spread, so
+    `corpus_two_column_documents_the_sorts_stated_limit_rather_than_hiding_it` asserts the
+    *interleaved* order it actually produces — the right column's first line following the left
+    column's first line. If a future change makes columns read properly that test fails loudly
+    and is updated, rather than the behaviour drifting unnoticed.
+  - **The TS mirror follows the codebase, not a guess.** `image_width`/`image_height` are
+    snake_case because nothing renames fields across this IPC boundary — no core struct carries
+    `#[serde(rename_all = "camelCase")]`, and the existing mirrors keep the Rust spelling
+    (`cronExplanation.ts`'s `next_runs`, `scheduleDescription.ts`'s `day_of_month`). Checked
+    before writing rather than after a failing test.
+  - **AD-1 held at the boundary:** core gained `has_readable_text()` (a predicate, not a
+    formatter) and no whole-text accessor. The join lives in `OcrView.vue`, and both the core
+    tests and the command-layer tests define their own local `joined()` helper rather than
+    pulling one into the library.
+  - **AC22 recorded, not fixed**, in `commands/ocr.rs` above `ocr_engine`: one shared `OAROCR`
+    behind `&self`, a superseded request still running to completion, `Send + Sync`
+    compiler-enforced so it is safe, contention unmeasured, cancellation out of scope because
+    `oar-ocr` exposes no token through its single `predict()` call.
+  - **One documentation drift found:** the decision record says the EXIF findings were verified
+    against "vendored `image` 0.25.10". `Cargo.lock` pins **0.25.9**, which is what was read
+    this slice. The finding is unchanged — `decode()` still does not apply orientation in 0.25.9
+    — only the version number in the record's prose is wrong.
+
+- **The ⌘ finding — developer-raised, and it corrected AC36's rationale.** The developer
+  screenshotted this session's own conversation and found `⌘` recognised as `8` in "⌘V" and as
+  `渊` in "⌘K", then asked the right follow-up: how does the symbol's confidence compare to a
+  letter's, and is the threshold simply too low?
+  - **Why it happens, verified not assumed:** `⌘` (U+2318) is **absent** from the bundled
+    `character_dict.txt`; `渊` is present at line 3497. A CTC recogniser is a closed-vocabulary
+    classifier — one output class per dictionary entry plus a blank, no "unknown" class — so it
+    cannot emit `⌘` and must pick the nearest learned shape. The dictionary is **89.4% CJK
+    ideographs and 1.4% ASCII** (6,174 vs 94 of 6,904), so the model has ~6,000 dense boxy
+    glyphs to reach for and 94 Latin ones. That is Cut #17's abstract argument appearing as a
+    concrete artifact. `⇧ ⌥ ⌃ ⏎ ↵` are absent too; `€ £ § ± →` are present.
+  - **The developer's instinct was right and my first answer was incomplete.** Measured in
+    isolation, out-of-vocabulary glyphs score nothing like real characters: `⌘` **0.0000**
+    (dropped entirely), `⇧` **0.4961**, `⌥` **0.5203**, `⌘V` **0.8909**, `⌘⇧⌥⌃` **0.6451** —
+    against **0.989–1.000** for `8 5 K V A Q`. The signal exists, with a huge margin.
+  - **But the threshold was not the problem — the granularity is.** Across the 36 correctly
+    recognised regions in the quality corpus: min **0.9504**, median 0.9879, max 0.9998. A
+    threshold at 0.75, 0.90 or 0.95 produces **0/36** false positives; 0.975 produces 8/36
+    (22%) and 0.98 produces 11/36 (31%). The ⌘-corrupted long line scores **0.9735** and the
+    identical clean line **0.9763** — the distributions overlap completely, so no threshold
+    separates a single bad character from good text.
+  - **Root cause, one layer below our own fix.** Region confidence is
+    `conf_list.iter().sum::<f32>() / conf_list.len() as f32` (`decode.rs:236`, and again at
+    :523 and :623). The per-character probabilities exist and are averaged away before reaching
+    any public type — `OAROCRResult` exposes only `TextRegion.confidence`. **This is the same
+    class of mistake this story just fixed one layer up**, where `run_ocr` averaged per-region
+    confidences and joined the text, destroying the pairing and the geometry. Ours was fixable
+    because the data was in our own loop; this one is upstream.
+  - **A second, unprompted find:** the corpus already ships an unflagged substitution —
+    `Request-Id:4f2a9c1e-…` recognised as `4f2a9c**l**e-…` (digit 1 as letter l) at **0.9531**.
+    So this is not a `⌘` curiosity; it is the general single-character-confusion case, occurring
+    in text the suite already treats as passing.
+  - **Outcome:** threshold set to **0.90** (developer's call, landing exactly where the
+    measurements pointed — 0.89 was tried first and reversed once the 0.8909 `⌘V` case made the
+    0.0009 margin visible, which is the trade-off being written down doing its job) in a new
+    `src/tools/ocr/lowConfidence.ts` with `isLowConfidence` /
+    `isUnreadable` and a spec that encodes the measurements as regression guards — including a
+    test asserting the intra-region case is NOT caught, so nobody later "fixes" the threshold to
+    chase it and marks a fifth of all correct text instead. **AC36's rationale amended**: the
+    marking is an honest region-level signal, not the primary defence against confident
+    nonsense. 8.6's lesson 4 exactly — the decision survives, the stated reason does not.
+  - **Filed as [#135](https://github.com/dipaneb/umbra/issues/135)** (`backlog-candidate`,
+    2026-09-07, developer-authorised), carrying the `decode.rs:236` mechanism, the controlled
+    0.9735-vs-0.9763 pair, the threshold false-positive table, the isolated-glyph measurements,
+    both real-world instances, and the fork-or-go-deeper cost with its `oar-ocr` pin dependency.
+
+- **Slice 4 (AC11–AC14, AC31–AC42) complete, gate green — the Live Text surface.** **917 Vitest**
+  (was 862) and 361 cargo, unchanged. `OcrView.vue` is rewritten: the `<textarea>` is gone, the
+  recognised text renders exactly once as transparent selectable spans on the image, and the view
+  is fully tokenised (AC42's substance, landing in this slice per the developer's call).
+  - **AC11's mechanism had to change, and the reason is verified, not assumed.** The AC said to
+    call `allow_file(path)` for the new file and `forbid_file(...)` for the previously granted
+    one. Read against `tauri-2.11.5/src/scope/fs.rs`: `is_allowed` checks the **forbidden**
+    patterns first and returns `false` unconditionally on a match (`:432`), and the `Scope` API
+    exposes only *appending* operations — `allow_file` / `forbid_file` / `allow_directory` /
+    `forbid_directory` — with **no way to remove a pattern** (`allowed_patterns()` and
+    `forbidden_patterns()` return copies, not handles). So forbidding permanently poisons a path
+    for the life of the process: **drop A, drop B, drop A again, and A silently stops rendering
+    forever.** Comparing two screenshots and going back to the first is an ordinary thing to do,
+    and it would present as a blank image with no error attached. Implemented **allow-only**,
+    with the cost stated in the code: the webview retains read access to every image opened *this
+    session* — in-memory, dead on quit, exactly the files the user chose, but wider than "one file
+    at a time". A custom URI scheme serving a single path from Rust is the version that achieves
+    the AC's original intent; it needs a CSP entry, which AC11 says is not modified. **Raised for
+    a ruling rather than quietly rescoped.**
+  - **`src-tauri/Cargo.toml` gained `features = ["protocol-asset"]`** on the existing `tauri`
+    dependency. Not a new dependency — `asset_protocol_scope()` is gated behind that feature and
+    the config is inert without it — but the *Authorised file surface* listed this file for AC10's
+    comment fixes only, so the widening is recorded. `Manager` is imported locally inside
+    `grant_asset_access` because this module's top-level import is `#[cfg]`-gated to the non-test
+    build (the two `models_dir` variants) and the grant runs in every build.
+  - **AC12 wired without a mutable capture.** `dispatchPaste`'s runner now returns
+    `{ value, image }` rather than assigning the clipboard image to a captured `let` — which
+    TypeScript could not narrow through the closure anyway. The shell publishes the very pixels it
+    recognised from; the view builds a canvas from them. No second clipboard read, so no second OS
+    I/O edge and no race against a clipboard that changes during the ~3 s inference.
+  - **AC14 published as `dragOverToolId`, not a bare boolean.** The AC said boolean; the tagged
+    form follows the lesson already written into `dropSourcePath`'s own comment — *an untagged
+    shared field is a footgun for a future second consumer*. Redundant today, cheap insurance
+    later. The routing rule is a pure `routeDragState` in `dropZone.ts` with its own tests,
+    including that a tool declaring no `drop` never highlights: lighting up a target on a view
+    that will refuse the file is a lie told a moment before the refusal.
+  - **A latent type hole closed in passing.** `dropZone.spec.ts` declared its own loose
+    `DragDropCallback` (`{ type: string; paths: string[] }`), which had let an existing test pass
+    `{ type: "over", paths: [] }` — a payload Tauri never sends, since `over` and `leave` carry no
+    `paths`. Widened to mirror `@tauri-apps/api/webview`'s real union; the impossible payload is
+    corrected and the test's assertion is untouched.
+  - **The overlay geometry is a pure module, not view code.** `overlayGeometry.ts` implements
+    AC34's amended rule — position at the quad's first corner, target width from the top edge,
+    `font-size` from the perpendicular edge times `FONT_SIZE_RATIO = 0.62`, `letter-spacing` fitted
+    to the *measured* width, rotation from `atan2` of the top edge — plus AC35's `fitScale`
+    (never upscale) and AC38's `substringSpan`. Nineteen tests, including that a 3.25° quad
+    rotates by its own angle, that the zero-tilt case is byte-identical to the axis-aligned one
+    (one code path, not two), and that a missing text measurer degrades to unfitted spans rather
+    than `NaN`. `OVERLAY_FONT_STACK` is exported so the measurer and the renderer cannot drift —
+    measuring in one font and rendering in another makes every fitted width wrong by a different
+    amount per glyph, which looks random rather than systematic and is worse than not fitting.
+  - **AC38's match ordering came out free.** `findMatches` iterates `regions` in the order core
+    sorted them, so find order is correct without re-deriving anything — the third consumer of the
+    one geometric sort, after Copy fidelity and screen-reader DOM order. Matching is literal, not
+    regex: nobody typing into a find box expects `.` to match any character, and building a
+    `RegExp` from user input would need escaping to be safe.
+  - **AC29's two deliberate retirements executed, and only those two.** The old spec's *"lets the
+    extracted text be edited…"* and *"re-seeds the editable field…"* are gone with the `<textarea>`
+    they described; the second also described the stale-snapshot bug class (8.6's lesson 5) that
+    removing the field structurally dissolves. `OcrView.spec.ts` is 30 tests against the new
+    surface — the three doors, drag-over, both entry points, reading order in the DOM, the
+    diagnosis state, shape-not-hue marking, the picker through the tool-scoped runner, copy,
+    find, and the AC41 accessibility contract including that **the image's accessible name is not
+    the filename** (asserted against a path containing a personal name).
+
+- **Slice 4 render-review round: the find-match drift, and what it cost to find.** Five rounds
+  of developer testing against the Live Text overlay. Four of the fixes were wrong, each in a
+  way worth recording; the fifth is a real solution. Write-up published as an artifact:
+  <https://claude.ai/code/artifact/0982dd45-c869-483e-a9a5-057adf184d4a>.
+  - **The defect.** Find highlights drifted right, proportionally to how far into a line the
+    match sat. Short lines exact, long lines off by a word or more.
+  - **The cause, finally isolated.** Character geometry came from `oar-ocr`'s
+    `return_word_box`. On the bundled model it returns one box per **character** and the count
+    matches `text.chars().count()` on every corpus fixture — which is what made it credible.
+    But those positions are **CTC timestep fractions** (`decode.rs:514`), recording where the
+    recogniser *fired*, not where the ink is. The recogniser squashes each line crop to a fixed
+    input width with a fixed timestep count, so beyond a certain line length the positions
+    compress. Measured against ground truth: **86 px error on a 40-char line, 166 px at 80,
+    322 px — over twenty characters — at 160**, on a 15.7 px character. The 200-char line is
+    accurate, which is the trap: at one particular length they happen to be right.
+  - **Cut #4 stands, and its reversal is undone.** Discovery cut word-level geometry on the
+    grounds the model might not support it. It does support it; the positions are still
+    unusable. `return_word_box(true)` is removed with the measurements written into the
+    in-file comment, so nobody re-enables it on a matching count again.
+  - **The fix: `measure_char_polygons` in `crates/umbra-core/src/ocr.rs`.** Crop the region
+    from the image already in hand (no new dependency), threshold by **Otsu** so no constant is
+    tuned to one screenshot, decide ink polarity from the region's own top and bottom rows
+    (padding by construction, so dark-on-light and light-on-dark both work without a guess),
+    build a column-wise ink profile, and take the **N−1 widest gaps** as word separators —
+    not every gap, since monospaced glyphs are separated by blank columns too. Characters are
+    distributed across each word's own span: exact for a monospaced face, within about one
+    character for a proportional one.
+  - **Result: error flat at ~3 px (0.19 characters) across 40, 80, 160 and 200-character
+    lines** — the plan's acceptance criterion was that it must not grow with index or line
+    length, and it does not.
+  - **It can decline, and that is the point.** Requiring exactly N−1 word gaps *is* the
+    confidence check. A line tilted beyond `MAX_MEASURABLE_TILT_RAD` (~2°) is refused outright
+    — an axis-aligned column profile is meaningless on slanted glyphs — as is a crop with fewer
+    columns than characters, or one whose gaps don't resolve. A refusal returns nothing and the
+    view bands the whole line with a dashed *approximate* mark. Same posture as refusing to
+    show an invented progress bar: a wrong box drawn precisely is worse than an honest
+    imprecise one.
+  - **Four wrong diagnoses, kept because they transfer better than the fix:**
+    1. *Font-metric estimation* — real, and fixing it was progress, but not the whole bug.
+    2. *A count taken as proof of position* — `boxes.len() == chars().count()` proves how many,
+       never where. It read as verification and was arithmetic.
+    3. *Ground truth at one length* — the harness only ever saw 45–57 character lines; the
+       developer's terminal is 175 columns. The failing regime was never sampled.
+    4. *A diagnostic that could not fail* — drawing every character box looked correct, but
+       per-character boxes **tile a line edge-to-edge**, so a compressed set covers exactly the
+       same pixels as a correct one. The picture could not have shown the defect.
+  - **A process cost worth naming:** Vite hot-reloads the Vue side in milliseconds while a Rust
+    change needs a full `cargo` rebuild and an app restart, so a fix spanning both can land
+    half-applied with no error anywhere. At least one render review was taken against a
+    half-applied build, which produced a symptom the code on disk could not generate.
+  - **Also fixed in this round, from developer feedback:** controls moved OUT of the image
+    (AC37/AC38 revised — pinned inside, the cluster covered whatever text sat under it); the
+    current-match highlight made translucent (a solid fill hid the very pixels being checked,
+    because unlike JsonTree there is no opaque text drawn on top); match bands widened and the
+    non-current border dropped; find bar always visible with ⌘F focusing rather than summoning;
+    empty query showing nothing rather than "No matches"; step arrows hidden below two matches;
+    `.match` given `transform-origin: 0 0`. New tests: `long-lines.png` fixture, the
+    photographed-page decline, and left-to-right monotonicity.
+
+- **SESSION HANDOFF, 2026-09-08 — resume here.**
+  - **Done and developer-render-reviewed:** slices 1 (AC15 hoist), 2 (AC7–10/27/28 split),
+    3 (AC16–23 core), 4 (AC11–14, AC31–42 Live Text). Branch
+    `feat/story-8-7-reimagine-the-bucket-ocr`, **5 commits, all work since them UNCOMMITTED**
+    (~56 files). Nothing pushed at any point.
+  - **Gate at handoff: 938 Vitest, 366 cargo**, `pnpm lint` / `vue-tsc` / `pnpm build` /
+    `cargo fmt --check` / `cargo clippy -D warnings` all clean. Baseline was 845 / 345.
+  - **Slice 5 is all that remains**, and it is the last: AC24 (`ocr-unsupported-format` gets a
+    project-authored sentence and joins `TRANSLATABLE_CODES` with `en`/`fr` keys; Story 4.3's
+    corrupt-PNG test stops asserting on the `image` crate's prose), AC25 (a dropped PDF caught
+    by `%PDF-` magic bytes, answered with a sentence not a routing offer), AC26 (every
+    `TRANSLATABLE_CODES` exclusion recorded with its reason in `toolError.ts`), AC30 (the
+    manual `pnpm tauri dev` screen-reader pass — needs the developer, a passing spec does not
+    satisfy it), and the `ARCHITECTURE-SPINE.md` AD-14/AD-15 asset-protocol amendment.
+  - **Two open questions carried in, both raised and neither yet ruled on:**
+    1. **AC11's asset grant is allow-only.** Verified against `tauri-2.11.5/src/scope/fs.rs`:
+       `is_allowed` checks forbidden patterns first (`:432`) and the `Scope` API has no
+       pattern-removal, so the AC's `forbid_file` step would permanently poison any file the
+       user returns to. Cost of allow-only: the webview keeps read access to every image opened
+       *this session* (in-memory, gone on quit). The alternative achieving the AC's original
+       intent is a custom URI scheme serving one path, which needs the CSP change AC11 forbids.
+    2. **The blur + sweep loading state** on a full-screen paste is still unreviewed.
+  - **AC amendments made this story, all developer-approved, all recorded above with evidence:**
+    AC19 (must state all seven detection fields — the `general` preset is all-or-nothing),
+    AC34 (quad-edge geometry + `FONT_SIZE_RATIO`, not the region's full height),
+    AC36 (threshold 0.90 measured, and the rationale corrected — region-level marking cannot
+    see an intra-region substitution), AC37/AC38 (controls moved OUT of the image),
+    AC42 (tokenisation lands in the Live Text slice, not the first).
+  - **Cut #4 stands.** It was reversed mid-story and re-cut on measurement; do not re-enable
+    `return_word_box` on the strength of a matching box count. See the ⌘ finding
+    (issue [#135](https://github.com/dipaneb/umbra/issues/135)) and the character-geometry
+    write-up (artifact `0982dd45-c869-483e-a9a5-057adf184d4a`).
+  - **Process note for the next session:** Vite hot-reloads the Vue side in milliseconds while
+    a Rust change needs a full `cargo` rebuild and an app restart. A fix spanning both can
+    reach a render review half-applied, which cost several rounds here. When a render review
+    contradicts a verified measurement, check the build state before re-diagnosing.
+
+- **Slice 5 (AC24–AC26, AC30 + the spine amendment) — 2026-09-08. Code complete; AC30's
+  manual pass is the one thing left and it needs the developer.**
+  - **AC24.** `crates/umbra-core/src/ocr.rs` now names its own sentence:
+    `UNSUPPORTED_FORMAT_MESSAGE = "That file isn't an image this tool can read."`, replacing the
+    `image` crate's `"The image format could not be determined"` at all three decode call sites.
+    Joined `TRANSLATABLE_CODES` with `errors.ocr-unsupported-format` in both locales.
+  - **AC24's second clause is a no-op, and the AC's premise is factually wrong — verified, not
+    assumed.** It says Story 4.3's corrupt-PNG test "currently asserts on the `image` crate's
+    phrase *unexpected end of file*". It does not, and never did:
+    `git grep -l "unexpected end of file" d576c3e` matches only `4-3-the-bucket-never-bluffs.md`
+    and `sprint-status.yaml`, and the baseline tests
+    (`d576c3e:crates/umbra-core/src/ocr.rs:272`, `d576c3e:src-tauri/src/commands/bucket.rs:316`)
+    assert `err.code` only. The phrase was in the *story document*, describing what a user saw —
+    it was never a test assertion. Nothing to change; the AC's intent (tests assert codes, not
+    third-party prose) already held, and now the prose is ours as well.
+  - **AC25.** `PDF_MAGIC = b"%PDF-"` and `reject_pdf()` run **before** any decode is attempted, so
+    a dropped PDF is answered by name (`ocr-pdf-wrong-tool`, *"PDFs open in the PDF tool."*)
+    rather than as an unreadable image. A signature check at byte 0, not a substring search —
+    pinned by a test using bytes that mention `%PDF-` mid-string and must still read as
+    unsupported-format. No new Rust dependency: a byte comparison and a string.
+    - The guard is on the compressed-bytes path only. `extract_text_from_rgba` receives
+      already-decoded clipboard pixels with no container left to sniff — the asymmetry is
+      deliberate and is itself pinned by a test, so nobody "fixes" the missing guard later.
+    - Code name reasoning: `ocr-pdf-wrong-tool` over `ocr-pdf-not-supported`, because PDFs *are*
+      supported — in the PDF tool. The code should not imply a capability gap that does not exist.
+  - **AC26.** Every `ocr-*` exclusion is now recorded in `toolError.ts` with its own reason, and
+    the reasons are **asserted, not merely commented**: `toolError.spec.ts` has a table test
+    proving each of the six excluded codes falls through to its raw message. AC26's stated reason
+    for `ocr-malformed-request` was verified against the code before being written down —
+    `parse_dimension_header` + `extract_clipboard_request` really do emit four different sentences
+    under one code, and three of them interpolate the offending header's name.
+  - **The AC24/AC25 English assertions cannot prove AC24, and that was worth catching.** Both
+    locale strings are word-for-word the Rust `message`, so an English-only test passes whether or
+    not the code ever reached `TRANSLATABLE_CODES`. `OcrView.spec.ts` gained a French-locale block
+    that asserts the French sentence renders and the Rust sentence does *not*. Verified
+    non-vacuous by temporarily removing `ocr-pdf-wrong-tool` from the set: the test fails with
+    `expected 'PDFs open in the PDF tool.' to contain 'outil PDF'`.
+    - `src/shell/frenchRender.spec.ts` is normally the single place that flips the locale. Its
+      stated reason — don't let a flip invalidate English assertions elsewhere — is honoured here
+      (scoped to one block, restored in `afterEach`). Mounting `OcrView` over there would have
+      required installing module-level Tauri `core`/`dialog` mocks into a file whose four existing
+      tests do not want them, so the flip moved rather than the view.
+  - **Spine amendment (AD-14/AD-15) written**, recording the asset protocol as a third OS I/O edge
+    and a second non-IPC route for image bytes, the deny-by-default + per-file-runtime-grant
+    shape, the verified reason `capabilities/default.json` needs no entry, why
+    `tauri-plugin-persisted-scope` is deliberately absent, and — in full — the allow-only
+    limitation and its cost. AD-15's rule line gained a cross-reference so a reader of AD-15
+    alone cannot miss it.
+  - **`deferred-work.md` reconciled.** Gap #3 (near-full-length truncation) and gap #6
+    (`confidence` never read) marked resolved with the evidence; gap #4 (`as OcrOutcome`)
+    restated as still-deferred with **raised** priority and its reason updated — the assertion now
+    covers a nested region list the view indexes into, so a malformed payload can index into
+    arrays that are not there rather than merely render a wrong string. Path rot from this
+    story's own split fixed in two entries belonging to other stories.
+    **Gap #5 (`role="status"` never manually verified) is deliberately left open** — it closes
+    only when AC30's pass actually happens.
+
+- **THREE THINGS RAISED, NOT ABSORBED (slice 5).**
+  1. **AC2's FR propagation was incomplete, and this is the exact drift AC2 exists to prevent.**
+     The decision record states every FR revision "must be propagated to `prd.md` **and**
+     `epics.md` in this story". `prd.md` got all four (FR23–FR26). `epics.md`'s FR catalogue at
+     `:73–:76` got **none** — it still read *"FR23: Drop zone accepts images (PNG, JPEG, WebP…)"*,
+     the very enumeration AC24's premise is built on. Task 1's commit (`585349b`) updated
+     epics.md's AD-8 line, Stack table, ordering preamble and story scopes, and missed the FR list
+     itself. **Fixed in this slice** — all four lines now carry the revision with a pointer to
+     `prd.md`. `epics.md` is **not on the authorised file surface**, so this is flagged rather
+     than absorbed: it is AC2's own requirement, not new scope, but the surface table should
+     record it.
+  2. **`Cargo.lock` gained a transitive crate, so the surface table's "No new Rust dependency" is
+     no longer true** — and with it, the basis on which the AD-7 `cargo tree -i reqwest` audit was
+     declared N/A. Slice 4's `protocol-asset` feature pulls **`http-range` 0.1.5** (zero
+     dependencies of its own, from `tauri` 2.11.5 itself). It parses HTTP Range *header strings*
+     so the asset protocol can serve byte ranges of local files; it opens no sockets and is not a
+     network-purpose dependency under AD-7. **The audit was run rather than assumed:**
+     `cargo tree -i reqwest --workspace` returns `reqwest v0.13.4 └── tauri-plugin-updater` and
+     nothing else — the disclosed updater carve-out, unchanged.
+  3. **Two stale comments naming the deleted `<textarea>`** (`src/shell/dropZone.ts:33`,
+     `src/shell/DropZone.vue:66`) both listed "the OCR view's own editable text-output field"
+     among the editable elements ⌘V must not be intercepted over. Both files are on the authorised
+     surface; the rot was created by this story. Corrected to name the view's **find field**,
+     which is still a real text input and still needs that protection. Also de-rotted
+     `toolError.ts`'s "all 27 ToolError codes", which was off by roughly forty-four — replaced
+     with a non-numeric phrasing so it cannot rot again.
+
+- **Slice 5 gate: 949 Vitest (was 938), 371 cargo (was 366).** `pnpm lint` · `vue-tsc` ·
+  `pnpm build` · `cargo fmt --check` · `cargo clippy -D warnings` all clean. **Nothing pushed,
+  nothing committed.**
+
+- **STILL OPEN — all three need the developer, and the story cannot reach `review` without the
+  first.**
+  1. **AC30's manual `pnpm tauri dev` screen-reader pass has NOT been done.** A passing Vitest
+     spec does not satisfy it, by the AC's own words. It must cover the pre-existing,
+     never-manually-verified no-text-found `role="status"` region (deferred gap #5) **and** the
+     in-flight start/completion announcements this story adds (`aria-live="polite"`, the `.sr-only`
+     region at `OcrView.vue:673`). The per-slice light/dark render review for slice 5 is also
+     outstanding.
+  2. **AC11's allow-only asset grant still needs a ruling** (carried from the previous session,
+     now written into the spine as shipped-with-cost rather than left only in this file).
+  3. **The blur + sweep loading state on a full-screen paste is still unreviewed** (carried).
+
+- **Render review round 2 (2026-09-08) — three reported bugs, one shared cause, plus a fourth
+  found on the way.**
+  - **All three reported symptoms came from a single omission:** `resetForNewSource()` was wired
+    to the **file picker only**. Drop and paste never called it, so a second image inherited the
+    first one's state, and each symptom the developer described is a different consequence of the
+    same stale `outcome`:
+    - `extracting` is derived as *image present and no outcome and no error*, so a surviving
+      outcome kept it **false** — the second image arrived with no blur and no sweep.
+    - `naturalSize` reads `outcome.image_width` **first**, and correctly so (those are the
+      coordinates the region polygons live in, post-EXIF) — so the second image was drawn into
+      the **first one's dimensions**, stretched to a shape it never had.
+    - `findQuery` and `currentMatch` survived, so match highlights computed from the old image's
+      geometry were painted over the new one, pointing at text that is not there.
+    Fixed by calling `resetForNewSource()` from the drop and paste **source** watchers rather
+    than by patching the three symptoms separately. **The ordering is safe and was verified, not
+    assumed:** `DropZone.vue` publishes `dropSourcePath`/`pasteSourceImage` *before* it invokes
+    (`:125`/`:47`) and the result only after the await (`:132`/`:54`), so the source signal always
+    precedes the outcome it belongs to and the reset can never wipe a fresh result.
+  - **Fourth bug, unreported because it hides — and my fix would have made it worse.** On the
+    drop and file-picker paths `naturalSize` had no third fallback, so it was **0x0 until
+    recognition returned** ~3 s later. `.surface` is sized from it and clips its overflow, so the
+    image *and* the sweep inside it were invisible for the entire wait — an AC33 violation
+    ("the image renders in the FIRST frame") that the existing spec missed because it asserted
+    `.in-flight` **exists**, never that it has a size. Previously a second drop at least
+    inherited the old outcome's dimensions; once the reset was added it would have gone to 0x0
+    every time. Fixed with a `loadedSize` ref filled from the `<img>`'s own `naturalWidth`/
+    `naturalHeight` on `@load`, ranked **below** the outcome so the oriented dimensions still win
+    the moment they exist.
+  - **Message placement (the reported error the developer never saw).** `.pane` is `flex: 1`
+    inside a full-height column, so the two message paragraphs rendered *after* it sat at the
+    bottom edge of the window — hundreds of pixels from the drop target they belonged to. Each
+    message moved to the surface it describes: a drop/paste error now renders **inside
+    `.drop-target`**, under the controls that offer another go (every such failure clears the
+    image, which is what puts the target back on screen); `no-text-found` and the one error that
+    keeps its image (a copy failure) render **in the toolbar**, this view's existing status row,
+    directly above the image.
+  - **Nine regression tests, each proved non-vacuous by reverting the fix it covers.** The three
+    reported bugs fail with exactly the developer's description — `expected false to be true`
+    (no animation), `expected 'width: 400px; height: 200px;' to contain 'width: 40px'` (old
+    dimensions), `to have a length of +0 but got 2` (stale highlights) — and the size bug fails
+    with `expected 'width: 0px; height: 0px;'`. They are written as separate tests on purpose:
+    one shared cause today, but a future refactor that fixes one by accident should not be able
+    to claim the other two.
+  - Gate after this round: **958 Vitest** (was 949), 371 cargo unchanged (no Rust touched).
+    `pnpm lint` · `vue-tsc` · `pnpm build` clean. **Nothing pushed, nothing committed.**
+  - **Still needs the developer:** a re-review of these four fixes in `pnpm tauri dev` (light and
+    dark), then AC30's manual screen-reader pass, which remains the last gate on this story.
+
+- **AC30 — manual `pnpm tauri dev` screen-reader pass, 2026-09-08 (VoiceOver, macOS). PARTIAL:
+  one real finding, fixed; the rest of the pass still owed.**
+  - **Developer's result:** the in-flight and completion announcements work. **The no-text-found
+    case announced NOTHING** — the exact gap #5 that has been open and unverified since Story
+    4.3, found the first time anyone actually listened to it. The image-replacement fixes and
+    the blur + sweep were confirmed good in the same session.
+  - **Why a passing spec never caught it, and why AC30 exists.** A live region only speaks when
+    an element **already in the accessibility tree** changes its content. The visible no-text
+    message is `v-if`-inserted, so the region and its text arrived in the same tick and there
+    was nothing for VoiceOver to observe. Every DOM assertion passes — `role="status"` really is
+    present, with the right text — and the user hears silence. jsdom has no accessibility tree
+    and no screen reader, so no Vitest spec can distinguish the two. **This is the first
+    finding in Epic 8 that only a manual pass could produce**, and it is a fair answer to
+    whether AC30's requirement was worth writing.
+  - **Fixed by making the always-mounted `.sr-only` region the single spoken channel**, carrying
+    the result sentence rather than a fixed one. The visible toolbar message lost its
+    `role="status"`: with the announcer speaking, a second region would have doubled the
+    announcement rather than fixed anything.
+  - **A second bug fell out of the same fix.** The old code announced *"Text extracted."*
+    unconditionally — including when nothing was extracted. Inaudible, so nobody had heard it,
+    but it was the tool bluffing about its own result in the app whose entire claim is that it
+    never does. The announcer now says what actually happened, including AC39's stronger
+    diagnosis (*regions found but not recognised*) when that is the honest answer.
+  - Five tests added. They assert the announcer's **text** — which is what a screen reader
+    reads — and deliberately do not claim to prove audibility, since that is precisely the thing
+    jsdom cannot check and precisely why this AC requires a human.
+  - Gate: **963 Vitest** (was 958), 371 cargo unchanged. `pnpm lint` / `vue-tsc` / `pnpm build`
+    clean. **Nothing pushed, nothing committed.**
+  - **Still owed on AC30:** the error path (drop a `.txt` or a PDF) has not been heard yet. Its
+    visible message keeps `role="alert"`, which is inserted the same way the no-text region was
+    — so it is a live candidate for the same failure, and the same fix applies if it is silent.
+    Deferred gap #5 stays open in `deferred-work.md` until the pass is complete.
+
+- **AC30 COMPLETE, and AC11 RULED — 2026-09-08. Task 2b closes; every AC is satisfied.**
+  - **Second half of the screen-reader pass, after the fix:** the developer confirms both the
+    no-text-found state and the PDF error are now announced. `role="alert"` on the error was the
+    open risk — inserted the same way the silent `role="status"` region was — and it **does**
+    announce, so no further change was needed. Deferred gap #5, open since Story 4.3, is closed
+    with a verification rather than an assumption, and its lesson is recorded where the next
+    person will hit it: *an inserted live region is not a live region — mount it first, change
+    its text second.*
+  - **AC11 ruled by the developer: allow-only ships.** The reasoning is written into
+    `ARCHITECTURE-SPINE.md` beside the limitation rather than left in this file — the grant list
+    is reachable only from our own webview, which has no network scope (AD-7) and a CSP blocking
+    external scripts, so exploiting the retained grants presupposes arbitrary JS execution, at
+    which point the on-screen image is readable anyway. A custom URI scheme stays the
+    construction that achieves the original intent, and is a backlog candidate if the threat
+    model changes.
+  - Also confirmed at this render review: the image-replacement fixes and the blur + sweep
+    loading state (the second carried-in open question — now closed).
+
 ### File List
 
-- `_bmad-output/implementation-artifacts/8-7-ocr-decision-record.md` (new) — Task 1 decision record
-- `_bmad-output/implementation-artifacts/8-7-reimagine-the-bucket-ocr.md` (modified) — task checkboxes, Dev Agent Record, File List, Change Log
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — story status `ready-for-dev` → `in-progress`
-- `_bmad-output/party-mode/memories/installed/.memlog.md` (modified) — session memory (party-mode artifact, not story scope)
+Complete as of slice 5. **Committed** = landed in one of the branch's 5 commits (Task 0/1/2a docs).
+Everything else is uncommitted working-tree change from slices 1–5. Two entries are marked ⚠ —
+they are **not on the story's Authorised file surface** and are raised in the Completion Notes.
+
+**Story and planning documents**
+
+- `_bmad-output/implementation-artifacts/8-7-ocr-decision-record.md` (new, committed) — Task 1 decision record
+- `_bmad-output/implementation-artifacts/8-7-reimagine-the-bucket-ocr.md` (modified) — AC7–AC42, task checkboxes, Dev Agent Record, File List, Change Log
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified, committed) — story status `ready-for-dev` → `in-progress`
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified) — gaps #3 and #6 resolved, gap #4 restated with raised priority, path rot fixed
+- `_bmad-output/planning-artifacts/architecture/architecture-Umbra-2026-07-20/ARCHITECTURE-SPINE.md` (modified) — AD-8/model-tier entry (Task 1, committed); AD-14/AD-15 asset-protocol amendment (slice 5)
+- `_bmad-output/planning-artifacts/epics.md` (modified) — AD-8, Stack, ordering preamble, story scopes (Task 1, committed); **FR23–FR26 catalogue propagation (slice 5)** ⚠
+- `_bmad-output/planning-artifacts/prds/prd-Umbra-2026-07-19/prd.md` (modified, committed) — FR23–FR26 revisions
+- `_bmad-output/party-mode/memories/installed/.memlog.md` (modified, committed) — session memory (party-mode artifact, not story scope)
 - Design canvas (published Artifact, not a repo file) — `https://claude.ai/code/artifact/cd67d1db-4126-41a6-a9bb-d5c2cb9969f5`
+- Character-geometry write-up (published Artifact, not a repo file) — artifact `0982dd45-c869-483e-a9a5-057adf184d4a`
+
+**New — Vue**
+
+- `src/tools/ocr/OcrView.vue`, `OcrView.spec.ts` — the Live Text surface
+- `src/tools/ocr/overlayGeometry.ts` + `.spec.ts` — quad-edge span placement (AC34)
+- `src/tools/ocr/findMatches.ts` + `.spec.ts` — find-in-image matching (AC41)
+- `src/tools/ocr/lowConfidence.ts` + `.spec.ts` — the measured 0.90 threshold (AC36)
+- `src/tools/ocr/realOutcome.fixture.json` + `realOutcome.spec.ts` — real detector output as a fixture
+- `src/tools/pdf/PdfView.vue`, `PdfView.spec.ts` — verbatim move (AC9)
+- `src/tools/image/ImageView.vue`, `ImageView.spec.ts` — verbatim move (AC9)
+- `src/shell/useCopyFeedback.spec.ts` — the spec the composable never had (AC15)
+
+**Renamed / moved**
+
+- `src/tools/bucket/ocrOutcome.ts` → `src/tools/ocr/ocrOutcome.ts`
+- `src/tools/bucket/imageTargetFormat.ts` → `src/tools/image/imageTargetFormat.ts`
+- `src/tools/json/useCopyFeedback.ts` → `src/shell/useCopyFeedback.ts` (AC15, no shim)
+- `src-tauri/src/commands/bucket.rs` → `src-tauri/src/commands/ocr.rs` (AC10)
+
+**Deleted**
+
+- `src/tools/bucket/BucketView.vue`, `src/tools/bucket/BucketView.spec.ts` (AC8)
+
+**Modified — shell and cross-island**
+
+- `src/stores/registry.ts`, `registry.spec.ts` — three entries, alias partition, `pasteSourceImage` (AC7, AC12)
+- `src/shell/icons.ts` — `IconName` loses `bucket`, gains `ocr`/`pdf`/`image` (AC28)
+- `src/shell/DropZone.vue`, `dropZone.ts`, `dropZone.spec.ts` — paste-image publication (AC12), drag-over state (AC14), stale-`<textarea>` comment fix (slice 5)
+- `src/shell/clipboardMatch.ts` — the AC12-era comment naming Bucket (AC7)
+- `src/shell/toolError.ts`, `toolError.spec.ts` — AC24/AC25 additions, AC26 recorded exclusions, stale code-count fix (slice 5)
+- `src/shell/AppSidebar.spec.ts`, `CommandPalette.spec.ts` — split fallout (AC7)
+- `src/router/index.spec.ts` — asserts the registry's count, not the retired name (found by diff, not by the name sweep)
+- `src/locales/en.json`, `fr.json` — the 32-key partition (AC27) and the two `errors.ocr-*` keys (AC24, AC25)
+- `src/i18n.ts` — `decimal1` comment cited the deleted `BucketView.vue` (AC8)
+- `src/tools/json/JsonView.vue`, `json/JsonTree.vue`, `base64/Base64View.vue`, `uuid/UuidView.vue`, `hash/HashView.vue`, `jwt/JwtView.vue`, `cron/CronView.vue` — one import line each (AC15)
+
+**Modified — Rust**
+
+- `crates/umbra-core/src/ocr.rs` — region-structured outcome, EXIF, reading-order sort, detection config, `max_text_length`, `measure_char_polygons`, the quality corpus (AC16–AC23); `UNSUPPORTED_FORMAT_MESSAGE`, `PDF_MAGIC` + `reject_pdf` (AC24, AC25)
+- `src-tauri/src/commands/ocr.rs` — AC10 renames, AC11 per-file asset grant, AC22 concurrency note, the dropped-PDF command test (AC25)
+- `src-tauri/src/lib.rs` — `use` + `generate_handler!` (AC10)
+- `src-tauri/src/commands/mod.rs` — `pub mod bucket;` → `pub mod ocr;` (AC10)
+- `src-tauri/tests/ocr_engine_race.rs` — renamed with its command module (AC10)
+- `src-tauri/Cargo.toml` — the `protocol-asset` feature (AC11) and three stale `bucket.rs` comments (AC10)
+- `Cargo.lock` — one new transitive crate, `http-range` 0.1.5, from `protocol-asset` ⚠
+- `crates/umbra-core/tests/fixtures/` (new) — `exif-rotated.jpg`, `long-lines.png`, `two-column.png`, `screenshot-error-dialog.png`, `document-photo.png`, `scan.png` (AC18, AC20, AC21, AC23)
+
+**Modified — config and docs**
+
+- `src-tauri/tauri.conf.json` — `assetProtocol` enabled, empty static scope (AC11)
+- `docs/release-checklist.md` — the network-audit procedure and manual QA step split across three tools (AC7)
 
 ### Change Log
 
 | Date | Change |
 | --- | --- |
+| 2026-09-08 | **Story complete — AC30 verified, AC11 ruled, Task 2b closed.** The second half of the VoiceOver pass confirms the no-text state and the PDF error both announce; `role="alert"` was the remaining risk (inserted the same way the silent region was) and it works, so no further change. Deferred gap #5 closed by verification, with its lesson recorded for the next occurrence: an inserted live region is not a live region. **AC11 ruled by the developer — allow-only ships**, with the threat-model reasoning written into `ARCHITECTURE-SPINE.md` rather than left in the story file. The blur + sweep state, the last carried-in open question, confirmed good. Status → review. |
+| 2026-09-08 | **AC30's manual VoiceOver pass found the no-text state completely silent — gap #5's first real verification since Story 4.3, and the first Epic 8 finding no spec could have produced.** A live region only speaks when an element already in the accessibility tree changes content; the visible message is `v-if`-inserted, so region and text arrived together and VoiceOver observed nothing, while every DOM assertion passed. Fixed by making the always-mounted `.sr-only` region the single spoken channel and stripping `role="status"` from the visible message so it cannot double-announce. **A second bug fell out of it:** the announcer said *"Text extracted."* unconditionally, including when nothing was — inaudible, so unheard, but a bluff about its own result in the app that must never make one; it now says what actually happened, including AC39's found-but-unreadable diagnosis. Developer also confirmed the image-replacement fixes and the blur + sweep as good. Five tests added, asserting the announcer's text and explicitly not claiming to prove audibility. Gate: **963 Vitest** (was 958). **The error path has not been heard yet** — its `role="alert"` is inserted the same way, so it is a candidate for the same failure. **Nothing pushed, nothing committed.** |
+| 2026-09-08 | **Render review round 2 — four bugs in the image-replacement flow.** The developer's three reports (no blur/sweep on a second image, the new image drawn at the previous one's dimensions, stale find highlights over it) all traced to one omission: `resetForNewSource()` was wired to the file picker only, so drop and paste inherited the previous outcome. Fixed at the cause — the drop and paste **source** watchers now reset, which is safe because the shell publishes the source before it invokes and the result only after (verified in `DropZone.vue`, not assumed). A **fourth bug** surfaced while fixing it and would have been made worse by the fix: `naturalSize` had no fallback on the file paths, so `.surface` was **0x0 for the whole ~3 s wait** and its clipped overflow hid both the image and the sweep — an AC33 violation the spec missed by asserting `.in-flight` exists but never that it has a size. Closed with a `loadedSize` ref from the `<img>`'s `@load`, ranked below the outcome so the oriented dimensions still win. **Message placement fixed:** `.pane` is `flex: 1` in a full-height column, so messages rendered after it landed at the window's bottom edge — which is why the developer never saw the error at all. Errors now render inside the drop target; `no-text-found` and copy failures render in the toolbar, above the image. Nine regression tests, **each proved non-vacuous by reverting the fix it covers**, reproducing the developer's descriptions exactly. Gate: **958 Vitest** (was 949), 371 cargo unchanged. **Nothing pushed, nothing committed.** |
+| 2026-09-08 | **Slice 5 (AC24–AC26) implemented — the errors and i18n pass.** `ocr-unsupported-format` stops rendering the `image` crate's English prose and carries a project-authored, value-free, non-enumerating sentence; a dropped PDF is caught by `%PDF-` at byte 0 **before** decode and answered by name as `ocr-pdf-wrong-tool` (a sentence, not a routing offer — Story 8.8 owns carrying the file across). Both join `TRANSLATABLE_CODES` with `en`/`fr` keys, and every `ocr-*` exclusion is now recorded in `toolError.ts` **and asserted** by a table test. **AC24's second clause turned out to be premised on a fact that was never true** — no test ever asserted the `image` crate's "unexpected end of file"; verified against the baseline, the phrase lives only in Story 4.3's document. **The English assertions could not prove AC24** (locale string == Rust message), so a scoped French-locale block was added and verified non-vacuous by temporarily deregistering a code. Spine amendment written (AD-14/AD-15 asset protocol, including the allow-only cost in full); `deferred-work.md` reconciled. **Three things raised, not absorbed:** AC2's FR propagation had missed `epics.md`'s FR catalogue entirely (fixed), `Cargo.lock` gained `http-range` 0.1.5 from `protocol-asset` so "no new Rust dependency" is no longer true (AD-7 audit re-run, clean), and two comments still named the deleted `<textarea>`. Gate: **949 Vitest** (was 938), **371 cargo** (was 366). **AC30's manual screen-reader pass is NOT done and needs the developer.** **Nothing pushed, nothing committed.** |
+| 2026-09-08 | **Find-match placement fixed by measuring the pixels.** `oar-ocr`'s `return_word_box` positions are CTC timestep fractions and drift up to 20 characters mid-line (86/166/322 px at 40/80/160 characters); the matching box count proved quantity, never position, and Cut #4's reversal is undone with the numbers recorded in-file. Replaced by `measure_char_polygons` — crop, Otsu threshold, column ink profile, N−1 widest gaps as word separators — which holds a **flat ~3 px (0.19 character) error across 40–200 character lines** and *declines* (tilt >2°, too few columns, unresolved gaps) rather than answering badly, leaving the view's honest whole-line band. Also from the render review: controls moved out of the image (AC37/AC38 revised), translucent current-match highlight, always-visible find bar, arrows hidden below two matches. Write-up: artifact 0982dd45. Gate: 938 Vitest, **366 cargo**. **Nothing pushed, nothing committed.** |
+| 2026-09-07 | **Slice 4 (AC11–AC14, AC31–AC42) implemented — the Live Text surface.** The `<textarea>` is gone; recognised text renders once, as transparent selectable spans on the image, fully tokenised. Asset protocol enabled with an empty static scope and a per-file runtime grant; paste pixels published by the shell (AC12); drag-over state published as `dragOverToolId` (AC14); file picker calling `registry.getLatestWinsRunner(\"ocr\")` directly (AC13). **AC11's mechanism changed on verified grounds**: `Scope` has no pattern-removal API and `is_allowed` checks forbidden first, so the AC's `forbid_file` step would permanently poison any file the user returns to — allow-only shipped, cost recorded, raised for a ruling. `Cargo.toml` gained the `protocol-asset` feature (not a new dependency, but a widening of the authorised surface). Overlay geometry and find matching landed as pure, separately tested modules (19 + 11 tests). Gate: **917 Vitest** (was 862), 361 cargo. **Nothing pushed, nothing committed.** |
+| 2026-09-07 | **AC36 amended after a developer-raised finding.** A screenshot of this session showed `⌘` recognised as `8` and `渊`. Verified: U+2318 is absent from the 6,904-entry dictionary (89.4% CJK, 1.4% ASCII), so a closed-vocabulary CTC recogniser structurally cannot emit it. Measured per-glyph confidence — out-of-vocabulary symbols score 0.00–0.65 against 0.989–1.000 for real characters — which showed the developer's threshold instinct was right, but also that region confidence is a *mean* over per-character probabilities (`decode.rs:236`), so a single bad character in a long line is arithmetically invisible (0.9735 corrupted vs 0.9763 clean, against a corpus minimum of 0.9504 for correct text). Threshold set to **0.90** (developer's call) in a new `src/tools/ocr/lowConfidence.ts` + spec that encodes the measurements as regression guards. AC36's stated rationale corrected: region-level marking is an honest signal, not the primary defence against confident nonsense — Live Text's on-image placement is. Per-character confidence filed as a backlog candidate. |
+| 2026-09-07 | **Slice 3 (AC16–AC23) implemented.** `OcrOutcome` becomes region-structured (`regions` + oriented `image_width`/`image_height`; `OcrRegion` keeps `text: Option`, confidence and the rotated bounding polygon), EXIF orientation is applied before recognition, regions are sorted into reading order in core behind a unit-tested pure function, the detection config states all seven fields and the recognition config sets `max_text_length` explicitly, AC22's concurrency overlap is recorded in the command layer, and a five-fixture quality corpus lands with separate content and ordering assertions. **The EXIF bug was reproduced before it was fixed**: the sideways fixture returned \"omohi bunpo\" at 0.22 confidence; oriented, the same bytes return all four lines at 0.987–0.999. AC20's long-line test passes, so `max_text_length` was never truncating at 25 — it is now pinned at 100 rather than inherited. The two-column fixture characterises the sort's stated limit rather than hiding it. TS mirror uses snake_case to match the codebase's existing IPC convention. Gate: 853 Vitest, **361 cargo** (was 345). **Nothing pushed, nothing committed.** |
+| 2026-09-07 | **Slices 1 and 2 implemented** (no commit between slices, developer's call). Slice 1: the `useCopyFeedback` hoist to `src/shell/`, 7 import sites, no shim, plus the spec the composable never had — 845 -> 852 Vitest with no existing assertion touched; render-reviewed and approved. Slice 2: the three-way split — `BucketView.vue`/`.spec.ts` deleted, `OcrView` / `PdfView` / `ImageView` created, registry down to three entries with the alias partition, `IconName` losing `bucket` and gaining three pictograms, the 32-key i18n block partitioned into 35 across three prefixes, and AC10's OCR-only command and error-code renames. AC9's verbatim-move gate **verified by diff against HEAD**: PDF changed one comment line and zero assertions; six of eight Image blocks are byte-identical. **Two things raised rather than absorbed** — the two Image blocks asserting cross-section isolation that the split structurally dissolves (AC9 calls a changed Images assertion 'not a judgement call', so it awaits a ruling), and `src/router/index.spec.ts`, an eighth breaking file the name-keyed sweep could not find because it asserts the registry's *count*, not the retired name. Full gate green: 852 Vitest, 345 cargo. **Nothing pushed, nothing committed.** |
+| 2026-09-07 | **Task 2b opened; overlay spike run before slice 1.** Slice order set (hoist → split → Rust → Live Text → errors; Rust-first argued and rejected). A throwaway spike against real `TextRegion` geometry — no Tauri, no asset protocol, code reverted — produced two developer-approved AC amendments. **AC19**: `OAROCRBuilder::build()` wraps the whole `general` preset in `if !has_explicit_det_cfg`, so AC19's own `.text_detection_config(...)` instruction silently dropped `unclip_ratio` 2.0→1.5, `max_side_len` 4000→None and `limit_type` Max→Min — the last *inverting* the resize into an upscale (measured 1520×920 → ≈2645×1600). AC19 now states all seven detection fields. **AC34**: ink fills 97 % of box *width* (the width-fit is sound) but only 57–67 % of box *height*, and detection returns rotated min-area quads carrying 3.25° median tilt on a document photo (~37 px drift over a 650 px line). AC34 now derives each span from the quad's own edges with a named calibration constant and an `atan2` rotation, degenerating to the axis-aligned case at 0°. Verified clean: AC16's coordinate space, AC20's no-truncation outcome, and the record's `unclip_ratio = 2.0`. AC42's "first slice" clause logged as stale. **Nothing pushed; no code committed yet.** |
 | 2026-09-07 | **Task 2a signed off.** Developer approved AC7–AC42 as written. AC35 confirmed (fit-to-pane, no zoom or pan, never upscale) and AC25 confirmed as a sentence only, on the developer's own reasoning — *a button cannot route to somewhere that is not built yet* — which is now the reason AC25 records, and which hands "carry the dropped file across into the PDF tool" to Story 8.8. Task 1's stale checkboxes corrected after verifying its AC2 propagation (`585349b`) and AC3 issue filing (`2d5b387`) actually landed. **Task 2b not started; nothing pushed.** |
 | 2026-09-07 | **Task 2a complete.** AC7–AC42 written into a new `## Acceptance Criteria — Task 2 (Redesign)` section, plus a normative *Authorised file surface* table built from a repo-wide sweep (which found seven files beyond the story's own Project Structure Notes, four carrying assertions that break on the split). Developer's three opening calls: split sequencing (non-visual ACs → canvas → visual ACs), `useCopyFeedback` hoisted to `src/shell/` with all seven import sites updated and no shim, and an asset-protocol scope that is **empty statically** with a per-file runtime grant (verified against vendored `tauri-2.11.5`; `capabilities/default.json` needs no change, `persisted-scope` deliberately not added). One gap found in the signed-off record and closed: the paste path had no image-display route at all (AC12). Nine-artboard design canvas built and published. **Awaiting developer sign-off before Task 2b.** |
 | 2026-09-06 | Task 0 complete (`bmad-dev-story`). Baseline `d576c3e` re-verified against `origin/main`; branch `feat/story-8-7-reimagine-the-bucket-ocr` cut; story file + sprint-status committed as `936f32f`. AC1's mandatory drift re-read found the code matching Dev Notes exactly, and two stale claims in the Dev Notes themselves (a second `cron-*` translatable code; the `epics.md` `oar-ocr` drift is 3 places, not 4). |

@@ -11,9 +11,8 @@ import { formatDateTime } from "../../shell/locale";
 import { toToolError, toolErrorMessage, type ToolError } from "../../shell/toolError";
 import { useSettingsStore } from "../../stores/settings";
 // Per-block copy confirmation — the JsonTree.vue / Base64View.vue /
-// HashView.vue icon-button pattern (imported cross-tool from the JSON tool
-// with its existing hoist-candidate comment; the hoist is still not done).
-import { useCopyFeedback } from "../json/useCopyFeedback";
+// HashView.vue icon-button pattern.
+import { useCopyFeedback } from "../../shell/useCopyFeedback";
 import type { JwtDecoded } from "./jwtDecoded";
 
 const { t } = useI18n();

@@ -3,7 +3,7 @@ use std::sync::Barrier;
 use std::sync::atomic::Ordering;
 
 use tauri::test::{mock_builder, mock_context, noop_assets};
-use umbra_lib::commands::bucket::{OCR_ENGINE_INIT_CALLS, ocr_engine};
+use umbra_lib::commands::ocr::{OCR_ENGINE_INIT_CALLS, ocr_engine};
 
 fn mock_app_handle() -> tauri::AppHandle<tauri::test::MockRuntime> {
     mock_builder()
@@ -15,7 +15,7 @@ fn mock_app_handle() -> tauri::AppHandle<tauri::test::MockRuntime> {
 
 // AC3/AD-16: proves the real `OCR_ENGINE` static's exactly-once-under-race guarantee holds for
 // this codebase's actual `ocr_engine()` code path, not just for `std::sync::OnceLock` in the
-// abstract (that narrower claim is what `bucket.rs`'s own unit test proves — see its comment for
+// abstract (that narrower claim is what `ocr.rs`'s own unit test proves — see its comment for
 // why it deliberately avoids racing the shared `OCR_ENGINE` static: `cargo test`'s default
 // parallelism means other unit tests in that same process almost certainly initialize it first).
 // This file is a separate integration-test binary — Cargo gives every `tests/*.rs` file its own

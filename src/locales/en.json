@@ -301,12 +301,34 @@
       "fieldMonth": "Month",
       "fieldDayOfWeek": "Day of week"
     },
-    "bucket": {
-      "description": "Extract text from images, and merge, split, or convert PDFs and images.",
-      "heading": "Bucket",
-      "dropHint": "Drop a PNG, JPEG, or WebP image anywhere in the window, or paste (⌘V), to extract its text.",
+    "ocr": {
+      "description": "Pull the text out of a screenshot, a photo, or a scan.",
+      "heading": "Image to Text",
+      "dropHint": "Drop an image anywhere in the window, or paste (⌘V), to extract its text.",
       "noTextInImage": "No text was found in this image.",
       "extractedTextLabel": "Extracted text",
+      "dropTargetLabel": "Drop an image here",
+      "chooseImage": "Choose an image…",
+      "pasteHint": "or paste with ⌘V",
+      "dropToExtract": "Drop to extract text",
+      "extracting": "Extracting text…",
+      "extractionComplete": "Text extracted.",
+      "copyAllText": "Copy all text",
+      "copied": "Copied",
+      "imageAccessibleName": "Source image — its text is available below and selectable on the image",
+      "overlayLabel": "Text recognised in the image",
+      "unreadableRegion": "Text found here but not recognised",
+      "find": "Find in image",
+      "findPlaceholder": "Find",
+      "matchCount": "{current} of {total}",
+      "noMatches": "No matches",
+      "nextMatch": "Next match",
+      "previousMatch": "Previous match",
+      "noTextDiagnosis": "No text could be read from this image — the marked regions were found but not recognised.",
+      "clearFind": "Clear search"
+    },
+    "pdf": {
+      "description": "Merge PDFs, extract a page range, or pull out their text.",
       "pdfSectionHeading": "PDF tools",
       "mergeHeading": "Merge",
       "addPdfs": "Add PDFs…",
@@ -322,6 +344,11 @@
       "extractTextHeading": "Extract text",
       "extractText": "Extract text",
       "noTextInPdf": "No text was found in this PDF.",
+      "pdfFilterName": "PDF",
+      "extractedTextLabel": "Extracted text"
+    },
+    "image": {
+      "description": "Convert images between PNG, JPEG, and WebP, and compress them.",
       "imageSectionHeading": "Image tools",
       "chooseImage": "Choose image…",
       "targetFormat": "Target format",
@@ -332,7 +359,6 @@
       "sizeUnitKb": "KB",
       "sizeUnitMb": "MB",
       "defaultFileNameStem": "converted",
-      "pdfFilterName": "PDF",
       "imageFilterName": "Image"
     }
   },
@@ -361,6 +387,8 @@
     "base64-not-utf8": "The decoded bytes aren't valid UTF-8 text.",
     "base64-data-uri-malformed": "That isn't a valid Base64 data URI — it needs a ';base64,' marker before the payload.",
     "cron-six-field-unsupported": "This tool handles standard 5-field cron expressions. Seconds-precision (6-field) expressions aren't supported yet.",
-    "cron-no-upcoming-runs": "This expression has no upcoming occurrences \u2014 the date it specifies may never exist (for example February 30th)."
+    "cron-no-upcoming-runs": "This expression has no upcoming occurrences — the date it specifies may never exist (for example February 30th).",
+    "ocr-unsupported-format": "That file isn't an image this tool can read.",
+    "ocr-pdf-wrong-tool": "PDFs open in the PDF tool."
   }
 }

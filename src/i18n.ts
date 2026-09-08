@@ -15,7 +15,7 @@ import fr from "./locales/fr.json";
 // on n()'s unspecified no-key behavior:
 //  - "grouped": UuidView.vue's max-count bound — grouped integer, locale
 //    thousands separator (e.g. "4 294 967 295" in French vs "4,294,967,295").
-//  - "decimal1": BucketView.vue's estimated-file-size display — fixed
+//  - "decimal1": ImageView.vue's estimated-file-size display — fixed
 //    one-decimal precision, locale decimal separator (comma in French).
 const groupedFormat = { style: "decimal", maximumFractionDigits: 0 } as const;
 const oneDecimalFormat = { style: "decimal", minimumFractionDigits: 1, maximumFractionDigits: 1 } as const;
