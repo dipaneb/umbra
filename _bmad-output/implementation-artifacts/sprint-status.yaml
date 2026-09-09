@@ -41,7 +41,15 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-08  # story 8-7 review -> done (bmad-code-review, three parallel layers: Blind
+last_updated: 2026-09-09  # story 8-8 created (bmad-create-story) -> ready-for-dev, at baseline
+# ef25dbe (8.7 / PR #136, merged the same day). Task 1 ACs real (AC1-AC7); Task 2 ACs deferred per the
+# epic's own gate. Two ACs beyond the 8.1-8.6 template: AC4 turns 8.7's two written hand-offs (the
+# bucket_* -> pdf_* rename incl. the bucket-input-too-large / bucket-internal codes SHARED with the
+# Images tool, and PDF tier 2's honest scan message) into obligations; AC5 forces a re-decision on
+# drag-and-drop -- Story 6.1 declined it deliberately and recorded three reasons, and 8.7's registry
+# split invalidated the load-bearing one. lopdf 0.45.0 (2026-09-08, MSRV 1.88) checked live: NOT
+# toolchain-blocked, unlike oar-ocr -- an open decision for Task 1. Vitest baseline 974/974 re-run.
+# Previous entry, 2026-09-08 -- story 8-7 review -> done (bmad-code-review, three parallel layers: Blind
 # Hunter / Edge Case Hunter / Acceptance Auditor, all against `git diff -M main...HEAD` code paths).
 # 40 raw findings -> 30 after dedup; 5 decisions ruled by the developer, 23 patches applied, 3 deferred,
 # 4 dismissed. Gate 974 Vitest / 373 cargo, from 963 / 371.
@@ -1565,7 +1573,7 @@ development_status:
   # the only bidirectional two-state-group tool in Epic 8, so AppTabs is genuinely on the
   # table (weighed vs. 8.2's smart-detection choice). Not committed.
   8-7-reimagine-the-bucket-ocr: done
-  8-8-reimagine-the-bucket-pdf: backlog
+  8-8-reimagine-the-bucket-pdf: ready-for-dev
   8-9-reimagine-the-bucket-images: backlog
   epic-8-retrospective: optional
 
