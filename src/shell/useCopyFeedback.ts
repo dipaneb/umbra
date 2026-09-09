@@ -1,10 +1,16 @@
 import { ref } from "vue";
 
-// Shared by JsonTree.vue's (Explorer) and JsonView.vue's (Query) per-row
-// copy-value/copy-path buttons — both need the same "briefly confirm which
-// exact button was just clicked" behavior, keyed by a caller-chosen string
-// (e.g. `${row.path}:value`) since several copy buttons can exist on screen
-// at once and only the one actually clicked should show feedback.
+// A generic view-level utility living in `shell/` and imported by tool
+// islands, exactly like `shell/debounce.ts` — hoisted here by Story 8.7 (AC15)
+// after five consecutive stories declined the move on the grounds that they
+// weren't shared-infrastructure stories. Every copy affordance in the app uses
+// it: JSON (Explorer rows and the Query/Transform panels), Base64, UUID, Hash,
+// JWT, Cron, and Image to Text.
+//
+// Callers need the same "briefly confirm which exact button was just clicked"
+// behavior, keyed by a caller-chosen string (e.g. `${row.path}:value`) since
+// several copy buttons can exist on screen at once and only the one actually
+// clicked should show feedback.
 const FEEDBACK_DURATION_MS = 1500;
 
 export function useCopyFeedback() {

@@ -10,10 +10,20 @@ export type LatestWinsResult<T> = { superseded: false; value: T } | { superseded
 export function createLatestWinsRunner() {
   let latestRequestId = 0;
 
-  return async function runLatestWins<T>(task: () => Promise<T>): Promise<LatestWinsResult<T>> {
+  // `task` receives an `isLatest()` predicate (code review 2026-09-08). Discarding a stale
+  // RESULT is not enough for a task that publishes something of its own partway through: a task
+  // that writes to shared state mid-flight — `DropZone.vue`'s paste path publishes the clipboard
+  // pixels as soon as it has read them, so the view can show the image during a ~3 s inference —
+  // is ordered by when its own await resolves, not by when it was dispatched, and can therefore
+  // land AFTER a newer run has already settled. Passing the check in is what lets such a task
+  // decline to write. Callers that publish nothing mid-flight ignore the argument.
+  return async function runLatestWins<T>(
+    task: (isLatest: () => boolean) => Promise<T>,
+  ): Promise<LatestWinsResult<T>> {
     const requestId = ++latestRequestId;
+    const isLatest = () => requestId === latestRequestId;
     try {
-      const value = await task();
+      const value = await task(isLatest);
       return requestId === latestRequestId ? { superseded: false, value } : { superseded: true };
     } catch (error) {
       if (requestId === latestRequestId) throw error;

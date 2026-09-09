@@ -78,7 +78,7 @@ describe("TOOLS clipboardMatch field (AC3/AC4/AC12, Story 7.8)", () => {
       .map((tool) => tool.id)
       .sort();
 
-    expect(eligible).toEqual(["base64", "bucket", "json", "jwt"]);
+    expect(eligible).toEqual(["base64", "json", "jwt", "ocr"]);
   });
 
   it("does not crash iterating a mixed registry (some entries have no clipboardMatch)", () => {
@@ -117,16 +117,16 @@ describe("TOOLS clipboardMatch field (AC3/AC4/AC12, Story 7.8)", () => {
     expect(base64.clipboardMatch!.test(text("not valid!"))).toBe(false);
   });
 
-  it("bucket matches image content only, never text", () => {
+  it("ocr matches image content only, never text", () => {
     setActivePinia(createPinia());
     const registry = useRegistryStore();
-    const bucket = registry.tools.find((tool) => tool.id === "bucket")!;
+    const ocr = registry.tools.find((tool) => tool.id === "ocr")!;
 
-    expect(bucket.clipboardMatch!.test(image)).toBe(true);
-    expect(bucket.clipboardMatch!.test(text("anything"))).toBe(false);
+    expect(ocr.clipboardMatch!.test(image)).toBe(true);
+    expect(ocr.clipboardMatch!.test(text("anything"))).toBe(false);
   });
 
-  it("orders specificity so jwt > json > base64, and bucket's image match can never collide with a text matcher", () => {
+  it("orders specificity so jwt > json > base64, and ocr's image match can never collide with a text matcher", () => {
     setActivePinia(createPinia());
     const registry = useRegistryStore();
     const byId = Object.fromEntries(registry.tools.map((tool) => [tool.id, tool.clipboardMatch]));

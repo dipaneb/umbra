@@ -14,7 +14,7 @@ import {
 } from "./flattenJsonTree";
 import { jsonTreeValueToText } from "./jsonTreeValue";
 import type { JsonTreeValue } from "./jsonTreeValue";
-import { useCopyFeedback } from "./useCopyFeedback";
+import { useCopyFeedback } from "../../shell/useCopyFeedback";
 
 const { t } = useI18n();
 

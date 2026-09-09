@@ -31,9 +31,10 @@ export function routeDrop(paths: string[], activeTool: ToolRegistryEntry | undef
 }
 
 // ⌘V is the standard OS text-paste shortcut, used everywhere in this app (Hash's textarea,
-// JSON's input, Cron's fields, Bucket's own editable text-output field). The paste dispatcher
+// JSON's input, Cron's fields, the OCR view's find field — Story 8.7 removed that view's editable
+// text-output field, but its find bar is still a real text input). The paste dispatcher
 // must never intercept it while focus is inside an editable element — only a non-editable target
-// with the Bucket route active means "paste an image into the Bucket" (Story 4.2).
+// with the Image to Text route active means "paste an image into it" (Story 4.2).
 export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -55,4 +56,26 @@ export function routePaste(activeTool: ToolRegistryEntry | undefined): PasteRout
     return { accepted: false };
   }
   return { accepted: true, toolId: activeTool.id, handler: activeTool.paste.handler };
+}
+
+/**
+ * AC14 (Story 8.7): which tool, if any, should show a drag-over highlight for this webview
+ * drag-drop event.
+ *
+ * Pure and separately tested so `DropZone.vue` stays a thin listener. The rules are small but
+ * each one is a decision:
+ *
+ * - `enter` / `over` highlight, but only for a tool that actually declares `drop` — lighting up
+ *   a target on a view that will refuse the file is a lie told a moment before the refusal.
+ * - `drop` clears, because the drop has landed and the result state takes over.
+ * - `leave` clears — this is the cancel path, and Tauri emits it when the pointer leaves the
+ *   window without releasing.
+ */
+export function routeDragState(
+  eventType: "enter" | "over" | "drop" | "leave",
+  activeTool: ToolRegistryEntry | undefined,
+): string | null {
+  if (eventType === "drop" || eventType === "leave") return null;
+  if (!activeTool?.drop) return null;
+  return activeTool.id;
 }

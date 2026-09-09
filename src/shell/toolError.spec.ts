@@ -57,4 +57,35 @@ describe("toolErrorMessage", () => {
     const err = { code: "json-internal", message: "raw internal message", position: null, context: null };
     expect(toolErrorMessage(err, t)).toBe("raw internal message");
   });
+
+  // Story 8.7 AC24/AC25/AC26. Pinned here rather than left to the OCR view's own spec: the
+  // decision about which codes translate is this module's, and it is the module that would
+  // silently regress if someone removed one from the set — the view would still render, just
+  // in English.
+  describe("the OCR codes (Story 8.7)", () => {
+    const lookup = (key: string) => `translated:${key}`;
+
+    it.each(["ocr-unsupported-format", "ocr-pdf-wrong-tool"])(
+      "translates %s, whose Rust message is a fixed project-authored sentence",
+      (code) => {
+        const err = { code, message: "the English original", position: null, context: null };
+        expect(toolErrorMessage(err, lookup)).toBe(`translated:errors.${code}`);
+      },
+    );
+
+    // AC26's recorded exclusions, asserted rather than only commented. Each of these carries a
+    // runtime value or third-party prose in its message, so translating off the code alone
+    // would drop the number or invent the sentence.
+    it.each([
+      "ocr-engine-init-failed",
+      "ocr-internal",
+      "ocr-extraction-failed",
+      "ocr-input-too-large",
+      "ocr-malformed-image-buffer",
+      "ocr-malformed-request",
+    ])("leaves %s untranslated, falling through to the raw message", (code) => {
+      const err = { code, message: "raw message with a runtime value", position: null, context: null };
+      expect(toolErrorMessage(err, lookup)).toBe("raw message with a runtime value");
+    });
+  });
 });

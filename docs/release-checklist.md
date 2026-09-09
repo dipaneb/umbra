@@ -58,7 +58,7 @@ Use `nettop`, macOS's built-in network-activity monitor. It's zero new dependenc
 system binary, not a `Cargo.toml`/`package.json` entry — so the "Dependency
 version/API drift" convention in `ARCHITECTURE-SPINE.md` doesn't apply to it. It's also
 already proven for exactly this purpose: Story 4.3 used it, ad hoc, to confirm the
-Bucket's OCR feature makes zero network calls. This checklist generalizes that one-off
+OCR feature makes zero network calls. This checklist generalizes that one-off
 check into a repeatable, all-tools procedure.
 
 **One caveat this procedure can't rule out:** it runs on a single machine under
@@ -126,15 +126,15 @@ Story 5.3, but a tool may have been added since:
 - **Hash** — hash text and a file, across the supported algorithms.
 - **JWT** — decode a token, including one with an expired/invalid claim.
 - **Cron** — both directions: cron-expression-to-English, and natural-language-to-cron.
-- **Bucket** — drag an image in, paste a screenshot, and extract text — **including the
-  very first use of the OCR engine in the running session.** First use is the specific
+- **Image to Text** — drag an image in, paste a screenshot, and extract text — **including
+  the very first use of the OCR engine in the running session.** First use is the specific
   moment a forgotten bundled-model reference would surface as an actual download,
-  rather than as a bug that shows up somewhere else. Also exercise the PDF section
-  (Story 6.1): merge 2+ PDFs, extract a page range, and extract text — a brand-new
+  rather than as a bug that shows up somewhere else.
+- **PDF** (Story 6.1) — merge 2+ PDFs, extract a page range, and extract text — a brand-new
   dependency (`lopdf`) the first time it's used in the real app, not just assumed
-  network-clean from the `cargo tree` check alone. Also exercise the Image section
-  (Story 6.2): convert a PNG to JPEG with a quality change, confirming the live size
-  estimate updates as the slider moves.
+  network-clean from the `cargo tree` check alone.
+- **Image** (Story 6.2) — convert a PNG to JPEG with a quality change, confirming the live
+  size estimate updates as the slider moves.
 
 Also open **Settings** and the **⌘K palette** during the capture. Neither makes any
 `invoke`/`fetch` call today (confirmed by reading `SettingsView.vue` and
@@ -149,7 +149,7 @@ i18n-equivalent of the network tour's own logic: a missing/mis-keyed French stri
 layout that clips under French's longer text, or an untranslated surface would otherwise
 only ever surface if someone happens to be running the app in French, exactly the way an
 untested network call would otherwise only surface if someone happened to trigger it. For
-Bucket specifically, also confirm OCR against a French-text screenshot (accented
+Image to Text specifically, also confirm OCR against a French-text screenshot (accented
 characters `é è à ç ô`) — see the AD-13 amendment note in `ARCHITECTURE-SPINE.md` for
 why this is the one leg not otherwise covered by automated tests.
 

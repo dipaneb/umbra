@@ -10,7 +10,7 @@ import { useRegistryStore } from "../../stores/registry";
 import { useSettingsStore } from "../../stores/settings";
 // Per-row copy confirmation — the JsonTree.vue / Base64View.vue / UuidView.vue
 // icon-button pattern (signature-accent check, no separate success colour).
-import { useCopyFeedback } from "../json/useCopyFeedback";
+import { useCopyFeedback } from "../../shell/useCopyFeedback";
 import WeakHashPopover from "./WeakHashPopover.vue";
 import type { Algorithm, DigestEntry } from "./hashDigests";
 

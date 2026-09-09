@@ -193,11 +193,71 @@ The rule stays `[ADOPTED]` and, for the cron tool, is now met in full.
 - **Prevents:** every tool wiring its own document-level listener, with shortcuts and drop handling colliding across tools
 - **Rule:** window-level Tauri-native drops dispatch to the active tool's registry-declared handler — a pure `{ accepted mime types, handler command name }` declaration the shell's single generic dispatcher invokes; tools never receive live drop-event callbacks directly (this closes the same seam AD-5's registry entry opens). One clipboard service wraps the Tauri clipboard plugin — `navigator.clipboard` is forbidden. Pasted images are dispatched to that same registry-declared handler directly via the AD-15 raw-IPC-body exception (not the path-based drop mechanism, since clipboard images have no filesystem path). `⌘K` is one capture-phase handler at app scope. Tools register no document-level listeners of their own. `[ADOPTED]`
 
+**Exception (2026-09-08, Story 8.7 code review — developer's ruling):** a tool view **may**
+register a `window`-level `keydown` listener for a shortcut that is meaningful only inside that
+view, provided it is **mount-scoped** — added in `onMounted`, removed in `onUnmounted` — and
+handles only keys no other tool claims. `src/tools/ocr/OcrView.vue` is the precedent and, at the
+time of writing, the only instance: `⌘F` opens its find bar and `⌘A` selects the recognised-text
+overlay, neither of which any other tool has a use for. The rule's purpose is to stop shortcuts
+and drop handling **colliding across tools**, and a listener that exists only while its own view
+is mounted cannot collide with a tool that is not on screen. What stays forbidden is unchanged:
+a listener that outlives its view, one that claims a key another tool or the shell uses (`⌘K`,
+`⌘V`), or a tool receiving live drop or clipboard callbacks — those still route through the
+shell's single generic dispatcher.
+
+**Amendment (2026-09-07, Story 8.7 — the OCR redesign):** a **third OS I/O edge** joins drops,
+clipboard and shortcuts: Tauri's **asset protocol**, which lets the webview read one image file
+directly off disk so the Live Text surface can display the source image the recognised text is
+positioned over. It is an AD-14 concern because it is an OS edge the shell opens, and an AD-15
+concern because it is the second sanctioned route by which image bytes reach the webview without
+riding the JSON IPC bridge (the first being clipboard-pasted bytes via the raw IPC body). Base64
+data URIs were the alternative and were rejected: a 4 MB screenshot becomes ~5.4 MB of string
+copied through IPC and held in JS memory for as long as the view is mounted.
+
+The shape is **deny-by-default plus a per-file runtime grant**, not a static directory scope:
+
+- `tauri.conf.json` enables `assetProtocol` with an **empty** static `scope: []` — so on a cold
+  start the webview can read nothing, and no directory is ever blanket-granted.
+- `ocr_grant_asset` calls `app.asset_protocol_scope().allow_file(path)` for the one file the
+  user actually chose, at the moment they choose it, and the view **awaits it before setting the
+  `<img>` src**. *(Revised at the Story 8.7 code review, 2026-09-08. Three corrections, all of
+  which produced the same user-visible failure — a blank pane with recognised text floating over
+  it, and no error anywhere. First, the grant lived inside `ocr_extract_text`'s `spawn_blocking`
+  and therefore **raced** the asset request it authorised, with a lost race permanent because the
+  `src` never changes afterwards. Second, `allow_file` stores the path **as given** while
+  `is_allowed` **canonicalizes before matching** — verified in `tauri-2.11.5/src/scope/fs.rs` —
+  so on macOS, where `/var` and `/tmp` are symlinks to `/private/...`, a file dragged out of
+  Safari or Preview was granted under one name and checked under another; both forms are granted
+  now. Third, the grant was made **before** the file was validated as an image, so a rejected
+  drop still widened the allow-list; it is now made only for a file that passes the size guard
+  and opens with a decodable container signature.)* A failed grant is **returned** rather than
+  logged to a stderr stream a packaged `.app` discards — the text still comes back, but the user
+  is told why the image is not there, instead of being left to guess whether recognition or the
+  render failed.
+- `src-tauri/capabilities/default.json` needs **no** entry. Verified against the vendored
+  `tauri-2.11.5/src/protocol/asset.rs`: the asset protocol consults the scope only and never the
+  capability ACL.
+- `tauri-plugin-persisted-scope` is deliberately **not** added. It would write granted paths to
+  disk, so the set of images a user had ever opened would accumulate across sessions — the
+  opposite of what this app promises.
+
+**Recorded limitation — the grant is allow-only, and this is a deviation from the story's
+original intent.** The AC as written called for revoking each grant once the image was no longer
+displayed. That is not implementable against this Tauri version, verified in
+`tauri-2.11.5/src/scope/fs.rs`: `Scope` exposes no pattern-*removal* API, and `is_allowed` checks
+forbidden patterns **first** (`:432`), so calling `forbid_file` would not undo the allow — it
+would permanently poison that path for the rest of the process, including a file the user
+deliberately returns to. **The cost of shipping allow-only:** the webview retains read access to
+every image opened during the session. That set lives in memory only and is gone on quit, and
+every path in it is one the user chose themselves in this session. The only construction that
+achieves the original intent is a custom URI scheme serving exactly one path at a time, which
+requires the CSP change this story's AC forbids. Recorded rather than quietly rescoped — and **ruled on by the developer 2026-09-08: allow-only ships.** The reasoning, so a future reader does not have to re-derive it: the grant list is reachable only by code running inside our own webview, which has no network scope (AD-7) and a CSP that blocks external scripts, so exploiting the retained grants presupposes arbitrary JS execution in the app — at which point the image currently on screen is readable anyway. The delta between *one file* and *the files opened this session* is small, and every path in it was chosen by the user minutes earlier. A custom URI scheme remains the construction that achieves the original intent, and is a backlog candidate if the threat model changes.
+
 ### AD-15 — Files cross IPC as paths; core never touches the filesystem
 
 - **Binds:** file I/O
 - **Prevents:** raw bytes bloating the JSON IPC bridge, or core reaching into the filesystem directly and breaking AD-2
-- **Rule:** files cross the IPC bridge as absolute paths. `src-tauri` owns all file reads/writes through one shared save-dialog-plus-write helper. `umbra-core` never touches the filesystem. Byte arrays above ~64KB never ride the JSON IPC bridge — the one sanctioned exception is clipboard-pasted image bytes via the raw IPC body. `[ADOPTED]`
+- **Rule:** files cross the IPC bridge as absolute paths. `src-tauri` owns all file reads/writes through one shared save-dialog-plus-write helper. `umbra-core` never touches the filesystem. Byte arrays above ~64KB never ride the JSON IPC bridge — the one sanctioned exception is clipboard-pasted image bytes via the raw IPC body. `[ADOPTED]` *(See the asset-protocol amendment above, 2026-09-07, Story 8.7: image bytes now also reach the webview by a second route that bypasses the IPC bridge entirely — Tauri's asset protocol, deny-by-default with a per-file runtime grant. The rule above still binds everything that does cross IPC.)*
 
 ### AD-16 — Slow commands are request-ID'd and latest-wins
 
@@ -322,7 +382,7 @@ flowchart TB
 ## Deferred
 
 - ~~**Styling/component framework.**~~ Resolved by Story 7.1 (2026-08-16): `DESIGN.md`/`EXPERIENCE.md` now exist, and this story lands the first concrete implementation — `src/styles/tokens.css` (CSS custom properties, dark mode via `prefers-color-scheme`) plus `src/shell/icons.ts` (Phosphor icon resolver). Still no CSS framework/preprocessor (no Tailwind, no SCSS/CSS-in-JS) — plain CSS custom properties remain this project's only styling mechanism, now with a real token layer instead of ad-hoc per-component values.
-- ~~**Exact OCR ONNX model files.**~~ Resolved by Story 4.1 (2026-08-04): PP-OCRv6 **tiny** detection + recognition ONNX models, published by PaddlePaddle on Hugging Face (Apache-2.0, verified via each repo's `cardData.license`) — `PaddlePaddle/PP-OCRv6_tiny_det_onnx` (`inference.onnx`, 1,780,590 bytes, SHA-256 `193bab7a...dafb19f8`) and `PaddlePaddle/PP-OCRv6_tiny_rec_onnx` (`inference.onnx`, 4,462,639 bytes, SHA-256 `9ef676d6...591563e6`), both verified byte-for-byte against Hugging Face's own reported LFS object hash before bundling. The character dictionary `oar-ocr`'s `character_dict_path` needs isn't shipped as a standalone file in either repo — extracted from the rec model's `inference.yml`'s `PostProcess.character_dict` YAML list (6,904 entries, en/zh) into a plain-text one-char-per-line file, the format `oar-ocr-core`'s `TextRecognitionPredictorBuilder::build` reads via `std::fs::read_to_string(...).lines()`. Confirmed against `oar-ocr-core`'s own `CRNNModelBuilder::build` (`crnn.rs`) that this raw list should *not* include an explicit blank token — it calls `CTCLabelDecode::from_string_list(&dict, true, false)` with `has_explicit_blank: false`, so the decoder prepends the CTC blank internally; a file with a blank entry already present would double up. Bundled as `src-tauri/resources/models/{text_detection.onnx, text_recognition.onnx, character_dict.txt}`.
+- ~~**Exact OCR ONNX model files.**~~ Resolved by Story 4.1 (2026-08-04): PP-OCRv6 **tiny** detection + recognition ONNX models, published by PaddlePaddle on Hugging Face (Apache-2.0, verified via each repo's `cardData.license`) — `PaddlePaddle/PP-OCRv6_tiny_det_onnx` (`inference.onnx`, 1,780,590 bytes, SHA-256 `193bab7a...dafb19f8`) and `PaddlePaddle/PP-OCRv6_tiny_rec_onnx` (`inference.onnx`, 4,462,639 bytes, SHA-256 `9ef676d6...591563e6`), both verified byte-for-byte against Hugging Face's own reported LFS object hash before bundling. The character dictionary `oar-ocr`'s `character_dict_path` needs isn't shipped as a standalone file in either repo — extracted from the rec model's `inference.yml`'s `PostProcess.character_dict` YAML list (6,904 entries, en/zh) into a plain-text one-char-per-line file, the format `oar-ocr-core`'s `TextRecognitionPredictorBuilder::build` reads via `std::fs::read_to_string(...).lines()`. Confirmed against `oar-ocr-core`'s own `CRNNModelBuilder::build` (`crnn.rs`) that this raw list should *not* include an explicit blank token — it calls `CTCLabelDecode::from_string_list(&dict, true, false)` with `has_explicit_blank: false`, so the decoder prepends the CTC blank internally; a file with a blank entry already present would double up. Bundled as `src-tauri/resources/models/{text_detection.onnx, text_recognition.onnx, character_dict.txt}`. *(Amended 2026-09-06, Story 8.7 — this entry recorded **which** files were chosen but never **why that tier**, and Story 4.1's own task text named the medium tier as the fallback "if tiny proves inadequate" without anyone pulling its size. All three tiers, checked live against the Hugging Face API: **tiny 6.0 MB** (1,780,590 det + 4,462,639 rec — shipped), **small 29.6 MB** (9,880,512 + 21,159,378, ≈5×), **medium 132.2 MB** (62,032,837 + 76,554,979, ≈22×). **`small`, not `medium`, is the realistic escalation** — 132 MB of models is a different product, not a fallback, for an app whose pitch is small-and-offline. **Tiny stays**, and now for a reason rather than by inheritance: a 5× recognition model on top of the raised detection resolution, against a measured ~3 s baseline, plausibly reaches the ~10 s point where a user disengages, while the benefit is unmeasured. The cheaper lever was pulled first — `limit_side_len` 960 → 1600, roughly 4× the pixels for the existing model. **Revisit trigger:** if quality at 1600 with reading-order sorting is still unsatisfactory during render review, evaluate `PP-OCRv6_small_*`, measuring accuracy and wall-clock together. Note also that the 6,904-entry dictionary is largely Chinese, serving a script this app has never claimed to support; PP-OCRv5's language-specific recognisers (`latin_`, `en_`, …) are a **better-targeted rather than bigger** alternative, tracked as a backlog candidate. Full reasoning in `8-7-ocr-decision-record.md`.)*
 - ~~**JSON tree IPC transfer strategy.**~~ Resolved by Story 1.8 (2026-07-26): one payload (`json_parse` → `JsonTreeValue`, order-preserving) + virtualized DOM via `@tanstack/vue-virtual`. A lazy per-node fetch fallback is introduced only as an explicit spine amendment if profiling shows FR9 cannot be met — never as a silent switch.
 - **JSON single-payload strategy profiled against a 10 MB fixture — held, no fallback needed.** Story 1.9 (2026-07-27): `json_format`/`json_minify`/`json_parse` dispatch via `tauri::async_runtime::spawn_blocking` (AD-4); release-build Rust-side handling of a 10 MB flat-array fixture measured `json_parse` ~438ms, `json_minify` ~531ms, `json_format` ~537ms (debug build: ~1.4-1.8s). Manual `pnpm tauri dev` verification with the same fixture confirmed the window stayed responsive throughout (draggable, no freeze) even though each operation's end-to-end completion took ~1-2s in the debug build — consistent with "no main-thread block over ~200ms" (FR9/AC1) rather than "sub-200ms total latency," which AC1 does not require. No spine amendment triggered.
 - **FR29 — second AI feature choice** (regex-explain vs. OCR→structured). Deferred to Epic 6 Story 6.3, decided from evidence gathered in Epics 3–4.

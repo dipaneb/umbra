@@ -8,7 +8,7 @@
 // AC12: no source doc spells out `test`'s exact content-type shape (epics.md's literal
 // `test: (content) => boolean` signature leaves `content` untyped) — this discriminated union is
 // this story's resolved interpretation, chosen because it's the smallest shape that lets an
-// image-eligible tool (Bucket) and every text-shape tool share one `test` signature without
+// image-eligible tool (Image to Text) and every text-shape tool share one `test` signature without
 // either side needing to know the other exists.
 export type ClipboardContent = { kind: "text"; value: string } | { kind: "image" };
 

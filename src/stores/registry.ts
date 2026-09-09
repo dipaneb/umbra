@@ -158,36 +158,51 @@ const TOOLS: ToolRegistryEntry[] = [
     icon: "cron",
     component: () => import("../tools/cron/CronView.vue"),
   },
+  // Story 8.7 (AC7): the single `bucket` entry is retired and replaced by three.
+  // It was never a product decision — an AI scaffolded three unrelated tools under
+  // one name and it was left unfixed. The entry actively lied twice: `drop`, `paste`
+  // and `clipboardMatch` were all OCR-only despite sitting on a tool that also
+  // claimed PDF and image conversion, and its 16 aliases meant typing "merge" or
+  // "webp" in ⌘K returned a result named "Bucket". The aliases partition below; the
+  // retired `bucket` alias is not carried onto any entry.
   {
-    id: "bucket",
-    name: "Bucket",
-    descriptionKey: "tools.bucket.description",
-    aliases: [
-      "bucket",
-      "ocr",
-      "screenshot",
-      "pdf",
-      "merge",
-      "image",
-      "convert",
-      "compress",
-      "png",
-      "jpeg",
-      "webp",
-      "capture d'écran",
-      "fusionner",
-      "convertir",
-      "compresser",
-    ],
-    route: "/tools/bucket",
-    icon: "bucket",
-    component: () => import("../tools/bucket/BucketView.vue"),
-    drop: { acceptedMimeTypes: [], handler: "bucket_extract_text" },
-    paste: { handler: "bucket_extract_text_from_clipboard" },
+    id: "ocr",
+    name: "Image to Text",
+    descriptionKey: "tools.ocr.description",
+    aliases: ["ocr", "screenshot", "text", "capture d'écran", "texte"],
+    route: "/tools/ocr",
+    icon: "ocr",
+    component: () => import("../tools/ocr/OcrView.vue"),
+    // All three behavioural declarations move here and here only: PDF and Images
+    // reach the filesystem through their own open()/save() dialogs and never touch
+    // drop or paste.
+    drop: { acceptedMimeTypes: [], handler: "ocr_extract_text" },
+    paste: { handler: "ocr_extract_text_from_clipboard" },
     // specificity 4: highest of the four, though moot in practice — `matchesImage` only ever
     // returns true for `{ kind: "image" }` content, and every text matcher requires
     // `kind === "text"`, so an image clipboard entry can never also match a text-shape tool.
     clipboardMatch: { test: matchesImage, specificity: 4 },
+  },
+  {
+    // `name` is provisional — Story 8.8 redesigns this tool and may rename it, but
+    // the registry cannot hold a placeholder (AC28).
+    id: "pdf",
+    name: "PDF",
+    descriptionKey: "tools.pdf.description",
+    aliases: ["pdf", "merge", "split", "fusionner", "diviser"],
+    route: "/tools/pdf",
+    icon: "pdf",
+    component: () => import("../tools/pdf/PdfView.vue"),
+  },
+  {
+    // `name` is provisional — Story 8.9's to change (AC28).
+    id: "image",
+    name: "Image",
+    descriptionKey: "tools.image.description",
+    aliases: ["image", "convert", "compress", "png", "jpeg", "webp", "convertir", "compresser"],
+    route: "/tools/image",
+    icon: "image",
+    component: () => import("../tools/image/ImageView.vue"),
   },
 ];
 
@@ -246,6 +261,37 @@ export const useRegistryStore = defineStore("registry", () => {
   // untagged shared field is a footgun for a future second consumer.
   const dropSourcePath = ref<{ toolId: string; path: string } | null>(null);
 
+  // AC12 (Story 8.7): the pixels behind the current *successful* `pasteResult`.
+  //
+  // The drop and file-picker paths hand the view a filesystem path (`dropSourcePath`), which
+  // `convertFileSrc` turns into something an `<img>` can load. The paste path has no file at
+  // all: `dispatchPaste` below reads `{ rgba, width, height }` from the clipboard, ships the
+  // bytes as a raw IPC body and drops them on the floor. So Live Text would have silently
+  // worked on drop and pick but not on paste — the exact mirror of the route this story's
+  // discovery rejected unanimously ("a feature that silently works on paste and not on drop is
+  // the worst option on the table").
+  //
+  // The fix is AD-14-shaped: the shell PUBLISHES what it has already read, rather than the view
+  // reading the clipboard a second time. A second read would be a second OS I/O edge — and racy,
+  // since the clipboard can change during the ~3 s inference.
+  const pasteSourceImage = ref<{
+    toolId: string;
+    rgba: Uint8Array;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // AC14 (Story 8.7): which tool's view should render a drag-over highlight, or null.
+  //
+  // Drop dispatch itself stays window-level and unchanged — this is an *affordance*, not a hit
+  // area. The view uses it to light up its drop target while a drag is over the window.
+  //
+  // Tagged with `toolId` rather than published as a bare boolean, following the lesson already
+  // written into `dropSourcePath` above: an untagged shared field is a footgun for a future
+  // second consumer. Only the active tool can be dragged onto today, so the tag is redundant
+  // now and cheap insurance later.
+  const dragOverToolId = ref<string | null>(null);
+
   // One-shot outcome of a dispatcher-invoked clipboard-paste command — set by `DropZone.vue`
   // after it invokes `activeTool.paste.handler`. A separate field from `dropResult`, not a
   // repurposed one: five other tools' views already depend on `dropResult` meaning "a file-drop
@@ -277,6 +323,8 @@ export const useRegistryStore = defineStore("registry", () => {
     dropResult,
     dropSourcePath,
     pasteResult,
+    pasteSourceImage,
+    dragOverToolId,
     getLatestWinsRunner,
   };
 });
