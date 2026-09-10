@@ -41,7 +41,11 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-09  # story 8-8 created (bmad-create-story) -> ready-for-dev, at baseline
+last_updated: 2026-09-09  # story 8-8 -> in-progress (bmad-dev-story). Task 0 done: baseline ef25dbe
+# re-confirmed as origin/main's real tip by CONTENT diff (git diff --stat HEAD origin/main shows only
+# this story's own two files), not SHA ancestry -- the squash-merge trap. Branch
+# feat/story-8-8-reimagine-the-bucket-pdf already cut at e7868e8. Task 1 (discovery) next.
+# Previous entry, 2026-09-09 -- story 8-8 created (bmad-create-story) -> ready-for-dev, at baseline
 # ef25dbe (8.7 / PR #136, merged the same day). Task 1 ACs real (AC1-AC7); Task 2 ACs deferred per the
 # epic's own gate. Two ACs beyond the 8.1-8.6 template: AC4 turns 8.7's two written hand-offs (the
 # bucket_* -> pdf_* rename incl. the bucket-input-too-large / bucket-internal codes SHARED with the
@@ -1573,7 +1577,7 @@ development_status:
   # the only bidirectional two-state-group tool in Epic 8, so AppTabs is genuinely on the
   # table (weighed vs. 8.2's smart-detection choice). Not committed.
   8-7-reimagine-the-bucket-ocr: done
-  8-8-reimagine-the-bucket-pdf: ready-for-dev
+  8-8-reimagine-the-bucket-pdf: in-progress
   8-9-reimagine-the-bucket-images: backlog
   epic-8-retrospective: optional
 

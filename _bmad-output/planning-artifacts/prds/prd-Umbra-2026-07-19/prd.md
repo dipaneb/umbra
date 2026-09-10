@@ -88,7 +88,7 @@ FR IDs are global and stable. Phases: **MVP** (target ~Aug 8), **P2** (rest of A
 
 ### F8 — Bucket growth (P2)
 
-- **FR27.** PDF: merge multiple PDFs, split/extract page ranges, and extract text — all locally.
+- **FR27.** PDF: open a document and work on its pages — merge several PDFs into one, select pages to extract, delete, rotate or reorder them, and read a PDF's text — all locally. The tool states honestly when a PDF is a scan with no text layer to read. **Revised 2026-09-10 (Story 8.8):** the original three-verb wording (*"merge multiple PDFs, split/extract page ranges, and extract text"*) was inherited verbatim from Epic 6's one-line description and never revisited after the 2026-07-19 planning sweep — it described three independent operations, each re-picking the same file from its own picker, and the tool had no concept of an open document. Story 8.8's discovery traced that there was no decision behind the three verbs to preserve. The tool shows a **rendered preview of each page**, because selecting pages you cannot see is the weak version of the job. **Amended later the same day:** an earlier draft of this revision placed page previews out of scope, reasoning that `lopdf` cannot rasterize; that was rejected — thumbnails serve *recognition*, which a text label cannot — and `pdfium-render` (MIT/Apache-2.0, runtime-bound, compiling no C++) was brought into Story 8.8, which roughly doubles the download and was accepted as a deliberate product trade. Operations that additionally need a **point-at-the-page editing surface** — signature, redaction, annotation, crop — remain out of scope and belong to a future second PDF tool (issue #141).
 - **FR28.** Images: convert between common formats (PNG/JPEG/WebP/HEIC) and compress with a quality slider showing estimated output size. **Scope update (Story 6.2, 2026-08-10):** HEIC descoped from v1 for licensing/CI-compile-gate reasons — v1 ships PNG/JPEG/WebP only. See `epics.md`'s FR28 entry and Story 6.2's Task 1.
 
 ### F9 — Second AI feature (P2 — pick one, backlog the other)
@@ -151,7 +151,7 @@ All four open questions from the brief were decided on 2026-07-19 during this PR
 
 ## 10. Glossary & assumptions
 
-- **The Bucket** — Umbra's drop-zone tool family: drag a file in, get a useful transformation out (OCR in v0; PDF/image operations in P2).
+- **The Bucket** — **Retired 2026-09-10 (Story 8.8).** Formerly defined as *"Umbra's drop-zone tool family: drag a file in, get a useful transformation out (OCR in v0; PDF/image operations in P2)."* **No such tool family exists.** Story 8.7 established that the grouping was never a product decision — three unrelated tools ended up under one name because a scaffolding step put them there — and deleted the `bucket` registry entry, splitting it into three independent tools: **Image to Text** (`ocr`), **PDF** (`pdf`) and **Images** (`image`). The term survives only in historical epic and story text, which is record rather than a live claim. Corrected here because a glossary entry reads as current by definition.
 - **Carve-out** — a narrowly scoped, individually disclosed exception to INV-1's no-network rule (FR31's update check; conditionally, the OCR model's first-use download per NFR1).
 - **Coupling rule** — FR25's requirement that French localization land in UI, OCR, and NL→cron together.
 - **P2 / P3** — delivery phases (rest of August / school-year cadence); see §4 header and §7.
