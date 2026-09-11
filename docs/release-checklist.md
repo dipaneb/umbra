@@ -130,9 +130,21 @@ Story 5.3, but a tool may have been added since:
   the very first use of the OCR engine in the running session.** First use is the specific
   moment a forgotten bundled-model reference would surface as an actual download,
   rather than as a bug that shows up somewhere else.
-- **PDF** (Story 6.1) — merge 2+ PDFs, extract a page range, and extract text — a brand-new
-  dependency (`lopdf`) the first time it's used in the real app, not just assumed
+- **PDF** (Story 6.1, redesigned in Story 8.8) — open a PDF into the document surface and
+  exercise the page verbs against the working copy: rotate, delete, reorder, extract a
+  selection, read text, save a copy. Then drop two or more PDFs at once to merge them.
+  `lopdf` is exercised the first time it's used in the real app, not just assumed
   network-clean from the `cargo tree` check alone.
+  - **Page previews are macOS- and Windows-only, by OS capability** — not a build flag, not a
+    setting. They come from the operating system's own PDF renderer (`CGPDFDocument` on
+    macOS, `Windows.Data.Pdf` on Windows), which is why nothing is bundled and nothing is
+    fetched for them. Linux has no such renderer: the tool says so and lists pages by their
+    text instead. That is the shipped behaviour on Linux, not a bug to file.
+  - Open a **scanned** PDF as well. It has no text layer, so the tool should say it is a scan
+    — never "no text was found", which is true and useless for text that is visibly present
+    as pixels — and the page verbs should stay available.
+  - Open a **password-protected** PDF and confirm the refusal reads as a sentence in both
+    languages, not as an error code.
 - **Image** (Story 6.2) — convert a PNG to JPEG with a quality change, confirming the live
   size estimate updates as the slider moves.
 

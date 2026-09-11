@@ -1,6 +1,6 @@
 # Story 8.8 — PDF tool: scope decision record
 
-**Status:** Task 1 complete. **Signed off 2026-09-10**, then **partially reopened and amended the same day** — see §1.2's amendment box and §1.5: the developer challenged the text-only page list and the rasterizer decision was reversed. Upstream propagation applied; cut ideas filed as #141-#148 (#141 since narrowed).
+**Status:** Task 1 complete. **Signed off 2026-09-10**, then **partially reopened and amended the same day** — see §1.2's amendment box and §1.5: the developer challenged the text-only page list and the rasterizer decision was reversed. **§1.5's mechanism was superseded again on 2026-09-11 at implementation** — `pdfium-render` was cut before any rendering code was written and previews ship from the OS's own renderers instead; the product decision is unchanged, see §1.5's box. Upstream propagation applied; cut ideas filed as #141-#148 (#141 since narrowed).
 **Date:** 2026-09-10
 **Baseline:** `ef25dbe` (Story 8.7, PR #136).
 **Method:** `bmad-party-mode`, `session` mode, party memory on, resuming the 8.1–8.7 Epic 8 history (developer's choice, AC1).
@@ -101,7 +101,15 @@ This is also why the shape grows well: adding a verb to a selection model is a v
 
 ---
 
-## 1.5 Page previews — the rasterizer, taken into this story (AMENDED 2026-09-10)
+## 1.5 Page previews — the rasterizer, taken into this story (AMENDED 2026-09-10, **MECHANISM SUPERSEDED 2026-09-11**)
+
+> **SUPERSEDED 2026-09-11, at implementation — the product decision below survives in full; its *mechanism* does not.** `pdfium-render` was specified here and then **cut before a line of rendering code was written**. The first implementation slice was meant to acquire `libpdfium`; asked first what the operating system already provides, the answer was: the whole thing. macOS ships **`CGPDFDocument`** (Core Graphics — the engine behind Preview.app, since 10.0) and Windows ships **`Windows.Data.Pdf`** (WinRT, since 8.1). Previews ship from those instead — see `ARCHITECTURE-SPINE.md`'s **OS page-rendering backends** row and Group H of the story file.
+>
+> **What this reverses, specifically.** Everything below this box that is a *cost* of the crate is no longer paid: the bundled per-platform binary, the roughly doubled download accepted as a product trade, the `bblanchon/pdfium-binaries` third-party provenance and its checksum pin, the `pdfium_7881` ABI pin whose drift would have failed at **runtime**, and the CI fetch step. Bundle growth is **zero** and no new network surface exists for AD-7 to audit.
+>
+> **What it costs instead, and this is the honest half:** **Linux has no equivalent renderer**, so previews are **macOS and Windows only, by OS capability** — not a build flag, not a setting. There, the tool says so and lists pages by their text.
+>
+> **The reasoning below is kept verbatim, not deleted.** It is the record of a decision made carefully on the evidence available and still reversed — the evidence available was the wrong evidence, because the question *"what does the OS already do?"* was never asked. That is the transferable lesson, and it only survives if the superseded reasoning stays legible beside it.
 
 **Developer's decision, after challenging §1.2:** add `pdfium-render` and ship **real page previews** as the selection surface.
 
@@ -163,6 +171,8 @@ Page previews and PDF→image export leave #141 and land in this story. **Signat
 
 §6.3 declined an AD-8-style port for PDF on the stated grounds that *"nothing has ever proposed swapping the PDF engine"*, with an explicit revisit gate: *"if the visual PDF tool is ever built, it introduces a genuine second PDF engine, and that is when the seam becomes real."*
 
+> **AMENDED 2026-09-11 (see §1.5's box): the second engine is not Pdfium but the operating system's own renderer.** Every word of the analysis below holds unchanged — two engines still ship in the same story, they still do different jobs, neither still substitutes for the other, and the conclusion and the replacement revisit gate are untouched. Read "Pdfium" below as "the OS renderer". If anything the case is stronger: a system framework is even less swappable behind a port than a crate would have been.
+
 **Two engines now ship in the same story** — `lopdf` for structure, Pdfium for pixels. The seam is real, but it is **not the seam AD-8 describes**: AD-8 abstracts *one* capability behind a swappable port. Here the two engines do **different jobs** and neither substitutes for the other.
 
 **Decision: still no port, but the reason is now different and must be recorded as such** — it is a division of labour, not an abstraction boundary. What *is* owed is that the split is explicit in code: structure operations never reach for Pdfium, and rendering never reaches for `lopdf`. **Revisit gate, replacing the fired one:** if a second *rasterizer* is ever proposed, or if structural operations start needing Pdfium, the port becomes real.
@@ -210,7 +220,7 @@ Page previews and PDF→image export leave #141 and land in this story. **Signat
 
 | Added | Cost | Note |
 | --- | --- | --- |
-| **Real page previews (thumbnails)** | `pdfium-render` 0.9.4 — a NEW dependency, see §1.5 | **The selection surface.** Added 2026-09-10 after the developer rejected the text-only list: thumbnails serve *recognition*, which a text label cannot. Runtime-bound, compiles no C++. |
+| **Real page previews (thumbnails)** | ~~`pdfium-render` 0.9.4 — a NEW dependency~~ → **the OS's own renderer**, no new bundled dependency (**corrected 2026-09-11**, see §1.5's box) | **The selection surface.** Added 2026-09-10 after the developer rejected the text-only list: thumbnails serve *recognition*, which a text label cannot. Mechanism changed at implementation: `CGPDFDocument` on macOS, `Windows.Data.Pdf` on Windows — zero bundle growth, and **macOS/Windows only, by OS capability**. |
 | **Page list with per-page text labels** | `extract_text_chunks` — existing crate, existing pin | The new primitive. Needs a bound: it is a decompress-and-parse per page, so a 400-page document is real work on `spawn_blocking`. Lazy per-visible-row is the expected shape. |
 | **Page count** | `get_pages().len()` — one method call | Kills gap #7 outright and makes most of `pdf-invalid-range` unreachable (it becomes an input `max`). The single cheapest missing piece of information in the tool, one call away since Story 6.1 shipped. |
 | **Delete pages** | `delete_pages(&[u32])` already exists in the crate | The inverse of extract-range; same core call. |
@@ -227,7 +237,7 @@ Full max-context bodies in §8. Each links back to this record.
 
 | # | Cut | One-line reason |
 | --- | --- | --- |
-| 1 | [**#141**](https://github.com/dipaneb/umbra/issues/141) — **The visual PDF tool** — ~~thumbnails~~, signature, redaction, annotation, crop, ~~PDF→image~~ | **NARROWED 2026-09-10 (§1.5).** Page previews and PDF→image **move into this story** with the rasterizer. Signature/redaction/annotation/crop stay cut — they need the rasterizer **plus** a point-at-the-page editing surface, which is still a different tool. #132 is no longer dependency-blocked. |
+| 1 | [**#141**](https://github.com/dipaneb/umbra/issues/141) — **The visual PDF tool** — ~~thumbnails~~, signature, redaction, annotation, crop, ~~PDF→image~~ | **NARROWED 2026-09-10 (§1.5).** Page previews and PDF→image **move into this story** with the rasterizer. Signature/redaction/annotation/crop stay cut — they need the rasterizer **plus** a point-at-the-page editing surface, which is still a different tool. ~~#132 is no longer dependency-blocked.~~ **CORRECTED 2026-09-11:** the narrowing survives — previews did ship — but the *stated reason* named a rasterizer that was cut, and **#132's dependency block is restored**: no `libpdfium` ships for it to reuse, and the OS renderers cannot serve tier 3 (they rasterize for display, on two platforms of three). **Corrections posted 2026-09-11 with the developer's authorisation** — [#141 comment](https://github.com/dipaneb/umbra/issues/141#issuecomment-5640282458), [#132 comment](https://github.com/dipaneb/umbra/issues/132#issuecomment-5640285816) — as comments rather than body edits, so the superseded reasoning stays legible the way §1.5's box keeps its own. |
 | 2 | [**#142**](https://github.com/dipaneb/umbra/issues/142) — Split into N files | Real, cheap, but a different output cardinality (many files out) that the save-dialog flow does not currently express. |
 | 3 | [**#143**](https://github.com/dipaneb/umbra/issues/143) — Extract embedded images | Genuinely available (`PdfImage.content`), and interesting because it *feeds the Images tool* — which raises an AD-6 cross-tool question this story should not answer unilaterally. |
 | 4 | [**#144**](https://github.com/dipaneb/umbra/issues/144) — Metadata view / strip | A privacy angle this app has a natural claim to, and the strongest candidate to promote next. |
@@ -295,6 +305,21 @@ The line reads: *"Bucket (OCR) and **PDF** tools accept drag-and-drop of files/s
 **Rationale:** this is exactly 8.7's own precedent — it minted `ocr-internal` / `ocr-input-too-large` rather than renaming across two tools mid-move, and accepted the duplication on the record. Migrating instead would mean editing `commands/image.rs`, explicitly **not** 8.8's, in a story whose island is deliberately narrow.
 
 **Recorded as a decision *for* 8.9, per AC4a's requirement:** the `bucket-` prefix outlives this story **on purpose**, in exactly two codes, in exactly one module. 8.9 inherits a decision, not an ambiguity.
+
+**Amended 2026-09-11 (implementation).** PDF now raises **nine** codes, not six. Three were added after this section was written, and all three are 8.8's own — none change what 8.9 inherits:
+
+- `pdf-render-unavailable` (Group H) — raised by `src-tauri/src/render/` when the OS has no PDF renderer or a render fails.
+- `pdf-cannot-delete-all-pages` (AC38's slice) — split out of `pdf-invalid-range`, which was carrying five distinct failures under one code. Deleting every page is not an out-of-range request; every page asked for exists.
+- Plus the `pdf-input-too-large` / `pdf-internal` pair already decided above.
+
+**AC42 — stale references owed to Story 8.9.** `src-tauri/src/commands/image.rs` carries two comments naming commands that **no longer exist** under those names after AC4a's rename:
+
+| Line | Text | Now called |
+|------|------|-----------|
+| `image.rs:46` | *"mirroring `bucket_merge_pdfs`'s exact precedent"* | `pdf_merge` |
+| `image.rs:66` | *"same reasoning `bucket_extract_pdf_text` returning `String`"* | `pdf_extract_text` |
+
+**This story does not edit that file** — AC18 made `commands/image.rs` explicitly out of the island, and a comment-only edit is still an edit to a file 8.9 owns. Both references are recorded here so a future reader who greps for `bucket_merge_pdfs` and finds nothing has an answer, rather than concluding the comment describes a command that was deleted. **Owed to Story 8.9**, alongside retiring the `bucket-input-too-large` / `bucket-internal` pair.
 
 **Consequence for tests:** all 35 existing tests name a `bucket_*` command or a `bucket-pdf-*` code, so the rename touches every one. `PdfView.spec.ts`'s 13 tests were byte-identical to the former `BucketView.spec.ts` — after this story they stop being a move-gate artifact. Expected and fine; stated so it is not mistaken for scope creep at review.
 
