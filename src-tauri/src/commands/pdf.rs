@@ -1,7 +1,7 @@
 use umbra_core::ToolError;
 use umbra_core::pdf::{self, MAX_INPUT_BYTES};
 
-// Same shape as bucket.rs's/base64.rs's own `check_file_size` — this codebase does not share
+// Same shape as image.rs's/base64.rs's own `check_file_size` — this codebase does not share
 // that helper across command files, per those files' own established convention.
 fn check_file_size(path: &str) -> Result<(), ToolError> {
     let len = std::fs::metadata(path)
@@ -14,7 +14,13 @@ fn check_file_size(path: &str) -> Result<(), ToolError> {
         .len();
     if len > MAX_INPUT_BYTES as u64 {
         return Err(ToolError {
-            code: "bucket-input-too-large".to_string(),
+            // AC18: `pdf-input-too-large` and `pdf-internal` are NEW codes minted here, and the
+            // `bucket-input-too-large` / `bucket-internal` pair is deliberately left LIVE and
+            // untouched for the Images tool, which raises both from `commands/image.rs`. This is
+            // duplication, not migration — 8.7's own precedent — because retiring the shared pair
+            // would mean editing a second tool's command file mid-story. **Story 8.9 owns
+            // retiring it**, and `commands/image.rs` is not edited by this story.
+            code: "pdf-input-too-large".to_string(),
             message: format!("file is {len} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit"),
             position: None,
             context: None,
@@ -28,12 +34,12 @@ fn check_file_size(path: &str) -> Result<(), ToolError> {
 // server-side via `fs_helper::write_file_bytes`, returning `Result<(), ToolError>` — never the
 // bytes themselves — mirroring `base64_decode_to_file`'s exact precedent.
 #[tauri::command]
-pub async fn bucket_merge_pdfs(paths: Vec<String>, output_path: String) -> Result<(), ToolError> {
+pub async fn pdf_merge(paths: Vec<String>, output_path: String) -> Result<(), ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut inputs = Vec::with_capacity(paths.len());
         for path in &paths {
             // Checked via metadata, before the file is read, so an oversized file is rejected
-            // without ever being materialized in memory (same ordering as bucket.rs's own
+            // without ever being materialized in memory (same ordering as image.rs's own
             // check_file_size).
             check_file_size(path)?;
             inputs.push(crate::fs_helper::read_file_bytes(path)?);
@@ -46,7 +52,7 @@ pub async fn bucket_merge_pdfs(paths: Vec<String>, output_path: String) -> Resul
 }
 
 #[tauri::command]
-pub async fn bucket_extract_pdf_pages(
+pub async fn pdf_extract_pages(
     path: String,
     start_page: u32,
     end_page: u32,
@@ -63,10 +69,10 @@ pub async fn bucket_extract_pdf_pages(
 }
 
 // The one exception to the output_path pattern above: extracted text is realistically small
-// relative to the 64KB IPC concern, matching `bucket_extract_text`'s own existing precedent of
+// relative to the 64KB IPC concern, matching `ocr_extract_text`'s own existing precedent of
 // returning `OcrOutcome` directly.
 #[tauri::command]
-pub async fn bucket_extract_pdf_text(path: String) -> Result<String, ToolError> {
+pub async fn pdf_extract_text(path: String) -> Result<String, ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
         check_file_size(&path)?;
         let bytes = crate::fs_helper::read_file_bytes(&path)?;
@@ -76,9 +82,253 @@ pub async fn bucket_extract_pdf_text(path: String) -> Result<String, ToolError> 
     .map_err(map_join_error)?
 }
 
+/// AC17: opening a document is one round trip that answers everything the resting surface needs
+/// — how many pages, whether there is a text layer to read, and whether this build can render
+/// previews at all.
+///
+/// The renderer flag rides here rather than in a seventh command (AC17's 2026-09-11 amendment):
+/// the view needs it to choose between thumbnail rows and AC46's text-only rows, and it cannot
+/// change during a session, so a separate call would be a round trip for a constant.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PdfDocumentInfo {
+    pub page_count: u32,
+    pub text_layer: pdf::TextLayer,
+    pub can_render_previews: bool,
+}
+
+#[tauri::command]
+pub async fn pdf_open(path: String) -> Result<PdfDocumentInfo, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let bytes = crate::fs_helper::read_file_bytes(&path)?;
+        Ok(PdfDocumentInfo {
+            page_count: pdf::page_count(&bytes)?,
+            text_layer: pdf::classify_text_layer(&bytes)?,
+            // AC46: a fact about the build, not about the document — true on macOS and Windows,
+            // false wherever `render/unsupported.rs` is compiled. The view reads it once, at
+            // open, to choose between thumbnail rows and the text-only rows AC21 keeps.
+            can_render_previews: crate::render::is_available(),
+        })
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+/// AC33/AC34: one dropped document. `path` is echoed back so the view can pair results to files
+/// without relying on array order surviving the round trip.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PdfDroppedDocument {
+    pub path: String,
+    pub page_count: u32,
+    pub text_layer: pdf::TextLayer,
+}
+
+/// AC33: the `pdf` tool's drop handler — the one command in this tool that takes **`paths`**
+/// rather than `path`, because it is the one the shell's `multiple: true` branch invokes.
+///
+/// **A file that will not open fails the whole drop, deliberately.** Dropping five PDFs of which
+/// one is encrypted could either queue the four that worked or refuse the lot; queueing four
+/// silently is the worse answer, because the merge would then produce a document missing a file
+/// the user believed they had included, and NFR4 admits no silently-wrong result. Refusing is
+/// recoverable — the user drops again without the bad file — and says which problem it hit.
+#[tauri::command]
+pub async fn pdf_open_dropped(paths: Vec<String>) -> Result<Vec<PdfDroppedDocument>, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut opened = Vec::with_capacity(paths.len());
+        for path in paths {
+            check_file_size(&path)?;
+            let bytes = crate::fs_helper::read_file_bytes(&path)?;
+            opened.push(PdfDroppedDocument {
+                page_count: pdf::page_count(&bytes)?,
+                text_layer: pdf::classify_text_layer(&bytes)?,
+                path,
+            });
+        }
+        Ok(opened)
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+/// AC17/AC45: per-page text for a bounded range, never the whole document at once — the fetch
+/// policy AC9/AC29 establish, applied to the page list's text labels.
+#[tauri::command]
+pub async fn pdf_page_text(
+    path: String,
+    page_numbers: Vec<u32>,
+) -> Result<Vec<pdf::PageText>, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let bytes = crate::fs_helper::read_file_bytes(&path)?;
+        pdf::page_texts(&bytes, &page_numbers)
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+/// Where working copies live: one app-owned subdirectory of the OS temp dir, so they are easy to
+/// find, easy to sweep, and never sit beside the user's own file.
+fn working_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("umbra-pdf-edits")
+}
+
+/// AC52: begins an editing session by taking a working copy of `path`.
+///
+/// **Every page edit acts on this copy, never on the file the user opened.** That is what makes
+/// rotate/delete/reorder feel like editing rather than like exporting, and it means the original
+/// on disk is untouched until an explicit save — so an edit is genuinely reversible by closing
+/// without saving, which is the premise `DESIGN.md:149` already relies on when it rules that
+/// removing pages is "low-stakes and trivially reversible".
+///
+/// Stale copies from previous sessions are swept here rather than on close: a crash or a force
+/// quit never runs a close handler, so cleanup that only happens on the way out is cleanup that
+/// eventually stops happening.
+#[tauri::command]
+pub async fn pdf_begin_edit(path: String) -> Result<String, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let dir = working_dir();
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|err| ToolError {
+            code: "file-write-error".to_string(),
+            message: format!("{}: {err}", dir.display()),
+            position: None,
+            context: None,
+        })?;
+
+        let working = dir.join(format!("working-{}.pdf", std::process::id()));
+        let working = working.to_string_lossy().to_string();
+        let bytes = crate::fs_helper::read_file_bytes(&path)?;
+        crate::fs_helper::write_file_bytes(&working, &bytes)?;
+        Ok(working)
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+/// AC52: writes the edited working copy out to a destination the user chose.
+///
+/// A byte copy rather than a re-save through `lopdf`: the working copy is already exactly what the
+/// page list shows, and round-tripping it through the parser again would be a second chance to
+/// change something the user did not ask to change.
+#[tauri::command]
+pub async fn pdf_save_copy(path: String, output_path: String) -> Result<(), ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let bytes = crate::fs_helper::read_file_bytes(&path)?;
+        crate::fs_helper::write_file_bytes(&output_path, &bytes)
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+/// One page's preview: the page it belongs to, and the PNG bytes base64-encoded for the JSON IPC
+/// bridge so the view can hand it straight to an `<img src="data:image/png;base64,…">`.
+///
+/// **Base64, not a raw byte array.** `serde_json` would serialise `Vec<u8>` as an array of
+/// numbers — roughly 4x the bytes and a JSON parse per pixel on the frontend — which is precisely
+/// the volume problem AC45 is about. A `data:` URI also needs no `capabilities/default.json`
+/// change, unlike the asset protocol (AD-15: *do not add a third exception*).
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PdfPagePreview {
+    pub page: u32,
+    pub png_base64: String,
+}
+
+/// AC45: previews for a bounded range of pages, never the whole document at once.
+///
+/// **A page that fails to render is omitted rather than failing the batch** — the same shape
+/// AC9's per-page text takes, and for the same reason: one unrenderable page in a four-hundred
+/// page document must degrade that row to its text label (AC46), not blank the list. The view
+/// matches results to rows by `page`, so a short result is unambiguous.
+#[tauri::command]
+pub async fn pdf_render_pages(
+    path: String,
+    page_numbers: Vec<u32>,
+    max_width: u32,
+) -> Result<Vec<PdfPagePreview>, ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let bytes = crate::fs_helper::read_file_bytes(&path)?;
+
+        Ok(page_numbers
+            .into_iter()
+            .filter_map(|page| {
+                crate::render::render_page(&bytes, page, max_width)
+                    .ok()
+                    // `umbra_core::base64::encode_bytes`, not a new `base64` dependency here:
+                    // core already owns this transformation (AD-1) and already depends on the
+                    // crate. Standard alphabet, unwrapped — a `data:` URI takes neither
+                    // URL-safe encoding nor line breaks.
+                    .and_then(|png| {
+                        umbra_core::base64::encode_bytes(&png, false, None)
+                            .ok()
+                            .map(|png_base64| PdfPagePreview { page, png_base64 })
+                    })
+            })
+            .collect())
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+// AD-15: like merge and extract-pages, each of these produces a whole PDF, so it takes an
+// `output_path` and writes server-side rather than returning bytes across the JSON IPC bridge.
+#[tauri::command]
+pub async fn pdf_delete_pages(
+    path: String,
+    page_numbers: Vec<u32>,
+    output_path: String,
+) -> Result<(), ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let bytes = crate::fs_helper::read_file_bytes(&path)?;
+        let result = pdf::delete_pages(&bytes, &page_numbers)?;
+        crate::fs_helper::write_file_bytes(&output_path, &result)
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+#[tauri::command]
+pub async fn pdf_rotate_pages(
+    path: String,
+    page_numbers: Vec<u32>,
+    quarter_turns: i32,
+    output_path: String,
+) -> Result<(), ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let bytes = crate::fs_helper::read_file_bytes(&path)?;
+        let result = pdf::rotate_pages(&bytes, &page_numbers, quarter_turns)?;
+        crate::fs_helper::write_file_bytes(&output_path, &result)
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
+#[tauri::command]
+pub async fn pdf_reorder_pages(
+    path: String,
+    new_order: Vec<u32>,
+    output_path: String,
+) -> Result<(), ToolError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        check_file_size(&path)?;
+        let bytes = crate::fs_helper::read_file_bytes(&path)?;
+        let result = pdf::reorder_pages(&bytes, &new_order)?;
+        crate::fs_helper::write_file_bytes(&output_path, &result)
+    })
+    .await
+    .map_err(map_join_error)?
+}
+
 fn map_join_error(err: tauri::Error) -> ToolError {
     ToolError {
-        code: "bucket-internal".to_string(),
+        code: "pdf-internal".to_string(),
         message: format!("background task failed: {err}"),
         position: None,
         context: None,
@@ -183,14 +433,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bucket_merge_pdfs_command_merges_two_real_files_end_to_end() {
+    async fn pdf_merge_command_merges_two_real_files_end_to_end() {
         let path_a = temp_file_path("merge-a.pdf");
         let path_b = temp_file_path("merge-b.pdf");
         let output_path = temp_file_path("merge-out.pdf");
         std::fs::write(&path_a, generate_test_pdf_bytes(&["Page A"])).unwrap();
         std::fs::write(&path_b, generate_test_pdf_bytes(&["Page B"])).unwrap();
 
-        bucket_merge_pdfs(vec![path_a.clone(), path_b.clone()], output_path.clone())
+        pdf_merge(vec![path_a.clone(), path_b.clone()], output_path.clone())
             .await
             .unwrap();
 
@@ -204,7 +454,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bucket_merge_pdfs_command_rejects_a_file_over_the_size_limit_without_reading_it() {
+    async fn pdf_merge_command_rejects_a_file_over_the_size_limit_without_reading_it() {
         let oversized_path = temp_file_path("merge-oversized.pdf");
         let other_path = temp_file_path("merge-other.pdf");
         let file = std::fs::File::create(&oversized_path).unwrap();
@@ -212,24 +462,24 @@ mod tests {
         drop(file);
         std::fs::write(&other_path, generate_test_pdf_bytes(&["Page"])).unwrap();
 
-        let err = bucket_merge_pdfs(
+        let err = pdf_merge(
             vec![oversized_path.clone(), other_path.clone()],
             temp_file_path("merge-oversized-out.pdf"),
         )
         .await
         .unwrap_err();
-        assert_eq!(err.code, "bucket-input-too-large");
+        assert_eq!(err.code, "pdf-input-too-large");
 
         std::fs::remove_file(&oversized_path).unwrap();
         std::fs::remove_file(&other_path).unwrap();
     }
 
     #[tokio::test]
-    async fn bucket_merge_pdfs_command_returns_file_read_error_for_missing_path() {
+    async fn pdf_merge_command_returns_file_read_error_for_missing_path() {
         let other_path = temp_file_path("merge-existing.pdf");
         std::fs::write(&other_path, generate_test_pdf_bytes(&["Page"])).unwrap();
 
-        let err = bucket_merge_pdfs(
+        let err = pdf_merge(
             vec![
                 "/nonexistent/path/umbra-test.pdf".to_string(),
                 other_path.clone(),
@@ -244,7 +494,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bucket_extract_pdf_pages_command_extracts_a_real_range_end_to_end() {
+    async fn pdf_extract_pages_command_extracts_a_real_range_end_to_end() {
         let path = temp_file_path("extract-pages.pdf");
         let output_path = temp_file_path("extract-pages-out.pdf");
         std::fs::write(
@@ -253,7 +503,7 @@ mod tests {
         )
         .unwrap();
 
-        bucket_extract_pdf_pages(path.clone(), 2, 3, output_path.clone())
+        pdf_extract_pages(path.clone(), 2, 3, output_path.clone())
             .await
             .unwrap();
 
@@ -266,11 +516,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bucket_extract_pdf_pages_command_rejects_an_out_of_bounds_range() {
+    async fn pdf_extract_pages_command_rejects_an_out_of_bounds_range() {
         let path = temp_file_path("extract-pages-oob.pdf");
         std::fs::write(&path, generate_test_pdf_bytes(&["Page 1"])).unwrap();
 
-        let err = bucket_extract_pdf_pages(
+        let err = pdf_extract_pages(
             path.clone(),
             1,
             5,
@@ -278,14 +528,14 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert_eq!(err.code, "bucket-pdf-invalid-range");
+        assert_eq!(err.code, "pdf-invalid-range");
 
         std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
-    async fn bucket_extract_pdf_pages_command_returns_file_read_error_for_missing_path() {
-        let err = bucket_extract_pdf_pages(
+    async fn pdf_extract_pages_command_returns_file_read_error_for_missing_path() {
+        let err = pdf_extract_pages(
             "/nonexistent/path/umbra-test.pdf".to_string(),
             1,
             1,
@@ -297,51 +547,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bucket_extract_pdf_text_command_extracts_real_text_end_to_end() {
+    async fn pdf_extract_text_command_extracts_real_text_end_to_end() {
         let path = temp_file_path("extract-text.pdf");
         std::fs::write(&path, generate_test_pdf_bytes(&["Hello Umbra PDF"])).unwrap();
 
-        let text = bucket_extract_pdf_text(path.clone()).await.unwrap();
+        let text = pdf_extract_text(path.clone()).await.unwrap();
         assert!(text.contains("Hello Umbra PDF"));
 
         std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
-    async fn bucket_extract_pdf_text_command_rejects_a_file_over_the_size_limit_without_reading_it()
-    {
+    async fn pdf_extract_text_command_rejects_a_file_over_the_size_limit_without_reading_it() {
         let path = temp_file_path("extract-text-oversized.pdf");
         let file = std::fs::File::create(&path).unwrap();
         file.set_len(MAX_INPUT_BYTES as u64 + 1).unwrap();
         drop(file);
 
-        let err = bucket_extract_pdf_text(path.clone()).await.unwrap_err();
-        assert_eq!(err.code, "bucket-input-too-large");
+        let err = pdf_extract_text(path.clone()).await.unwrap_err();
+        assert_eq!(err.code, "pdf-input-too-large");
 
         std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
-    async fn bucket_extract_pdf_text_command_returns_file_read_error_for_missing_path() {
-        let err = bucket_extract_pdf_text("/nonexistent/path/umbra-test.pdf".to_string())
+    async fn pdf_extract_text_command_returns_file_read_error_for_missing_path() {
+        let err = pdf_extract_text("/nonexistent/path/umbra-test.pdf".to_string())
             .await
             .unwrap_err();
         assert_eq!(err.code, "file-read-error");
     }
 
     #[tokio::test]
-    async fn bucket_extract_pdf_text_command_returns_bucket_pdf_corrupt_for_undecodable_bytes() {
+    async fn pdf_extract_text_command_returns_pdf_corrupt_for_undecodable_bytes() {
         let path = temp_file_path("extract-text-corrupt.pdf");
         std::fs::write(&path, b"not a pdf").unwrap();
 
-        let err = bucket_extract_pdf_text(path.clone()).await.unwrap_err();
-        assert_eq!(err.code, "bucket-pdf-corrupt");
+        let err = pdf_extract_text(path.clone()).await.unwrap_err();
+        assert_eq!(err.code, "pdf-corrupt");
 
         std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
-    async fn all_three_commands_return_bucket_pdf_encrypted_for_a_real_password_protected_pdf() {
+    async fn every_command_rejects_a_real_password_protected_pdf() {
         let encrypted_path = temp_file_path("encrypted.pdf");
         let other_path = temp_file_path("encrypted-other.pdf");
         std::fs::write(
@@ -351,12 +600,10 @@ mod tests {
         .unwrap();
         std::fs::write(&other_path, generate_test_pdf_bytes(&["Other page"])).unwrap();
 
-        let text_err = bucket_extract_pdf_text(encrypted_path.clone())
-            .await
-            .unwrap_err();
-        assert_eq!(text_err.code, "bucket-pdf-encrypted");
+        let text_err = pdf_extract_text(encrypted_path.clone()).await.unwrap_err();
+        assert_eq!(text_err.code, "pdf-encrypted");
 
-        let range_err = bucket_extract_pdf_pages(
+        let range_err = pdf_extract_pages(
             encrypted_path.clone(),
             1,
             1,
@@ -364,22 +611,241 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert_eq!(range_err.code, "bucket-pdf-encrypted");
+        assert_eq!(range_err.code, "pdf-encrypted");
 
-        let merge_err = bucket_merge_pdfs(
+        let merge_err = pdf_merge(
             vec![encrypted_path.clone(), other_path.clone()],
             temp_file_path("encrypted-merge-out.pdf"),
         )
         .await
         .unwrap_err();
-        assert_eq!(merge_err.code, "bucket-pdf-encrypted");
+        assert_eq!(merge_err.code, "pdf-encrypted");
 
         std::fs::remove_file(&encrypted_path).unwrap();
         std::fs::remove_file(&other_path).unwrap();
     }
 
     #[tokio::test]
-    async fn map_join_error_produces_bucket_internal_tool_error_on_panic() {
+    async fn pdf_open_command_reports_page_count_and_text_layer_end_to_end() {
+        let path = temp_file_path("open.pdf");
+        std::fs::write(&path, generate_test_pdf_bytes(&["Has text", "More"])).unwrap();
+
+        let info = pdf_open(path.clone()).await.unwrap();
+        assert_eq!(info.page_count, 2);
+        assert_eq!(info.text_layer, umbra_core::pdf::TextLayer::Partial);
+        // Slice 3 replaced the hardcoded `false` with the real backend capability. Asserted
+        // against `render::is_available()` rather than against a literal, deliberately: this
+        // test's job is to prove the field is WIRED to the renderer, and duplicating the
+        // platform table here would put a second `cfg(target_os)` in the codebase, which AC44
+        // forbids. Which platforms have a backend is asserted in `render/mod.rs`'s own tests —
+        // the one file allowed to know.
+        assert_eq!(info.can_render_previews, crate::render::is_available());
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pdf_page_text_command_returns_one_entry_per_requested_page() {
+        let path = temp_file_path("page-text.pdf");
+        std::fs::write(&path, generate_test_pdf_bytes(&["Alpha", "Beta"])).unwrap();
+
+        let texts = pdf_page_text(path.clone(), vec![2]).await.unwrap();
+        assert_eq!(texts.len(), 1);
+        assert_eq!(texts[0].page, 2);
+        assert!(texts[0].text.as_deref().unwrap().contains("Beta"));
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pdf_delete_pages_command_writes_the_remaining_pages_end_to_end() {
+        let path = temp_file_path("delete.pdf");
+        let output_path = temp_file_path("delete-out.pdf");
+        std::fs::write(&path, generate_test_pdf_bytes(&["Keep", "Drop"])).unwrap();
+
+        pdf_delete_pages(path.clone(), vec![2], output_path.clone())
+            .await
+            .unwrap();
+
+        let bytes = std::fs::read(&output_path).unwrap();
+        assert_eq!(Document::load_mem(&bytes).unwrap().get_pages().len(), 1);
+
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_file(&output_path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pdf_rotate_pages_command_writes_the_rotation_end_to_end() {
+        let path = temp_file_path("rotate.pdf");
+        let output_path = temp_file_path("rotate-out.pdf");
+        std::fs::write(&path, generate_test_pdf_bytes(&["One"])).unwrap();
+
+        pdf_rotate_pages(path.clone(), vec![1], 1, output_path.clone())
+            .await
+            .unwrap();
+
+        let bytes = std::fs::read(&output_path).unwrap();
+        let doc = Document::load_mem(&bytes).unwrap();
+        let pages = doc.get_pages();
+        assert_eq!(
+            doc.get_dictionary(pages[&1])
+                .unwrap()
+                .get(b"Rotate")
+                .unwrap()
+                .as_i64()
+                .unwrap(),
+            90
+        );
+
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_file(&output_path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pdf_reorder_pages_command_writes_the_new_order_end_to_end() {
+        let path = temp_file_path("reorder.pdf");
+        let output_path = temp_file_path("reorder-out.pdf");
+        std::fs::write(&path, generate_test_pdf_bytes(&["First", "Second"])).unwrap();
+
+        pdf_reorder_pages(path.clone(), vec![2, 1], output_path.clone())
+            .await
+            .unwrap();
+
+        let bytes = std::fs::read(&output_path).unwrap();
+        let text = umbra_core::pdf::extract_text(&bytes).unwrap();
+        assert!(
+            text.find("Second").unwrap() < text.find("First").unwrap(),
+            "expected Second before First"
+        );
+
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_file(&output_path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pdf_begin_edit_copies_the_original_without_touching_it() {
+        // AC52: the file the user opened is the one file this tool must never write to — that is
+        // what makes an edit reversible by simply closing without saving.
+        let path = temp_file_path("begin-edit.pdf");
+        let original = generate_test_pdf_bytes(&["One", "Two"]);
+        std::fs::write(&path, &original).unwrap();
+
+        let working = pdf_begin_edit(path.clone()).await.unwrap();
+
+        assert_ne!(working, path, "the working copy must be a different file");
+        assert_eq!(std::fs::read(&working).unwrap(), original);
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pdf_begin_edit_sweeps_working_copies_from_earlier_sessions() {
+        // Swept on the way IN rather than on close: a crash or a force quit never runs a close
+        // handler, so cleanup that only happens on the way out eventually stops happening.
+        let path = temp_file_path("begin-edit-sweep.pdf");
+        std::fs::write(&path, generate_test_pdf_bytes(&["One"])).unwrap();
+
+        std::fs::create_dir_all(working_dir()).unwrap();
+        let stale = working_dir().join("stale-from-a-previous-run.pdf");
+        std::fs::write(&stale, b"leftovers").unwrap();
+
+        let _ = pdf_begin_edit(path.clone()).await.unwrap();
+
+        assert!(!stale.exists(), "a stale working copy must not survive");
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pdf_save_copy_writes_the_working_copy_to_the_chosen_path() {
+        let source = temp_file_path("save-copy-src.pdf");
+        let destination = temp_file_path("save-copy-dst.pdf");
+        let bytes = generate_test_pdf_bytes(&["One"]);
+        std::fs::write(&source, &bytes).unwrap();
+
+        pdf_save_copy(source.clone(), destination.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(std::fs::read(&destination).unwrap(), bytes);
+
+        std::fs::remove_file(&source).unwrap();
+        std::fs::remove_file(&destination).unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_edit_command_can_read_and_write_the_same_path() {
+        // The working-copy model has every edit read and write one file. Safe because the command
+        // reads it completely before writing, and `write_file_bytes` writes a temp then renames —
+        // but it is the kind of thing that is only obviously safe once something asserts it.
+        let path = temp_file_path("in-place.pdf");
+        std::fs::write(&path, generate_test_pdf_bytes(&["One", "Two", "Three"])).unwrap();
+
+        pdf_delete_pages(path.clone(), vec![2], path.clone())
+            .await
+            .unwrap();
+
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(Document::load_mem(&bytes).unwrap().get_pages().len(), 2);
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    /// AC19: the size guard is worthless if a new verb forgets to call it, so this covers the
+    /// DIMENSION — every command, not the two that happened to have coverage already. The file is
+    /// a sparse 100MB+ placeholder that is never valid PDF, so reaching core at all would fail
+    /// with `pdf-corrupt` instead; `pdf-input-too-large` proves the check ran BEFORE the read.
+    #[tokio::test]
+    async fn every_command_rejects_an_oversize_file_without_reading_it() {
+        let path = temp_file_path("oversize-all.pdf");
+        let out = temp_file_path("oversize-all-out.pdf");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_INPUT_BYTES as u64 + 1).unwrap();
+        drop(file);
+
+        assert_eq!(
+            pdf_open(path.clone()).await.unwrap_err().code,
+            "pdf-input-too-large"
+        );
+        assert_eq!(
+            pdf_page_text(path.clone(), vec![1]).await.unwrap_err().code,
+            "pdf-input-too-large"
+        );
+        assert_eq!(
+            pdf_delete_pages(path.clone(), vec![1], out.clone())
+                .await
+                .unwrap_err()
+                .code,
+            "pdf-input-too-large"
+        );
+        assert_eq!(
+            pdf_rotate_pages(path.clone(), vec![1], 1, out.clone())
+                .await
+                .unwrap_err()
+                .code,
+            "pdf-input-too-large"
+        );
+        assert_eq!(
+            pdf_reorder_pages(path.clone(), vec![1], out.clone())
+                .await
+                .unwrap_err()
+                .code,
+            "pdf-input-too-large"
+        );
+        assert_eq!(
+            pdf_extract_pages(path.clone(), 1, 1, out.clone())
+                .await
+                .unwrap_err()
+                .code,
+            "pdf-input-too-large"
+        );
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn map_join_error_produces_pdf_internal_tool_error_on_panic() {
         let err = tauri::async_runtime::spawn_blocking(|| {
             panic!("boom");
         })
@@ -387,6 +853,6 @@ mod tests {
         .unwrap_err();
 
         let tool_err = map_join_error(err);
-        assert_eq!(tool_err.code, "bucket-internal");
+        assert_eq!(tool_err.code, "pdf-internal");
     }
 }
