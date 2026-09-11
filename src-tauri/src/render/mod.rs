@@ -75,6 +75,18 @@ pub(crate) trait PageRenderer {
 /// to spare, which is the point: it is a ceiling, not a target.
 pub const MAX_THUMBNAIL_WIDTH: u32 = 640;
 
+/// The other half of the ceiling, and it is not redundant with the width cap.
+///
+/// Scaling to a target *width* leaves the height derived from the page's aspect ratio, which is
+/// not bounded by anything: PDF permits a page up to 14400pt on a side, so a 1pt-wide sliver
+/// scaled to 640px wide is 9,216,000px tall — a 23.6 GB bitmap, from a file small enough to email.
+/// `vec![0u8; …]` aborts the process on that, which NFR4's "never a crash" does not admit, and no
+/// width clamp can catch it because the width was already legal.
+///
+/// A page that would exceed this is scaled to fit the height instead, so it renders narrower and
+/// correct rather than squashed or refused — 16:1 is already far past any real document shape.
+pub const MAX_THUMBNAIL_HEIGHT: u32 = MAX_THUMBNAIL_WIDTH * 16;
+
 /// Whether this build renders page previews (AC17/AC46).
 ///
 /// The view uses this to choose between thumbnail rows and the text-only rows AC21 keeps as the

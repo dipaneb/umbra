@@ -17,7 +17,7 @@ use objc2_core_graphics::{
 };
 use umbra_core::ToolError;
 
-use super::{PageRenderer, render_error};
+use super::{MAX_THUMBNAIL_HEIGHT, PageRenderer, render_error};
 
 pub(crate) struct Backend;
 
@@ -59,8 +59,13 @@ impl PageRenderer for Backend {
             )));
         }
 
-        let scale = f64::from(max_width) / source_width;
-        let width = max_width.max(1) as usize;
+        // Fit to whichever axis binds first. Scaling to width alone leaves the height derived
+        // from an aspect ratio PDF does not bound — see `MAX_THUMBNAIL_HEIGHT` — so a sliver page
+        // would allocate a bitmap measured in gigabytes and abort the process. Taking the smaller
+        // of the two scales keeps the aspect ratio exactly and bounds both dimensions.
+        let scale = (f64::from(max_width) / source_width)
+            .min(f64::from(MAX_THUMBNAIL_HEIGHT) / source_height);
+        let width = ((source_width * scale).round() as usize).max(1);
         let height = ((source_height * scale).round() as usize).max(1);
 
         // Four bytes per pixel, RGBA. `NoneSkipLast` rather than a premultiplied-alpha format:
@@ -137,6 +142,12 @@ mod tests {
     /// A one-page PDF built by hand, so the test needs no checked-in binary fixture — the same
     /// approach `umbra-core`'s own pdf.rs tests use.
     fn one_page_pdf() -> Vec<u8> {
+        page_pdf(200, 400)
+    }
+
+    /// The same builder with the page box as an argument, so a test can state the shape it is
+    /// actually about rather than working around a fixed one.
+    fn page_pdf(width: i64, height: i64) -> Vec<u8> {
         use lopdf::{Document, Object, dictionary};
 
         let mut doc = Document::with_version("1.5");
@@ -144,7 +155,7 @@ mod tests {
         let page_id = doc.add_object(dictionary! {
             "Type" => "Page",
             "Parent" => pages_id,
-            "MediaBox" => vec![0.into(), 0.into(), 200.into(), 400.into()],
+            "MediaBox" => vec![0.into(), 0.into(), width.into(), height.into()],
         });
         doc.objects.insert(
             pages_id,
@@ -163,6 +174,31 @@ mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         bytes
+    }
+
+    /// A page 1pt wide and 14400pt tall — PDF's own maximum dimension — is a legal document and
+    /// a 23.6 GB bitmap under a width-only scale, which aborts the process rather than returning
+    /// an error. NFR4 does not admit that, and no width clamp catches it, because the width was
+    /// already legal. Verified against the old arithmetic before the fix: 640 x 9,216,000.
+    #[test]
+    fn an_extreme_aspect_ratio_is_bounded_rather_than_allocating_gigabytes() {
+        let pdf = page_pdf(1, 14400);
+
+        let png = Backend::render_page(&pdf, 1, crate::render::MAX_THUMBNAIL_WIDTH).unwrap();
+        let image = image::load_from_memory(&png).unwrap();
+
+        assert!(
+            image.height() <= MAX_THUMBNAIL_HEIGHT,
+            "height must be bounded, got {}",
+            image.height()
+        );
+        // Bounded by *fitting*, not by cropping or squashing: the sliver stays a sliver.
+        assert!(
+            image.width() < image.height(),
+            "a 1:14400 page must not come back wider than it is tall ({}x{})",
+            image.width(),
+            image.height()
+        );
     }
 
     #[test]

@@ -174,6 +174,53 @@ fn working_dir() -> std::path::PathBuf {
     std::env::temp_dir().join("umbra-pdf-edits")
 }
 
+/// How long a working copy has to sit untouched before it is treated as abandoned. Generous on
+/// purpose: the only cost of sweeping late is a file in the temp directory, while the cost of
+/// sweeping early is another session's unsaved work.
+const WORKING_COPY_STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Serialises the copy below, because the working copy's name is per-process and two edits can
+/// genuinely overlap: `runDocument` is latest-wins in the view, so a superseded open still runs to
+/// completion in Rust. Without this, both calls write the same `…umbra-tmp-{pid}` staging file and
+/// one of the two renames loses it, surfacing as `file-write-error: No such file or directory` on
+/// a PDF that is perfectly fine. Surfaced by three tests colliding; the app can reach it by
+/// opening two documents quickly.
+///
+/// One live working copy per process is deliberate, and it is why a lock is the right answer
+/// rather than a unique filename per edit: the surface opens one document at a time, and naming
+/// each edit separately would leave a 100 MB file behind for every document opened in a session.
+static WORKING_COPY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Removes working copies left behind by sessions that never got to clean up after themselves.
+///
+/// **This used to be `remove_dir_all` on the whole directory, and that was a data-loss bug.**
+/// Nothing stops a second Umbra from running — there is no single-instance plugin — and the
+/// directory is shared, so the second instance's `pdf_begin_edit` deleted the first instance's
+/// working copy out from under it. The user then loses every unsaved page edit in the first
+/// window, and its next save fails with a file-read-error naming a path that no longer exists.
+///
+/// Age is the discriminator rather than the process id: a live session's copy was written
+/// seconds ago, and checking whether a pid is still alive is neither portable nor race-free
+/// (pids are reused). Best-effort throughout — a sweep that cannot read the directory is not a
+/// reason to refuse the edit the user actually asked for.
+fn sweep_stale_working_copies(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    for entry in entries.flatten() {
+        let stale = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age >= WORKING_COPY_STALE_AFTER);
+        if stale {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 /// AC52: begins an editing session by taking a working copy of `path`.
 ///
 /// **Every page edit acts on this copy, never on the file the user opened.** That is what makes
@@ -184,19 +231,25 @@ fn working_dir() -> std::path::PathBuf {
 ///
 /// Stale copies from previous sessions are swept here rather than on close: a crash or a force
 /// quit never runs a close handler, so cleanup that only happens on the way out is cleanup that
-/// eventually stops happening.
+/// eventually stops happening. **By age, never wholesale** — see `sweep_stale_working_copies`.
 #[tauri::command]
 pub async fn pdf_begin_edit(path: String) -> Result<String, ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
         check_file_size(&path)?;
+        // Poisoning is not a failure mode worth propagating here: the guarded data is `()`, and
+        // a panicked earlier edit leaves no invariant for this one to be confused by.
+        let _guard = WORKING_COPY_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let dir = working_dir();
-        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).map_err(|err| ToolError {
             code: "file-write-error".to_string(),
             message: format!("{}: {err}", dir.display()),
             position: None,
             context: None,
         })?;
+
+        sweep_stale_working_copies(&dir);
 
         let working = dir.join(format!("working-{}.pdf", std::process::id()));
         let working = working.to_string_lossy().to_string();
@@ -724,6 +777,7 @@ mod tests {
 
     #[tokio::test]
     async fn pdf_begin_edit_copies_the_original_without_touching_it() {
+        let _serialised = EDIT_TESTS.lock().await;
         // AC52: the file the user opened is the one file this tool must never write to — that is
         // what makes an edit reversible by simply closing without saving.
         let path = temp_file_path("begin-edit.pdf");
@@ -739,8 +793,26 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
     }
 
+    /// These three tests share one real directory, because the thing under test *is* a
+    /// process-wide temp directory — so they must not run concurrently with each other. The
+    /// production lock serialises the copy itself but not a test's assertions afterwards, which
+    /// is a different window.
+    /// `tokio::sync::Mutex`, not `std::sync`: each test holds this across an `.await`, which is
+    /// precisely what `clippy::await_holding_lock` exists to stop. The production lock stays
+    /// `std::sync` because it is taken inside `spawn_blocking`, where there is no await to cross.
+    static EDIT_TESTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Backdates a file so a test can state "abandoned" rather than wait a day for it to be true.
+    fn age_by(path: &std::path::Path, age: std::time::Duration) {
+        let file = std::fs::File::options().write(true).open(path).unwrap();
+        let when = std::time::SystemTime::now() - age;
+        file.set_times(std::fs::FileTimes::new().set_modified(when))
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn pdf_begin_edit_sweeps_working_copies_from_earlier_sessions() {
+        let _serialised = EDIT_TESTS.lock().await;
         // Swept on the way IN rather than on close: a crash or a force quit never runs a close
         // handler, so cleanup that only happens on the way out eventually stops happening.
         let path = temp_file_path("begin-edit-sweep.pdf");
@@ -749,11 +821,50 @@ mod tests {
         std::fs::create_dir_all(working_dir()).unwrap();
         let stale = working_dir().join("stale-from-a-previous-run.pdf");
         std::fs::write(&stale, b"leftovers").unwrap();
+        age_by(
+            &stale,
+            WORKING_COPY_STALE_AFTER + std::time::Duration::from_secs(60),
+        );
 
         let _ = pdf_begin_edit(path.clone()).await.unwrap();
 
-        assert!(!stale.exists(), "a stale working copy must not survive");
+        assert!(
+            !stale.exists(),
+            "an abandoned working copy must not survive"
+        );
 
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    /// The counterpart, and the one that matters: this used to be `remove_dir_all` on a shared
+    /// directory. Nothing stops a second Umbra from running — there is no single-instance plugin
+    /// — so a second window opening a PDF deleted the first window's working copy out from under
+    /// it, losing every unsaved page edit and leaving its next save pointing at a path that no
+    /// longer exists. Found by the commit security review, not by this suite.
+    #[tokio::test]
+    async fn pdf_begin_edit_leaves_another_live_session_working_copy_alone() {
+        let _serialised = EDIT_TESTS.lock().await;
+        let path = temp_file_path("begin-edit-concurrent.pdf");
+        std::fs::write(&path, generate_test_pdf_bytes(&["One"])).unwrap();
+
+        std::fs::create_dir_all(working_dir()).unwrap();
+        // Another running instance's copy: a different pid, written moments ago.
+        let other = working_dir().join("working-999999.pdf");
+        std::fs::write(&other, b"another session's unsaved edits").unwrap();
+
+        let _ = pdf_begin_edit(path.clone()).await.unwrap();
+
+        assert!(
+            other.exists(),
+            "a live session's working copy must survive another session starting an edit"
+        );
+        assert_eq!(
+            std::fs::read(&other).unwrap(),
+            b"another session's unsaved edits",
+            "and must survive intact, not merely exist"
+        );
+
+        std::fs::remove_file(&other).unwrap();
         std::fs::remove_file(&path).unwrap();
     }
 
