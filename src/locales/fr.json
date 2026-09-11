@@ -326,7 +326,8 @@
       "nextMatch": "Résultat suivant",
       "previousMatch": "Résultat précédent",
       "noTextDiagnosis": "Aucun texte n'a pu être lu dans cette image — les zones marquées ont été détectées mais non reconnues.",
-      "clearFind": "Effacer la recherche"
+      "clearFind": "Effacer la recherche",
+      "openDroppedPdf": "Ouvrir {name}"
     },
     "pdf": {
       "description": "Fusionner des PDF, extraire une plage de pages ou en extraire leur texte.",
@@ -346,7 +347,42 @@
       "extractText": "Extraire le texte",
       "noTextInPdf": "Aucun texte n'a été trouvé dans ce PDF.",
       "pdfFilterName": "PDF",
-      "extractedTextLabel": "Texte extrait"
+      "extractedTextLabel": "Texte extrait",
+      "copied": "Copié",
+      "dropLabel": "Déposez un PDF ici",
+      "dropHint": "Déposez plusieurs PDF pour les fusionner en un seul.",
+      "openDocument": "Ouvrir un PDF…",
+      "closeDocument": "Fermer",
+      "pageCount": "1 page | {count} pages",
+      "pageLabel": "Page {number}",
+      "selectedCount": "1 page sélectionnée | {count} pages sélectionnées",
+      "noSelectionHint": "Sélectionnez des pages pour agir dessus.",
+      "readText": "Lire le texte",
+      "mergeWith": "Fusionner avec…",
+      "extractSelection": "Extraire vers un nouveau PDF",
+      "rotate": "Pivoter",
+      "deletePages": "Supprimer",
+      "scannedNotice": "Ce PDF est un scan — ses pages sont des images, il n'y a donc aucune couche de texte à lire.",
+      "emptyNotice": "Ce PDF ne contient aucune page.",
+      "previewsUnavailable": "Les aperçus de pages ne sont pas disponibles sur ce système ; les pages sont listées par leur texte.",
+      "mergeQueueHeading": "File de fusion",
+      "mergeQueueHint": "Fusionnés dans cet ordre. Réorganisez avec les flèches.",
+      "mergePdfs": "Fusionner les PDF",
+      "addMorePdfs": "Ajouter…",
+      "clearQueue": "Vider",
+      "opening": "Ouverture…",
+      "workingOnIt": "Traitement…",
+      "savedFile": "{name} enregistré",
+      "pageTextUnreadable": "Le texte de cette page n'a pas pu être lu.",
+      "saveCopy": "Enregistrer une copie…",
+      "editApplied": "Terminé",
+      "unsavedChanges": "Modifications non enregistrées",
+      "previewSizeLabel": "Taille des aperçus",
+      "previewSize": {
+        "s": "P",
+        "m": "M",
+        "l": "G"
+      }
     },
     "image": {
       "description": "Convertir des images entre PNG, JPEG et WebP, et les compresser.",
@@ -393,6 +429,10 @@
     "ocr-pdf-wrong-tool": "Les PDF s'ouvrent dans l'outil PDF.",
     "paste-no-image": "Le presse-papiers ne contient aucune image.",
     "ocr-asset-grant-failed": "Impossible d'ouvrir cette image pour l'affichage.",
-    "ocr-image-unreadable": "Cette image n'a pas pu être affichée."
+    "ocr-image-unreadable": "Cette image n'a pas pu être affichée.",
+    "pdf-encrypted": "Ce PDF est protégé par un mot de passe, il ne peut donc pas être ouvert ici.",
+    "pdf-invalid-range": "Cette plage de pages n'existe pas dans ce document — il s'arrête à la page {totalPages}.",
+    "pdf-too-few-files": "La fusion nécessite au moins 2 PDF — vous en avez choisi {count}.",
+    "pdf-cannot-delete-all-pages": "Impossible de supprimer toutes les pages — un PDF sans page ne peut pas être enregistré."
   }
 }
