@@ -118,9 +118,17 @@ function toHashAlgorithms(value: unknown): string[] {
 // other enum key here.
 export type HashCase = "lower" | "upper";
 export type HashEncoding = "hex" | "base64";
+// Story 8.8 (AC54): the PDF page grid's preview size. Three named steps rather than a free
+// pixel value — a slider would persist a number nobody chose deliberately, and the grid only
+// has three densities worth having.
+export type PdfPreviewSize = "s" | "m" | "l";
 
 const HASH_CASES: readonly HashCase[] = ["lower", "upper"];
 const HASH_ENCODINGS: readonly HashEncoding[] = ["hex", "base64"];
+
+function isPdfPreviewSize(value: unknown): value is PdfPreviewSize {
+  return value === "s" || value === "m" || value === "l";
+}
 
 function isHashCase(value: unknown): value is HashCase {
   return typeof value === "string" && (HASH_CASES as readonly string[]).includes(value);
@@ -153,6 +161,7 @@ const DEFAULTS = {
   uuidFormatHyphens: true,
   hashAlgorithms: ["sha256", "sha512"] as string[],
   hashCase: "lower" as HashCase,
+  pdfPreviewSize: "m" as PdfPreviewSize,
   hashEncoding: "hex" as HashEncoding,
 };
 
@@ -200,6 +209,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const uuidFormatHyphens = ref<boolean>(DEFAULTS.uuidFormatHyphens);
   const hashAlgorithms = ref<string[]>([...DEFAULTS.hashAlgorithms]);
   const hashCase = ref<HashCase>(DEFAULTS.hashCase);
+  const pdfPreviewSize = ref<PdfPreviewSize>(DEFAULTS.pdfPreviewSize);
   const hashEncoding = ref<HashEncoding>(DEFAULTS.hashEncoding);
 
   async function init(): Promise<void> {
@@ -272,6 +282,10 @@ export const useSettingsStore = defineStore("settings", () => {
       hashEncoding.value = isHashEncoding(storedHashEncoding)
         ? storedHashEncoding
         : DEFAULTS.hashEncoding;
+      const storedPdfPreviewSize = await store.get<string>("pdf.previewSize");
+      pdfPreviewSize.value = isPdfPreviewSize(storedPdfPreviewSize)
+        ? storedPdfPreviewSize
+        : DEFAULTS.pdfPreviewSize;
       backingStore = store;
     } catch (error) {
       console.error("settings: failed to load settings.json, using defaults", error);
@@ -402,6 +416,15 @@ export const useSettingsStore = defineStore("settings", () => {
     await store.save();
   }
 
+  // Story 8.8 (AC54). One key, one setter — the PDF grid has a single preference.
+  async function setPdfPreviewSize(value: PdfPreviewSize): Promise<void> {
+    pdfPreviewSize.value = value;
+    if (!backingStore) return;
+    const store = backingStore;
+    await store.set("pdf.previewSize", value);
+    await store.save();
+  }
+
   async function togglePinned(toolId: string): Promise<void> {
     pinnedTools.value = pinnedTools.value.includes(toolId)
       ? pinnedTools.value.filter((id) => id !== toolId)
@@ -519,6 +542,9 @@ export const useSettingsStore = defineStore("settings", () => {
       case "hash.encoding":
         hashEncoding.value = DEFAULTS.hashEncoding;
         break;
+      case "pdf.previewSize":
+        pdfPreviewSize.value = DEFAULTS.pdfPreviewSize;
+        break;
     }
     if (!backingStore) return;
     const store = backingStore;
@@ -547,6 +573,7 @@ export const useSettingsStore = defineStore("settings", () => {
     hashAlgorithms.value = [...DEFAULTS.hashAlgorithms];
     hashCase.value = DEFAULTS.hashCase;
     hashEncoding.value = DEFAULTS.hashEncoding;
+    pdfPreviewSize.value = DEFAULTS.pdfPreviewSize;
     if (!backingStore) return;
     const store = backingStore;
     await store.clear();
@@ -572,6 +599,8 @@ export const useSettingsStore = defineStore("settings", () => {
     uuidFormatHyphens,
     hashAlgorithms,
     hashCase,
+    pdfPreviewSize,
+    setPdfPreviewSize,
     hashEncoding,
     init,
     setRestoreEnabled,

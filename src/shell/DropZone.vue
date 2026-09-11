@@ -138,7 +138,15 @@ onMounted(async () => {
       // tool's own registered provider (AD-6: the signal lives in the
       // `registry` store, not a bare module ref).
       const toolId = routing.toolId!;
-      const path = routing.paths![0];
+      const paths = routing.paths!;
+      const path = paths[0];
+      // AC33/AC34: the one dispatcher branch this story adds, and it is deliberately the whole of
+      // the change. `routeDrop` has always returned the full `paths` array and this dispatcher has
+      // always thrown away everything after the first — Story 6.1 named that truncation as one of
+      // its three reasons for declining drop on the PDF tool. A tool that declares
+      // `drop.multiple` now receives `paths`; every other tool receives `path`, byte for byte what
+      // it received before. Additive, so no existing tool's contract moves.
+      const handlerArgs = activeTool!.drop!.multiple ? { paths } : { path };
       const extraArgs = registry.dropArgsProviders[toolId]?.() ?? {};
       const runLatestWins = registry.getLatestWinsRunner(toolId);
 
@@ -156,11 +164,11 @@ onMounted(async () => {
       // happens against something recognisable instead of a blank pane — cannot do that if the
       // path only arrives with the result. Views that merely want the path afterwards (HashView)
       // are unaffected: they read it, they do not wait on it.
-      registry.dropSourcePath = { toolId, path };
+      registry.dropSourcePath = { toolId, path, paths };
 
       try {
         const result = await runLatestWins(() =>
-          invoke<unknown>(activeTool!.drop!.handler, { path, ...extraArgs }),
+          invoke<unknown>(activeTool!.drop!.handler, { ...handlerArgs, ...extraArgs }),
         );
         if (!result.superseded && isStillActive()) {
           registry.dropResult = { toolId, value: result.value };

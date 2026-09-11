@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
-import { createPinia, type Pinia } from "pinia";
+import { createPinia, setActivePinia, type Pinia } from "pinia";
 import type { ToolRegistryEntry } from "../stores/registry";
 import { useRegistryStore } from "../stores/registry";
 import { createAppRouter } from "../router";
@@ -123,9 +123,26 @@ describe("routeDragState (AC14)", () => {
   it("never highlights a tool that does not accept drops", () => {
     // Lighting up a target on a view that will refuse the file is a lie told a moment before
     // the refusal.
-    const noDrop: ToolRegistryEntry = { ...ocrTool, id: "pdf", drop: undefined };
+    //
+    // AC36 (Story 8.8): this fixture used to be `{ ...ocrTool, id: "pdf", drop: undefined }` —
+    // PDF as the worked example of a drop-less tool. Story 8.8 gave PDF a `drop` declaration, and
+    // the test kept passing anyway, because the fixture sets `drop: undefined` explicitly and
+    // never consults the real registry. A green assertion that has quietly stopped describing the
+    // app is the exact failure mode Story 8.7's review found seven instances of, so it is renamed
+    // to a tool that genuinely declares no drop rather than left to rot.
+    const noDrop: ToolRegistryEntry = { ...ocrTool, id: "uuid", drop: undefined };
     expect(routeDragState("enter", noDrop)).toBeNull();
     expect(routeDragState("over", noDrop)).toBeNull();
+  });
+
+  it("keeps the PDF tool's real registry entry drop-capable (AC36)", () => {
+    // The guard the fixture above cannot provide: it asserts against the REAL entry, so if PDF's
+    // `drop` declaration is ever removed this fails loudly instead of a hand-made fixture
+    // continuing to describe a tool that no longer exists in that shape.
+    setActivePinia(createPinia());
+    const pdf = useRegistryStore().tools.find((tool) => tool.id === "pdf");
+    expect(pdf?.drop?.multiple).toBe(true);
+    expect(routeDragState("enter", pdf)).toBe("pdf");
   });
 
   it("never highlights when no tool is active", () => {
@@ -331,7 +348,13 @@ describe("DropZone", () => {
     // Story 8.4: the file's path is forwarded alongside the outcome so a view
     // can re-invoke its file handler (Hash re-hashing on a selection change).
     // Tagged with toolId like dropResult (code review, Story 8.4).
-    expect(registry.dropSourcePath).toEqual({ toolId: "hash", path: "/tmp/report.pdf" });
+    // AC34: `paths` is new and always populated; `path` keeps its meaning as the first file, which
+    // is why Hash needed no source change at all.
+    expect(registry.dropSourcePath).toEqual({
+      toolId: "hash",
+      path: "/tmp/report.pdf",
+      paths: ["/tmp/report.pdf"],
+    });
   });
 
   it("latest-wins: a newer drop's outcome survives even when the older drop's invoke() resolves later (AC2, AD-16)", async () => {
@@ -670,8 +693,53 @@ describe("DropZone drag-over state (Story 8.7, AC14)", () => {
     expect(registry.dragOverToolId).toBeNull();
   });
 
-  it("does not highlight a tool that declares no drop support", async () => {
+  // AC33/AC34: the shell change this story owns. Two assertions, because the value of an additive
+  // flag is entirely in what it leaves alone.
+  it("hands a multiple-declaring tool every dropped path (AC33)", async () => {
     const { pinia } = await setupDropZone("/tools/pdf");
+    const registry = useRegistryStore(pinia);
+    invokeMock.mockResolvedValueOnce([]);
+
+    capturedCallback?.({
+      payload: { type: "drop", paths: ["/tmp/a.pdf", "/tmp/b.pdf", "/tmp/c.pdf"] },
+    });
+    await flushPromises();
+
+    // Before this, `DropZone.vue` did `routing.paths![0]` and discarded the rest — silently. That
+    // truncation is one of the three reasons Story 6.1 gave for declining drop on this tool.
+    expect(invokeMock).toHaveBeenCalledWith("pdf_open_dropped", {
+      paths: ["/tmp/a.pdf", "/tmp/b.pdf", "/tmp/c.pdf"],
+    });
+    expect(registry.dropSourcePath).toEqual({
+      toolId: "pdf",
+      path: "/tmp/a.pdf",
+      paths: ["/tmp/a.pdf", "/tmp/b.pdf", "/tmp/c.pdf"],
+    });
+  });
+
+  it("still hands a tool that does NOT declare multiple a single path (AC34)", async () => {
+    // The half that matters most: `multiple` is additive, so every existing drop-capable tool's
+    // contract is byte-for-byte what it was. A regression here would break Hash and OCR silently.
+    const { pinia } = await setupDropZone("/tools/hash");
+    useRegistryStore(pinia);
+    invokeMock.mockResolvedValueOnce("abc123");
+
+    capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/a.bin", "/tmp/b.bin"] } });
+    await flushPromises();
+
+    const call = invokeMock.mock.calls.find((c) => c[0] === "hash_compute_file");
+    expect(call?.[1]).not.toHaveProperty("paths");
+    expect((call?.[1] as { path: string }).path).toBe("/tmp/a.bin");
+  });
+
+  it("does not highlight a tool that declares no drop support", async () => {
+    // AC36 (Story 8.8): routed at `/tools/pdf` until this story, which is a SECOND instance of
+    // the same trap the AC text names for the `routeDragState` fixture above — and one the AC did
+    // not list. Once PDF declared `drop`, this test was asserting that a drop-capable tool shows
+    // no highlight, which is the opposite of the app's behaviour; it failed loudly rather than
+    // rotting only because the component reads the real registry instead of a hand-made fixture.
+    // Routed at UUID, which genuinely declares no drop.
+    const { pinia } = await setupDropZone("/tools/uuid");
     const registry = useRegistryStore(pinia);
 
     capturedCallback?.({ payload: { type: "enter", paths: ["/tmp/a.pdf"] } });
@@ -736,7 +804,11 @@ describe("DropZone publishes the source before the handler resolves (Story 8.7, 
     capturedCallback?.({ payload: { type: "drop", paths: ["/tmp/shot.png"] } });
     await flushPromises();
 
-    expect(registry.dropSourcePath).toEqual({ toolId: "ocr", path: "/tmp/shot.png" });
+    expect(registry.dropSourcePath).toEqual({
+      toolId: "ocr",
+      path: "/tmp/shot.png",
+      paths: ["/tmp/shot.png"],
+    });
     expect(registry.dropResult).toBeNull();
 
     resolveInvoke({ regions: [], image_width: 1, image_height: 1 });
