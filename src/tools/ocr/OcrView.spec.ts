@@ -12,11 +12,20 @@ import { i18n } from "../../i18n";
 // discarding unsaved edits". The second also described a stale-snapshot bug class (8.6's lesson
 // 5) that removing the field structurally dissolves rather than merely fixes.
 
-const { writeClipboardTextMock, invokeMock, convertFileSrcMock, openMock } = vi.hoisted(() => ({
-  writeClipboardTextMock: vi.fn(),
-  invokeMock: vi.fn(),
-  convertFileSrcMock: vi.fn((path: string) => `asset://localhost/${path}`),
-  openMock: vi.fn(),
+const { writeClipboardTextMock, invokeMock, convertFileSrcMock, openMock, routerPushMock } =
+  vi.hoisted(() => ({
+    routerPushMock: vi.fn(),
+    writeClipboardTextMock: vi.fn(),
+    invokeMock: vi.fn(),
+    convertFileSrcMock: vi.fn((path: string) => `asset://localhost/${path}`),
+    openMock: vi.fn(),
+  }));
+
+// AC37 (Story 8.8): this view now routes — it carries a dropped PDF across to the PDF tool
+// rather than only naming it. The push is spied rather than driven through a real router: the
+// assertion that matters is WHAT is published and WHERE it goes, not vue-router's own behaviour.
+vi.mock("vue-router", () => ({
+  useRouter: () => ({ push: routerPushMock }),
 }));
 
 vi.mock("../../shell/clipboard", () => ({
@@ -100,8 +109,29 @@ function store() {
 /** Delivers a drop the way `DropZone.vue` does: the outcome and the source path together. */
 async function deliverDrop(value: unknown, path = "/tmp/shot.png") {
   const registry = store();
-  registry.dropSourcePath = { toolId: "ocr", path };
+  registry.dropSourcePath = { toolId: "ocr", path, paths: [path] };
   registry.dropResult = { toolId: "ocr", value };
+  await flushPromises();
+}
+
+/**
+ * Delivers a refused PDF the way the shell really does (AC37): publish the source, set the error
+ * result, and clear the source — all before a flush, because the format check rejects inside one
+ * tick. Reproducing that sequence is what the first AC37 test failed to do.
+ */
+async function deliverRefusedPdf(path = "/tmp/doc.pdf") {
+  const registry = store();
+  registry.dropSourcePath = { toolId: "ocr", path, paths: [path] };
+  registry.dropResult = {
+    toolId: "ocr",
+    error: {
+      code: "ocr-pdf-wrong-tool",
+      message: "PDFs open in the PDF tool.",
+      position: null,
+      context: null,
+    },
+  };
+  registry.dropSourcePath = null;
   await flushPromises();
 }
 
@@ -230,7 +260,7 @@ describe("OcrView", () => {
 
     it("shows the image immediately from the dropped path, before recognition returns (AC33)", async () => {
       mountView();
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png", paths: ["/tmp/shot.png"] };
       await flushPromises();
 
       expect(convertFileSrcMock).toHaveBeenCalledWith("/tmp/shot.png");
@@ -265,7 +295,7 @@ describe("OcrView", () => {
       // the shell published the source only after the command resolved — so a drop showed a
       // blank pane for the whole inference. Measured at 13 s on a full-screen Retina capture.
       mountView();
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png", paths: ["/tmp/shot.png"] };
       await flushPromises();
 
       expect(wrapper!.find("img.source-image").exists()).toBe(true);
@@ -318,7 +348,7 @@ describe("OcrView", () => {
       // Both carry the same words; without this a screen reader meets "Extracting text…"
       // twice — once announced, once on traversal.
       mountView();
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png", paths: ["/tmp/shot.png"] };
       await flushPromises();
 
       expect(wrapper!.find(".chip").attributes("aria-hidden")).toBe("true");
@@ -327,7 +357,7 @@ describe("OcrView", () => {
 
     it("stops the indicator when the extraction fails", async () => {
       mountView();
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png", paths: ["/tmp/shot.png"] };
       await flushPromises();
       expect(wrapper!.find(".in-flight").exists()).toBe(true);
 
@@ -342,7 +372,7 @@ describe("OcrView", () => {
 
     it("announces the start, not only the completion", async () => {
       mountView();
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png", paths: ["/tmp/shot.png"] };
       await flushPromises();
 
       expect(wrapper!.find(".sr-only[role='status']").text()).toContain("Extracting");
@@ -827,7 +857,7 @@ describe("OcrView", () => {
       await deliverDrop(MULTI_REGION_OUTCOME);
       await wrapper!.find(".findbar input").setValue("line");
 
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/second.png" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/second.png", paths: ["/tmp/second.png"] };
       await flushPromises();
 
       expect(wrapper!.find(".in-flight").exists()).toBe(true);
@@ -843,7 +873,7 @@ describe("OcrView", () => {
   describe("the in-flight size on the file paths (AC33)", () => {
     it("sizes the surface from the decoded image before any outcome exists", async () => {
       mountView();
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png", paths: ["/tmp/shot.png"] };
       await flushPromises();
 
       // jsdom never loads a real image, so the browser's own load event is simulated with the
@@ -863,7 +893,7 @@ describe("OcrView", () => {
       // against, AFTER EXIF orientation, and the region polygons live in THAT space — so it
       // must take over the moment it exists or the overlay drifts off the text.
       mountView();
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png", paths: ["/tmp/shot.png"] };
       await flushPromises();
 
       const img = wrapper!.find("img.source-image");
@@ -1068,7 +1098,7 @@ describe("OcrView", () => {
       await deliverDrop(SAMPLE_OUTCOME);
       expect(announcer()).toContain("Text extracted");
 
-      store().dropSourcePath = { toolId: "ocr", path: "/tmp/doc.pdf" };
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/doc.pdf", paths: ["/tmp/doc.pdf"] };
       store().dropResult = {
         toolId: "ocr",
         error: { code: "ocr-pdf-wrong-tool", message: "PDFs open in the PDF tool.", position: null, context: null },
@@ -1077,6 +1107,148 @@ describe("OcrView", () => {
 
       expect(announcer()).toContain("PDF");
       expect(announcer()).not.toContain("Text extracted");
+    });
+
+    // AC37 (Story 8.8): the third hand-off Story 8.7 handed forward in writing. Until now this
+    // refusal was a signpost pointing at a closed door — it named the tool that could open the
+    // file and then made the user go there and re-pick the file they had just dropped.
+    it("offers to carry a dropped PDF to the PDF tool, and carries it (AC37)", async () => {
+      mountView();
+
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/doc.pdf", paths: ["/tmp/doc.pdf"] };
+      store().dropResult = {
+        toolId: "ocr",
+        error: {
+          code: "ocr-pdf-wrong-tool",
+          message: "PDFs open in the PDF tool.",
+          position: null,
+          context: null,
+        },
+      };
+      await flushPromises();
+
+      const offer = wrapper!.find(".error-action");
+      expect(offer.exists()).toBe(true);
+
+      await offer.trigger("click");
+      await flushPromises();
+
+      // Published BEFORE the route change: the receiving view's watcher is `immediate`, so the
+      // reverse order would have it mount, find nothing, and the signal arrive to an empty room.
+      expect(store().handOffPath).toEqual({ toolId: "pdf", path: "/tmp/doc.pdf" });
+      expect(routerPushMock).toHaveBeenCalledWith("/tools/pdf");
+    });
+
+    it("offers the hand-off even when the drop fails before Vue flushes (AC37)", async () => {
+      // The ordering the SHELL actually produces, which the test above did not reproduce and the
+      // app therefore failed at. `DropZone.vue` publishes `dropSourcePath`, invokes, and on
+      // rejection sets `dropResult` AND clears `dropSourcePath` — all synchronously relative to
+      // Vue's default `flush: "pre"` watcher. A PDF is refused by a format check, i.e. almost
+      // instantly, so the source signal is set and unset inside one tick and the view's watcher
+      // only ever sees the final value: `null`. It returned early, the path was never captured,
+      // and the offer never rendered.
+      mountView();
+
+      const registry = store();
+      registry.dropSourcePath = { toolId: "ocr", path: "/tmp/doc.pdf", paths: ["/tmp/doc.pdf"] };
+      registry.dropResult = {
+        toolId: "ocr",
+        error: {
+          code: "ocr-pdf-wrong-tool",
+          message: "PDFs open in the PDF tool.",
+          position: null,
+          context: null,
+        },
+      };
+      registry.dropSourcePath = null;
+      await flushPromises();
+
+      expect(wrapper!.find(".error-action").exists()).toBe(true);
+    });
+
+    // Render review 2026-09-11. The first cut appended the offer to the resting state, and the
+    // developer rejected it: *"everything is centered with one main action using a button, and
+    // then you have this new white button not centered and competing with the first one."* These
+    // pin the redesign so it cannot quietly revert to an append.
+    it("keeps the refusal an error, and the resting state intact (AC37)", async () => {
+      // Two corrections from the developer, both against an earlier attempt of mine:
+      //   * the red stays. Something DID go wrong from the user's side — they handed this tool a
+      //     file and it refused. Calling it "just a routing hint" was the designer's view, not
+      //     theirs, and dropping the colour made the screen read as though nothing had happened.
+      //   * the resting state stays. Replacing it with a PDF-glyph panel put the PDF tool's own
+      //     identity inside Image to Text, which signals "you are in the PDF tool now".
+      mountView();
+      await deliverRefusedPdf();
+
+      const alert = wrapper!.find(".drop-target p.error[role='alert']");
+      expect(alert.exists()).toBe(true);
+      expect(alert.text()).toContain("PDFs open in the PDF tool.");
+      // The three doors are untouched — the tool still says what it takes.
+      expect(wrapper!.text()).toContain("Drop an image here");
+      expect(wrapper!.text()).toContain("paste with ⌘V");
+      expect(wrapper!.findAll(".or-separator")).toHaveLength(2);
+    });
+
+    it("carries the action inside the message rather than beside it (AC37)", async () => {
+      // The fault this fixes: a second `default` AppButton next to "Choose an image…" gave the
+      // screen two equal main actions, off-centre, with no order between them. The action is now
+      // a text link inside the sentence it belongs to.
+      mountView();
+      await deliverRefusedPdf();
+
+      const action = wrapper!.find(".drop-target .error-action");
+      expect(action.exists()).toBe(true);
+      // Inside the alert paragraph, not a sibling of it.
+      expect(wrapper!.find(".drop-target p.error .error-action").exists()).toBe(true);
+      // Exactly one real button remains on the resting surface: the tool's own.
+      const appButtons = wrapper!.findAll(".drop-target button.app-button");
+      expect(appButtons).toHaveLength(1);
+      expect(appButtons[0].text()).toBe("Choose an image…");
+    });
+
+    it("names the file in the action, so the visible text is a complete label (AC37)", async () => {
+      // WCAG 2.5.3: a control's accessible name must contain its visible text, so the link says
+      // what it does rather than being a statement that happens to be clickable. Naming the file
+      // also confirms we took the one they meant — basename only, per AC25.
+      mountView();
+      await deliverRefusedPdf();
+
+      const action = wrapper!.find(".error-action");
+      expect(action.text()).toBe("Open doc.pdf");
+      expect(wrapper!.text()).not.toContain("/tmp/doc.pdf");
+    });
+
+    it("leaves the redirect the moment another source arrives (AC37)", async () => {
+      // The state is derived from the error code, not a flag — so it clears itself rather than
+      // relying on every other entry path remembering to reset it.
+      mountView();
+      await deliverRefusedPdf();
+      expect(wrapper!.find(".error-action").exists()).toBe(true);
+
+      await deliverDrop(SAMPLE_OUTCOME);
+
+      expect(wrapper!.find(".error-action").exists()).toBe(false);
+    });
+
+    it("does not offer the PDF hand-off for an unrelated failure (AC37)", async () => {
+      // The offer is specific to one code. An image that simply failed to decode has nothing to
+      // carry anywhere, and a button suggesting otherwise would be a wrong answer offered
+      // confidently.
+      mountView();
+
+      store().dropSourcePath = { toolId: "ocr", path: "/tmp/shot.png", paths: ["/tmp/shot.png"] };
+      store().dropResult = {
+        toolId: "ocr",
+        error: {
+          code: "ocr-unsupported-format",
+          message: "Unsupported image format.",
+          position: null,
+          context: null,
+        },
+      };
+      await flushPromises();
+
+      expect(wrapper!.find(".error-action").exists()).toBe(false);
     });
 
     it("says so when the source image cannot be rendered, instead of floating text over nothing", async () => {

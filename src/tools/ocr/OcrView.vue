@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -31,6 +32,8 @@ import {
 
 const { t } = useI18n();
 const registry = useRegistryStore();
+// AC37: routing is this view's own navigation, not a reach into another tool (AD-6).
+const router = useRouter();
 const { isCopied, markCopied, cancel: cancelCopyFeedback } = useCopyFeedback();
 
 type OcrResult = { toolId: string; value: unknown } | { toolId: string; error: ToolError };
@@ -356,6 +359,64 @@ watch(
 // AC33: the image renders in the FIRST frame, before recognition returns. The ~3 s wait is a
 // feedback problem, not a speed problem — showing the image answers "did it take my file?"
 // instantly, and the first-run model load then happens against something recognisable.
+// AC37: the path of a PDF that was just dropped here and refused. Held so the refusal can offer
+// to carry the file to the tool that CAN open it, rather than only naming that tool.
+const droppedPdfPath = ref<string | null>(null);
+
+/**
+ * AC37: the dropped PDF the refusal can offer to carry, or `null`.
+ *
+ * Gated on the error code rather than tracked as its own flag, which is what keeps it correct
+ * without any explicit clean-up: any new source clears `error` (`resetForNewSource`), so this
+ * goes null on its own the moment the user does something else. A separate boolean would have
+ * needed resetting on the drop path, the paste path and the file-picker path, and would have been
+ * forgotten on at least one of them.
+ */
+const pdfRedirect = computed(() =>
+  error.value?.code === "ocr-pdf-wrong-tool" ? droppedPdfPath.value : null,
+);
+
+/** AC25: only the basename reaches the screen — never the absolute path. */
+function basename(path: string): string {
+  const segments = path.split(/[/\\]/);
+  return segments[segments.length - 1] || path;
+}
+
+async function onOpenDroppedPdf() {
+  const path = droppedPdfPath.value;
+  if (path === null) return;
+  droppedPdfPath.value = null;
+  error.value = null;
+  // Published BEFORE the route change, so the PDF view's `immediate` watcher sees it the moment
+  // it mounts. The reverse order would race: the view would mount, find nothing, and the signal
+  // would arrive to an empty room.
+  registry.handOffPath = { toolId: "pdf", path };
+  await router.push("/tools/pdf");
+}
+
+// AC37: captured by a SYNCHRONOUS watcher, and that is the whole fix for a bug the first attempt
+// shipped.
+//
+// `dropSourcePath` is genuinely transient. `DropZone.vue` publishes it, invokes, and on rejection
+// sets `dropResult` **and clears `dropSourcePath`** — all within one tick. A dropped PDF is
+// refused by a format check, i.e. almost instantly, so with Vue's default `flush: "pre"` the
+// watcher below never observes the non-null value at all: it runs once, sees `null`, and returns.
+// The path was never captured and the offer never rendered, which is exactly what the developer
+// saw — the sentence appeared and nothing else did.
+//
+// A sync watcher observes every mutation as it happens, so the value cannot be set and unset
+// behind its back. Kept separate from the main watcher below rather than making that one sync:
+// that one's ordering is load-bearing and carefully reasoned, and it has no business changing
+// timing to serve this.
+watch(
+  () => registry.dropSourcePath,
+  (source) => {
+    if (!source || source.toolId !== "ocr") return;
+    droppedPdfPath.value = source.path.toLowerCase().endsWith(".pdf") ? source.path : null;
+  },
+  { flush: "sync" },
+);
+
 watch(
   () => registry.dropSourcePath,
   (source) => {
@@ -611,6 +672,18 @@ onUnmounted(() => {
         class="status error"
       >
         {{ toolErrorMessage(error, t) }}
+        <!-- The same inline action as the drop target's copy below. Both blocks carry it because
+             which one renders depends on whether an image was ever set: a slow failure leaves one
+             on screen and reports here, a fast refusal — every dropped PDF — never gets that far
+             and reports there. -->
+        <button
+          v-if="pdfRedirect"
+          type="button"
+          class="error-action"
+          @click="onOpenDroppedPdf"
+        >
+          {{ t('tools.ocr.openDroppedPdf', { name: basename(pdfRedirect) }) }}
+        </button>
       </p>
       <!-- Visual only, deliberately: `role="status"` here was inaudible (the element is
            `v-if`-inserted, so there was no pre-existing region for VoiceOver to observe) and,
@@ -777,6 +850,31 @@ onUnmounted(() => {
           class="error"
         >
           {{ toolErrorMessage(error, t) }}
+          <!-- AC37, render review 2026-09-11 (second pass). The first attempt appended a `default`
+               AppButton here and the developer rejected it; the replacement — a dedicated redirect
+               state with a PDF glyph — was rejected too, and for better reasons than the design it
+               replaced:
+
+                 * dropping the red made it read as though nothing had gone wrong. It had: the user
+                   handed this tool a file and the tool refused it. Red is the honest colour for
+                   that, and calling it "just a routing hint" was the designer's view, not theirs.
+                 * showing the PDF tool's own glyph inside Image to Text signals "you are in the
+                   PDF tool now", which is precisely the confusion a hand-off should avoid.
+
+               So the message keeps its colour, its place and its `role="alert"`, and the ACTION
+               lives inside the sentence as a text link. Nothing new competes with "Choose an
+               image…", nothing is off-centre, and the affordance is where the explanation already
+               is. The link names the FILE rather than repeating "the PDF tool", so the visible
+               text is also a complete accessible name (WCAG 2.5.3) instead of a statement that
+               happens to be clickable. -->
+          <button
+            v-if="pdfRedirect"
+            type="button"
+            class="error-action"
+            @click="onOpenDroppedPdf"
+          >
+            {{ t('tools.ocr.openDroppedPdf', { name: basename(pdfRedirect) }) }}
+          </button>
         </p>
       </div>
 
@@ -1257,6 +1355,33 @@ h1 {
   .spinner {
     animation: none;
   }
+}
+
+/* AC37: an action INSIDE the message, in the message's own colour — not a second button beside
+   it. `color: inherit` is doing the work: it keeps the link red with the sentence it belongs to,
+   so the pair reads as one line rather than as an error with a control bolted to its side. The
+   underline is the affordance; without it a coloured span in already-coloured text is invisible
+   as something clickable. */
+.error-action {
+  appearance: none;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.error-action:hover {
+  text-decoration-thickness: 2px;
+}
+
+.error-action:focus-visible {
+  outline: 2px solid var(--color-accent-signature);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .error {
