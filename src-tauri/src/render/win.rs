@@ -115,7 +115,7 @@ impl PageRenderer for Backend {
 
         let target =
             InMemoryRandomAccessStream::new().map_err(win_err("could not open a stream"))?;
-        page.RenderWithOptionsAsync(&target, &options)
+        page.RenderWithOptionsToStreamAsync(&target, &options)
             .map_err(win_err("could not render that page"))?
             .get()
             .map_err(win_err("could not render that page"))?;

@@ -88,6 +88,10 @@ pub const MAX_THUMBNAIL_WIDTH: u32 = 640;
 ///
 /// A page that would exceed this is scaled to fit the height instead, so it renders narrower and
 /// correct rather than squashed or refused — 16:1 is already far past any real document shape.
+// `allow(dead_code)` on Linux only: no backend calls this there (`unsupported.rs` never
+// renders anything), but the constant stays compiled and tested on every platform below —
+// see `fit_within_thumbnail`'s own comment for why that cross-platform testability matters.
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 pub const MAX_THUMBNAIL_HEIGHT: u32 = MAX_THUMBNAIL_WIDTH * 16;
 
 /// Fits a page's drawable size inside `max_width` x [`MAX_THUMBNAIL_HEIGHT`], keeping its aspect
@@ -104,6 +108,14 @@ pub const MAX_THUMBNAIL_HEIGHT: u32 = MAX_THUMBNAIL_WIDTH * 16;
 /// of two positive subnormals is syntactically legal PDF and passes a `<= 0.0` check, but the
 /// scale it produces is `+inf`, and `inf as usize` saturates to `usize::MAX` before the buffer
 /// multiply overflows. NFR4 admits neither the panic nor the allocation.
+///
+/// `allow(dead_code)` on Linux only (found by real CI, 2026-09-14 — this is exactly the
+/// `win.rs` risk stated above, just on the platform with no backend at all rather than the
+/// wrong one): `mac.rs`/`win.rs` are the only real callers and neither compiles there, but the
+/// function itself is deliberately NOT `cfg`-gated to those platforms — doing so would also
+/// remove it from Linux's OWN test binary, defeating the entire point of extracting one shared,
+/// platform-neutral fit that every platform's `cargo test` can verify.
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 pub(crate) fn fit_within_thumbnail(
     source_width: f64,
     source_height: f64,
