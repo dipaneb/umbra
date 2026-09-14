@@ -41,7 +41,57 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-08  # story 8-7 review -> done (bmad-code-review, three parallel layers: Blind
+last_updated: 2026-09-14  # story 8-8 -> done. Group D (docs) code review: 12 findings, 11 patched,
+# 1 dismissed -- zero AC violations but a real drift found: epics.md still described the
+# pre-redesign PDF tool in three places, one of them actively edited THIS cycle to claim page
+# previews (the story's headline feature) are out of scope -- the exact class AC2 exists to
+# prevent, one story after the spec said "do not repeat that." All four review groups now clean;
+# gate green throughout (JS 1155/1155, cargo 424/424, unaffected by the docs-only Group D pass).
+# Previous entry, 2026-09-14 -- story 8-8 Group C code review (shell/registry/errors/OCR/i18n) --
+# status STAYS in-progress: chunk 3 of 4. Zero AC violations (AC33-40, AC54 all MET). Real find:
+# the OCR->PDF hand-off was gated on a `.pdf` filename check while the error it reacts to is
+# content-sniffed by Rust -- fixed, and extended to the file picker too on the developer's call.
+# One finding corrected mid-review after direct testing did not confirm the predicted count=0
+# i18n bug (converted the pipe syntax anyway, on the strength of this codebase's own documented
+# convention against it, not an unconfirmed regression). Vitest 1155 (PdfView.spec.ts 82,
+# OcrView.spec.ts 80). Group D (docs) remains before review -> done.
+# Previous entry, 2026-09-14 (render review, not a numbered chunk) -- three live-testing passes on
+# the Group B patches found and fixed real regressions jsdom could not: an IntersectionObserver
+# reused across documents with a stale (detached) root, so a second opened document never
+# auto-loaded any preview or text; a WebKit click-focus gap (clicking a cell never moved real
+# keyboard focus, only reactive state); and a `:focus-visible` ring that was replaced with a
+# state-bound class after two colour/clamp tuning passes did not fix it -- matching the pattern
+# every OTHER roving-tabindex widget in this app already uses (AppTabs.vue, JsonTree.vue). Vitest
+# 1152 at that point.
+# Previous entry, 2026-09-13 -- story 8-8 Group B code review (PdfView) -- status STAYS in-progress: chunk 2
+# of 4. ~60 raw -> 32 after dedup; all three layers converged on the same four HIGHs (loader not
+# per-visible-range + batches cancelling each other; gapped extract wrote the RANGE; "Merge with..."
+# replaced the document; edits rebuilt the grid). 25 patched incl. the developer's D3 call to apply
+# edits locally with stable row identities (grid FLIP, thumbnails survive a move). Vitest 1147
+# (PDF spec 60 -> 87, first tests of the scroll path via a fake IntersectionObserver). RENDER REVIEW
+# OWED before Groups C/D: the loader and the local-edit model are what jsdom cannot see.
+# Previous entry (same day) -- story 8-8 Group A code review (bmad-code-review) -- status STAYS in-progress:
+# chunk 1 of 4. Diffed against baseline ef25dbe (origin/main), NOT local main, which is stale by one
+# squash-merge and would have re-reviewed 8.7's files. Three parallel layers on the 9 Rust files;
+# 31 raw -> 23 after dedup; 5 decisions ruled by the developer, 17 patches applied, 1 accepted,
+# 5 dismissed. Gate 424 cargo (from 412). THE FINDING WORTH CARRYING FORWARD: the one HIGH was in
+# win.rs, the file that does not compile on the developer's machine -- it scaled to width alone
+# while mac.rs fitted both axes, and no local check could see the drift. Fix was structural: one
+# shared fit helper in mod.rs both backends call, tested platform-neutrally. Groups B (PdfView),
+# C (shell/registry/errors/OCR/i18n), D (docs) are separate review runs still owed before review->done.
+# Previous entry, 2026-09-09 -- story 8-8 -> in-progress (bmad-dev-story). Task 0 done: baseline ef25dbe
+# re-confirmed as origin/main's real tip by CONTENT diff (git diff --stat HEAD origin/main shows only
+# this story's own two files), not SHA ancestry -- the squash-merge trap. Branch
+# feat/story-8-8-reimagine-the-bucket-pdf already cut at e7868e8. Task 1 (discovery) next.
+# Previous entry, 2026-09-09 -- story 8-8 created (bmad-create-story) -> ready-for-dev, at baseline
+# ef25dbe (8.7 / PR #136, merged the same day). Task 1 ACs real (AC1-AC7); Task 2 ACs deferred per the
+# epic's own gate. Two ACs beyond the 8.1-8.6 template: AC4 turns 8.7's two written hand-offs (the
+# bucket_* -> pdf_* rename incl. the bucket-input-too-large / bucket-internal codes SHARED with the
+# Images tool, and PDF tier 2's honest scan message) into obligations; AC5 forces a re-decision on
+# drag-and-drop -- Story 6.1 declined it deliberately and recorded three reasons, and 8.7's registry
+# split invalidated the load-bearing one. lopdf 0.45.0 (2026-09-08, MSRV 1.88) checked live: NOT
+# toolchain-blocked, unlike oar-ocr -- an open decision for Task 1. Vitest baseline 974/974 re-run.
+# Previous entry, 2026-09-08 -- story 8-7 review -> done (bmad-code-review, three parallel layers: Blind
 # Hunter / Edge Case Hunter / Acceptance Auditor, all against `git diff -M main...HEAD` code paths).
 # 40 raw findings -> 30 after dedup; 5 decisions ruled by the developer, 23 patches applied, 3 deferred,
 # 4 dismissed. Gate 974 Vitest / 373 cargo, from 963 / 371.
@@ -1565,7 +1615,7 @@ development_status:
   # the only bidirectional two-state-group tool in Epic 8, so AppTabs is genuinely on the
   # table (weighed vs. 8.2's smart-detection choice). Not committed.
   8-7-reimagine-the-bucket-ocr: done
-  8-8-reimagine-the-bucket-pdf: backlog
+  8-8-reimagine-the-bucket-pdf: done
   8-9-reimagine-the-bucket-images: backlog
   epic-8-retrospective: optional
 

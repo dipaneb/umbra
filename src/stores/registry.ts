@@ -25,7 +25,13 @@ export interface ToolRegistryEntry {
   route: string;
   icon: IconName;
   component: () => Promise<Component>;
-  drop?: { acceptedMimeTypes: string[]; handler: string };
+  // AC33 (Story 8.8): `multiple` is ADDITIVE. A tool that does not declare it receives exactly
+  // today's behaviour — its handler is invoked with `path`, the first dropped file. A tool that
+  // does receives `paths`, the whole array. Only the `pdf` entry sets it, because merging several
+  // PDFs is the one drop gesture in this app that is meaningless with a single file, and Story
+  // 6.1 declined drop for this tool partly *because* `DropZone.vue` discarded every file after
+  // the first (`paths![0]`). That truncation is what this flag exists to stop being a silent one.
+  drop?: { acceptedMimeTypes: string[]; handler: string; multiple?: boolean };
   // AD-14/AD-15: declares a tool's clipboard-image-paste handler, mirroring `drop` — keeps the
   // shell's paste dispatcher generic (reads the handler name from the registry) rather than
   // hardcoding a tool's command name (Story 4.2).
@@ -187,11 +193,32 @@ const TOOLS: ToolRegistryEntry[] = [
     // `name` is provisional — Story 8.8 redesigns this tool and may rename it, but
     // the registry cannot hold a placeholder (AC28).
     id: "pdf",
+    // AC35: `name` STAYS "PDF". Story 8.7 marked it provisional and left the call to this story;
+    // leaving it is the recorded decision, not an oversight — "PDF" already holds the two-word
+    // register's spirit as a proper noun.
     name: "PDF",
     descriptionKey: "tools.pdf.description",
-    aliases: ["pdf", "merge", "split", "fusionner", "diviser"],
+    // AC35: the five original aliases plus the three verbs this story added, in both locales.
+    aliases: [
+      "pdf",
+      "merge",
+      "split",
+      "rotate",
+      "delete",
+      "reorder",
+      "fusionner",
+      "diviser",
+      "pivoter",
+      "supprimer",
+      "réorganiser",
+    ],
     route: "/tools/pdf",
     icon: "pdf",
+    // AC5/AC33: drop adopted, and multi-file. Story 6.1 declined it deliberately and gave three
+    // reasons; Story 8.7 killed one of them (the shared `bucket` entry could not route a PDF and
+    // an image to two different handlers — PDF now has its own entry and its own handler),
+    // `dropArgsProviders` had already solved the second, and `multiple` here answers the third.
+    drop: { acceptedMimeTypes: ["application/pdf"], handler: "pdf_open_dropped", multiple: true },
     component: () => import("../tools/pdf/PdfView.vue"),
   },
   {
@@ -259,7 +286,23 @@ export const useRegistryStore = defineStore("registry", () => {
   // like `dropResult` (code review, Story 8.4) — the pairing is safe today
   // (only one consumer, gated by `isStillActive`/`superseded`), but an
   // untagged shared field is a footgun for a future second consumer.
-  const dropSourcePath = ref<{ toolId: string; path: string } | null>(null);
+  //
+  // AC34 (Story 8.8): widened ADDITIVELY. `path` stays and keeps its meaning — the first dropped
+  // file — so both existing consumers (`HashView.vue`, `OcrView.vue`) read it unchanged. `paths`
+  // is new and carries every dropped file, and is populated for every drop rather than only for
+  // `multiple` tools: a single-file drop is simply a one-element array, and a field that
+  // sometimes exists is harder to reason about than one that always does.
+  const dropSourcePath = ref<{ toolId: string; path: string; paths: string[] } | null>(null);
+
+  // AC37 (Story 8.8): a one-shot hand-off of a file from one tool to another — today, a PDF
+  // dropped on Image to Text being carried across to the PDF tool.
+  //
+  // Shell-owned on purpose. AD-6 says no tool reads another tool's state, so OCR cannot call into
+  // PDF and PDF cannot reach back: the sender writes this and routes, the receiver consumes and
+  // clears it on mount. Exactly the shape `dropSourcePath` already has, and the reason Story 8.7
+  // deferred this hand-off (*"it cannot route to somewhere that is not built yet"*) is retired by
+  // the PDF tool now having an entry state to route INTO.
+  const handOffPath = ref<{ toolId: string; path: string } | null>(null);
 
   // AC12 (Story 8.7): the pixels behind the current *successful* `pasteResult`.
   //
@@ -322,6 +365,7 @@ export const useRegistryStore = defineStore("registry", () => {
     setDropArgsProvider,
     dropResult,
     dropSourcePath,
+    handOffPath,
     pasteResult,
     pasteSourceImage,
     dragOverToolId,

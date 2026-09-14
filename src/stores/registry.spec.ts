@@ -81,6 +81,34 @@ describe("TOOLS clipboardMatch field (AC3/AC4/AC12, Story 7.8)", () => {
     expect(eligible).toEqual(["base64", "json", "jwt", "ocr"]);
   });
 
+  // AC33/AC35 (Story 8.8): the PDF entry is the only one that declares `multiple`, and that
+  // exclusivity is the whole safety property of an additive flag — if a second tool picked it up
+  // by accident, its handler would start receiving `paths` where it expects `path`, silently.
+  it("declares drop.multiple on the PDF tool and on nothing else", () => {
+    setActivePinia(createPinia());
+    const registry = useRegistryStore();
+
+    const multiple = registry.tools
+      .filter((tool) => tool.drop?.multiple)
+      .map((tool) => tool.id);
+
+    expect(multiple).toEqual(["pdf"]);
+  });
+
+  it("gives the PDF tool aliases for its new verbs in both locales (AC35)", () => {
+    // Aliases are a union of English and French terms, not a per-locale list — a French user
+    // searching "rotate" and an English user searching "pivoter" should both find the tool.
+    setActivePinia(createPinia());
+    const pdf = useRegistryStore().tools.find((tool) => tool.id === "pdf");
+
+    for (const alias of ["rotate", "delete", "reorder", "pivoter", "supprimer", "réorganiser"]) {
+      expect(pdf?.aliases).toContain(alias);
+    }
+    // AC35: `name` stays "PDF". Story 8.7 marked it provisional and left the call here; leaving
+    // it is the recorded decision, so this pins it rather than letting it drift unnoticed.
+    expect(pdf?.name).toBe("PDF");
+  });
+
   it("does not crash iterating a mixed registry (some entries have no clipboardMatch)", () => {
     setActivePinia(createPinia());
     const registry = useRegistryStore();

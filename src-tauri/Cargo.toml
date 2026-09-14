@@ -57,6 +57,47 @@ clipboard-rs = { version = "0.3.5", features = ["wayland"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 umbra-core = { path = "../crates/umbra-core" }
+# Story 8.8 (AC43): page previews come from the PDF renderer built into the OS, not from a
+# bundled rasterizer. Neither block below adds a CRATE to the tree — both are already compiled
+# here by Tauri (wry/tao on macOS, the same on Windows) — they only turn on features. The bundle
+# therefore grows by 0 MB, against roughly doubling for the `pdfium-render` + `libpdfium`
+# approach this replaced, and no third-party binary enters the supply chain.
+#
+# There is deliberately NO Linux block: Linux has no OS-level PDF rendering API, and its two
+# de-facto libraries are licence-incompatible with this app (Poppler is GPL, MuPDF is AGPL). It
+# compiles `render/unsupported.rs` and degrades honestly (AC46). That is a decision, not a gap.
+# `image` IS listed under both target blocks below, as a runtime dependency: `render/mac.rs`
+# encodes its bitmap to PNG with it, and `render/win.rs`'s tests decode with it. It was already a
+# dev-dependency of this crate and a runtime dependency of `umbra-core`, so no new crate enters
+# the tree (AC43) — this is the same version, resolved once by the workspace, declared where the
+# backends can actually see it. (An earlier comment here said the opposite; code review
+# 2026-09-13.)
+[target.'cfg(target_os = "macos")'.dependencies]
+# Core Graphics' PDF API — the engine behind Preview.app. Features are per-header in the objc2
+# family, so each one this backend touches is named explicitly rather than pulling the crate's
+# full surface.
+objc2-core-graphics = { version = "0.3.2", features = [
+    "CGPDFDocument",
+    "CGPDFPage",
+    "CGContext",
+    "CGBitmapContext",
+    "CGDataProvider",
+    "CGColorSpace",
+    "CGImage",
+] }
+objc2-core-foundation = { version = "0.3.2", features = ["CFData", "CFCGTypes"] }
+image = "0.25"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# `Windows.Data.Pdf`, present since Windows 8.1. `Foundation` carries the WinRT async plumbing
+# (`IAsyncOperation`) that `RenderToStreamAsync` returns; `Storage_Streams` carries the
+# in-memory stream both the load and the render side require.
+windows = { version = "0.61", features = [
+    "Data_Pdf",
+    "Foundation",
+    "Storage_Streams",
+] }
+image = "0.25"
 
 [dev-dependencies]
 # Only #[tokio::test] needs an executor to run async #[tauri::command] fns
@@ -83,5 +124,5 @@ umbra = { path = ".", features = ["test-support"] }
 # fixtures for `commands/pdf.rs`'s integration tests. Same crate + default-features=false setting
 # umbra-core already depends on directly (see that crate's Cargo.toml comment for why) — not a
 # second PDF library, just this crate's own dev-only use of it to build test input.
-lopdf = { version = "0.44", default-features = false }
+lopdf = { version = "0.45", default-features = false }
 

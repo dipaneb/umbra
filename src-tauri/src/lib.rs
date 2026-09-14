@@ -5,6 +5,10 @@
 mod clipboard_watch;
 pub mod commands;
 mod fs_helper;
+// AC44: the render backends live here, and `render/mod.rs` holds the only `cfg(target_os)`
+// switch in this crate's runtime source. (`build.rs` has carried one since Story 4.1 for the
+// Windows resource embed — a build script, not shipped code.) Nothing else branches on OS.
+mod render;
 
 use commands::base64::{
     base64_decode, base64_decode_to_file, base64_encode, base64_ingest_file, base64_parse_data_uri,
@@ -18,7 +22,11 @@ use commands::json::{
 };
 use commands::jwt::jwt_decode;
 use commands::ocr::{ocr_extract_text, ocr_extract_text_from_clipboard, ocr_grant_asset};
-use commands::pdf::{bucket_extract_pdf_pages, bucket_extract_pdf_text, bucket_merge_pdfs};
+use commands::pdf::{
+    pdf_begin_edit, pdf_delete_pages, pdf_extract_pages, pdf_extract_text, pdf_merge, pdf_open,
+    pdf_open_dropped, pdf_page_text, pdf_render_pages, pdf_reorder_pages, pdf_rotate_pages,
+    pdf_save_copy,
+};
 use commands::uuid::{uuid_export, uuid_generate};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -67,9 +75,18 @@ pub fn run() {
             ocr_grant_asset,
             jwt_decode,
             cron_explain,
-            bucket_merge_pdfs,
-            bucket_extract_pdf_pages,
-            bucket_extract_pdf_text,
+            pdf_merge,
+            pdf_extract_pages,
+            pdf_extract_text,
+            pdf_open,
+            pdf_open_dropped,
+            pdf_page_text,
+            pdf_render_pages,
+            pdf_begin_edit,
+            pdf_save_copy,
+            pdf_delete_pages,
+            pdf_rotate_pages,
+            pdf_reorder_pages,
             bucket_convert_image,
             bucket_estimate_image_size
         ])

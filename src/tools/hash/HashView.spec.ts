@@ -118,7 +118,7 @@ async function dropFile(
   entries = digestEntries("sha256", "sha512"),
 ) {
   const registry = useRegistryStore(pinia);
-  registry.dropSourcePath = { toolId: "hash", path };
+  registry.dropSourcePath = { toolId: "hash", path, paths: [path] };
   registry.dropResult = { toolId: "hash", value: entries };
   await flushPromises();
 }

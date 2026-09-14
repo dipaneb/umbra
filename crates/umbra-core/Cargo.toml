@@ -25,13 +25,24 @@ croner = "3"
 chrono = "0.4"
 oar-ocr = "0.6"
 image = "0.25"
-# default-features off: pulls in chrono/jiff/time/rayon for PDF metadata date
-# conversions and parallel decompression, none of which this module uses (no
-# date handling, no compress()). Also sidesteps a live break in lopdf 0.44.0's
-# default "time" feature: the resolved time 0.3.45 removed the
-# BorrowedFormatItem::StringLiteral variant lopdf's datetime.rs still
-# references, so `cargo build` fails with default features on.
-lopdf = { version = "0.44", default-features = false }
+# Story 8.8 (AC15): 0.44 -> 0.45. `default-features = false` is KEPT, but the reason
+# it is kept CHANGED with this bump, and the distinction matters enough to spell out —
+# a future reader must not delete the flag believing the workaround is stale, nor keep
+# it believing a fixed upstream break is still live.
+#
+#   Historically true, no longer causally true: 0.44.0's default set was
+#   ["chrono", "jiff", "rayon", "time"], and the "time" feature FAILED TO BUILD against
+#   the resolved time 0.3.45, which had removed the BorrowedFormatItem::StringLiteral
+#   variant that lopdf's datetime.rs still referenced. The flag was load-bearing.
+#
+#   0.45.0's default set is ["chrono-clock", "rayon"] (verified against the vendored
+#   manifest, not the changelog) — "time" is no longer a default at all, so that break
+#   CANNOT occur, and building with defaults on now succeeds.
+#
+# The flag stays because chrono-clock and rayon remain unused by this crate's date-free,
+# non-compress() scope, and compiling unused features into a bundled desktop app is the
+# wrong default — not because anything is broken.
+lopdf = { version = "0.45", default-features = false }
 # Story 8.1 AC10 (Query tab): RFC 9535 JSONPath. Live-verified before adopting
 # (this project's standing dependency-verification discipline): the crate runs
 # a daily-scheduled "Compliance" GitHub Actions job that checks out the

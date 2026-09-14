@@ -78,7 +78,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 
 **F8 — Bucket growth (P2)**
 
-- FR27: PDF: merge multiple PDFs, split/extract page ranges, extract text — all locally.
+- FR27: PDF: merge multiple PDFs, split/extract page ranges, extract text — all locally. **Revised 2026-09-10 (Story 8.8):** the three-verb wording described three independent, re-picking-the-same-file operations with no document behind them — replaced by an open-once document surface (merge, select-extract, delete, rotate, reorder, read text, honest scan reporting) with OS-native page previews on macOS/Windows. See `prd.md` FR27 for the full revision and its own mid-story correction.
 - FR28: Images: convert between PNG/JPEG/WebP/HEIC and compress with a quality slider showing estimated output size. **Scope update (Story 6.2, 2026-08-10):** HEIC descoped from v1 — every real Rust HEIC crate candidate investigated carries a concrete, unresolved blocker (AGPL/commercial dual license, unpublished/unconfirmed license, or a GPL/LGPL codec-dependency risk to the AD-11 CI compile gate). v1 ships PNG/JPEG/WebP only; see Story 6.2's Task 1 for the full verification trail.
 
 **F9 — Second AI feature (P2 — pick one, backlog the other)**
@@ -172,7 +172,7 @@ No UX design contract exists for this project (confirmed 2026-07-20). UX constra
 - FR24: Epic 4 — Editable result, one-click copy, <~3 s typical
 - FR25: Epic 4 — English OCR v1 (French coupling rule recorded)
 - FR26: Epic 4 — Explicit empty/failure states
-- FR27: Epic 6 — PDF merge/split/extract text
+- FR27: Epic 6 — PDF merge/split/extract text — **revised 2026-09-10 (Story 8.8)**: the PDF tool becomes an open-once document surface (merge, select-extract, delete, rotate, reorder, read text, honest scan reporting), with **OS-native page previews in scope** (macOS/Windows, by OS capability — corrected 2026-09-11 at implementation, after an earlier draft of this line wrongly excluded them). Only the further **point-at-the-page editing surface** — signature, redaction, annotation, crop — remains out of scope, deferred to a future second PDF tool (issue #141). See `prd.md` FR27.
 - FR28: Epic 6 — Image convert + compress with quality slider
 - FR29: Epic 6 — Second AI feature (decision story + implementation)
 - FR30: Epic 5 — Signed + notarized macOS builds
@@ -214,6 +214,8 @@ Anyone can download a signed, notarized Umbra from the landing page, and install
 ### Epic 6: Bucket growth — PDF, images & the second AI feature
 
 The Bucket becomes a real file workbench: PDF merge/split/extract-text, image format conversion and compression — plus the FR29 choice (regex-explain vs OCR→structured) carried as an explicit decision story, then implemented behind an AD-8-style port.
+
+**Revised 2026-09-10 (Story 8.8):** "the Bucket" as a tool grouping no longer exists — Story 8.7 deleted it, splitting it into three independent tools (Image to Text, PDF, Images; see `prd.md`'s glossary). The FR27 portion of this line describes what shipped in Story 6.1, since revised by Story 8.8 into an open-once document surface with page previews; the sentence above stays as the record of what was originally scoped rather than being rewritten. See `epics.md`'s own FR27 entry above and `prd.md` FR27.
 **FRs covered:** FR27, FR28, FR29
 
 ### Epic 7: Rebrand — shell chrome alignment
@@ -1381,8 +1383,12 @@ Discovery + redesign per the shared shape above, scoped to the **PDF tool** (`sr
 
 **Depends on Story 8.7**, which splits the shared `BucketView.vue` into three separate tools and moves this one across verbatim. 8.8 inherits that container decision and does not reopen it. **Two items are handed to this story in writing** by `8-7-ocr-decision-record.md`: rename the still-`bucket_*` PDF commands and error codes to `pdf_*` (8.7 renamed only its own, so the verbatim move stayed mechanically verifiable), and make the scan case honest — `noTextInPdf` currently says "no text in this PDF" for a scanned page whose text is visibly present as pixels, and should say it is a scan with no text layer.
 
+**Scope decided 2026-09-10 by this story's own Task 1** (`8-8-pdf-decision-record.md`). Two corrections to the paragraph above, recorded rather than silently applied: **there are three inherited hand-offs, not two** — `8-7-reimagine-the-bucket-ocr.md`'s AC25 also hands 8.8 *"carrying the file across"*, so a PDF dropped on Image to Text can open in the PDF tool already loaded; and the rename covers **six** error codes, of which two (`bucket-input-too-large`, `bucket-internal`) are **shared with the Images tool** — 8.8 mints `pdf-*` duplicates and **Story 8.9 owns retiring the `bucket-*` pair**. The tool's three actions were traced to Epic 6's one-line description below and found to have no decision behind them, so the redesign is not a reskin: PDF becomes **one open-once document surface** with a text-derived page list and a selection model, gaining **delete, rotate and reorder** alongside merge, extract-pages and extract-text, and adopting **multi-file drag-and-drop** via an additive `drop: { multiple: true }` registry flag (a shell change, named explicitly). **Amended later the same day:** the developer rejected a text-only page list — *"how can someone select some pages to extract if they don't even remember what each title page matches with each page?"* — so **real page previews are in scope.** **Corrected 2026-09-11, at implementation:** that amendment named the `pdfium-render` crate and accepted a roughly doubled download as a deliberate product trade. **The dependency was specified and then cut before any code was written.** A first-slice pass asked what the operating system already provides and found the answer: macOS ships `CGPDFDocument` (Core Graphics — the engine behind Preview.app) and Windows ships `Windows.Data.Pdf` (present since 8.1). Previews therefore cost **zero bundle growth, no third-party binary, and no new supply-chain link**, and the download-doubling trade is not paid. The honest consequence: previews are **macOS and Windows only, by OS capability** — Linux has no equivalent renderer, so there the tool says so and lists pages by their text. #132's *"second native C++ dependency"* argument is **not** retired by this, because no `libpdfium` ships for it to reuse. Still out of scope, and still a future second tool (issue #141): work that additionally needs a **point-at-the-page editing surface** — signature, redaction, annotation, crop. **FR27 revised accordingly in `prd.md` in this story**, per the propagation rule Story 8.6's upstream drift established.
+
 ### Story 8.9: Reimagine the Bucket — Images
 
 Discovery + redesign per the shared shape above, scoped to the **Images tool** (`src/tools/image/ImageView.vue`, `crates/umbra-core/src/image_convert.rs`, `src-tauri/src/commands/image.rs`).
 
 **Depends on Story 8.7**, which splits the shared `BucketView.vue` into three separate tools and moves this one across verbatim. 8.9 inherits that container decision and does not reopen it. Handed to this story in writing: rename the still-`bucket_*` image commands and error codes to `image_*`.
+
+**Also handed to this story by Story 8.8 (2026-09-10), named precisely rather than left generic:** exactly **two** shared error codes — `bucket-input-too-large` and `bucket-internal` — are duplicated (not migrated) into `pdf-*` equivalents in `commands/pdf.rs`; the `bucket-*` pair stays live for `commands/image.rs` and this story owns retiring it. Two dangling comments in `commands/image.rs` (`:46`, `:66`) still name `bucket_merge_pdfs`/`bucket_extract_pdf_text`, commands renamed by 8.8 to `pdf_merge`/`pdf_extract_text` — those comments are stale as of 8.8 and are this story's to fix. See `8-8-pdf-decision-record.md`'s AC42/§4.1 for the full detail; this story inherits a decision, not an ambiguity.

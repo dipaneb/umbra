@@ -69,7 +69,11 @@ type Translate = (key: string, params?: Record<string, unknown>) => string;
 // runtime expression length directly into the message string, the exact
 // pattern this file's own top comment already flags as unsafe to
 // re-translate around.
-const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
+//
+// Exported for `toolError.spec.ts`, which asserts every member has an `errors.<code>` key in both
+// locales. The set IS this module's decision record, so reading it in a test is not a widening of
+// the API so much as making the record checkable.
+export const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   "uuid-count-zero",
   "json-trailing-comma",
   "json-trailing-characters",
@@ -130,6 +134,16 @@ const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   // Raised view-side by `OcrView.vue`'s `<img> @error` when the source image cannot be
   // rendered at all — a refused asset request, or a file moved between the drop and the paint.
   "ocr-image-unreadable",
+  // Story 8.8 AC38: the four `pdf-*` codes that meet 8.6's criterion. `pdf-encrypted` and
+  // `pdf-cannot-delete-all-pages` are plain fixed sentences. `pdf-invalid-range` and
+  // `pdf-too-few-files` qualify ONLY because AC14 moved their runtime values out of the prose and
+  // into the structured `context` field — before that, translating them meant either dropping the
+  // numbers or parsing them back out of English. They are the first codes here to translate with
+  // params; see `contextParams` below.
+  "pdf-encrypted",
+  "pdf-invalid-range",
+  "pdf-too-few-files",
+  "pdf-cannot-delete-all-pages",
 ]);
 
 // Story 8.7 AC26: the `ocr-*` codes deliberately NOT in the set above, each with its reason.
@@ -148,12 +162,51 @@ const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
 //   splitting the code four ways or misreporting three of the four. It is also unreachable by
 //   users in any case — it fires only if our own shell sends a malformed IPC request.
 //
-// The `bucket-pdf-*` and `bucket-image-*` codes are out of scope here, not excluded: they
-// belong to the PDF and Images tools, which Stories 8.8 and 8.9 redesign.
+// The `bucket-image-*` codes are out of scope here, not excluded: they belong to the Images
+// tool, which Story 8.9 redesigns.
+//
+// Story 8.8 AC38: the `pdf-*` codes deliberately NOT in the set above, each with its reason.
+//
+// - `pdf-corrupt`             — wraps `lopdf`'s own error text at thirteen call sites. There is no
+//                               finite set of phrasings to pre-author a French sentence for.
+// - `pdf-input-too-large`     — embeds a byte count and the limit in prose, like every other
+//                               `*-input-too-large` code in this file.
+// - `pdf-internal`            — a `spawn_blocking` join failure; the text is the runtime's.
+// - `pdf-render-unavailable`  — excluded for `ocr-malformed-request`'s distinct reason: it carries
+//                               ten different sentences under ONE code, spread across three
+//                               platform backends (`src-tauri/src/render/`), several of which embed
+//                               a page number or an encoder's error. One `errors.<code>` lookup
+//                               cannot express that without misreporting nine of the ten.
+//
+// `pdf-invalid-range` nearly landed in that last category too, and the fix was a split rather than
+// an exclusion: it was raised for FIVE distinct failures, four of them "you asked for pages this
+// document does not have" but the fifth — deleting every page — a refusal of the operation itself,
+// with nothing out of range at all. That fifth became `pdf-cannot-delete-all-pages` (AC38), which
+// is why both halves can translate honestly instead of one sentence covering for the other.
+
+/// AC38: `ToolError.context` is a SHARED field carrying a per-tool convention, not a JSON
+/// contract — `crates/umbra-core/src/jwt.rs` writes prose into it (`"segment: header"`) and AD-3
+/// makes that `Option<String>` shape binding for every tool, so PDF JSON-encodes into it rather
+/// than widening the contract for one tool. That means this must tolerate anything: a bare
+/// `JSON.parse` would throw on a JWT error and take the whole message down with it, leaving the
+/// user an empty error pane — the NFR4 failure the error path exists to prevent. Only a plain
+/// object becomes params; everything else is passed over silently.
+function contextParams(context: string | null): Record<string, unknown> | undefined {
+  if (context === null) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(context);
+  } catch {
+    return undefined;
+  }
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : undefined;
+}
 
 export function toolErrorMessage(err: ToolError, t: Translate): string {
   if (TRANSLATABLE_CODES.has(err.code)) {
-    return t(`errors.${err.code}`);
+    return t(`errors.${err.code}`, contextParams(err.context));
   }
   return err.message;
 }

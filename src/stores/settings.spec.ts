@@ -920,6 +920,55 @@ describe("useSettingsStore", () => {
     expect(settings.hashAlgorithms).toEqual(["sha256", "sha512"]);
   });
 
+  // Story 8.8 (AC54): the PDF page grid's preview size. Persisted like every other per-tool
+  // preference (AD-10) so it survives a relaunch — a density you re-pick every session is not a
+  // preference, it is a chore.
+  it("defaults pdf.previewSize to medium when the key is absent", async () => {
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.pdfPreviewSize).toBe("m");
+  });
+
+  it("setPdfPreviewSize persists the key and updates the ref", async () => {
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setPdfPreviewSize("l");
+
+    expect(settings.pdfPreviewSize).toBe("l");
+    expect(fakeStore.set).toHaveBeenCalledWith("pdf.previewSize", "l");
+    expect(fakeStore.save).toHaveBeenCalled();
+  });
+
+  it("falls back to the default when a persisted pdf.previewSize is invalid", async () => {
+    // A hand-edited settings.json, or a value written by a future version — either way the app
+    // must not render a grid with an undefined track width.
+    fakeStore.set("pdf.previewSize", "enormous");
+    const settings = useSettingsStore();
+
+    await settings.init();
+
+    expect(settings.pdfPreviewSize).toBe("m");
+  });
+
+  it("resetKey and clearAll restore pdf.previewSize to its default", async () => {
+    // PRD INV-3: every persisted key is enumerable in Settings with a one-action clear, and the
+    // pane reads the store itself rather than a hardcoded list — so this is the part that has to
+    // be wired by hand, and the part a new key silently misses.
+    const settings = useSettingsStore();
+    await settings.init();
+
+    await settings.setPdfPreviewSize("s");
+    await settings.resetKey("pdf.previewSize");
+    expect(settings.pdfPreviewSize).toBe("m");
+
+    await settings.setPdfPreviewSize("l");
+    await settings.clearAll();
+    expect(settings.pdfPreviewSize).toBe("m");
+  });
+
   // Story 8.4 (AC11): the hash.case / hash.encoding output-format keys.
   it("defaults hash.case / hash.encoding to lower / hex when the keys are absent", async () => {
     const settings = useSettingsStore();
