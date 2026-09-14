@@ -283,7 +283,15 @@ mod tests {
 
 /// Test-only PDF builder shared by this module's tests and the backends', so every platform is
 /// held to the same fixture rather than each testing whatever was convenient.
+///
+/// `allow(dead_code)` on Linux only (found by real CI, 2026-09-14, same shape as
+/// `fit_within_thumbnail`'s own note above): its only callers are `mac.rs`/`win.rs`'s tests and
+/// this module's own `#[cfg(any(target_os = "macos", target_os = "windows"))]`-gated render
+/// test — none of which compile on Linux — so the *test* binary, not just the lib, sees it as
+/// unused there. Not `cfg`-gated to those platforms itself, or Linux's own test binary would
+/// lose the fixture entirely rather than just not calling it yet.
 #[cfg(test)]
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 pub(crate) mod fixtures {
     /// A one-page PDF built by hand, so no checked-in binary fixture is needed — the same
     /// approach `umbra-core`'s own pdf.rs tests use. The page box is an argument so a test can
