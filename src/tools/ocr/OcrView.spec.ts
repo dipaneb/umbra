@@ -1230,6 +1230,44 @@ describe("OcrView", () => {
       expect(wrapper!.find(".error-action").exists()).toBe(false);
     });
 
+    it("offers the hand-off for a PDF whose path does not end in .pdf (code review 2026-09-14)", async () => {
+      // The refusal this offers to redirect is raised by the Rust side sniffing the file's magic
+      // bytes, not its name (`umbra_core::ocr::looks_like_a_supported_image` / the `%PDF-` check
+      // in `ocr_grant_asset`). The first version of this offer additionally required the dropped
+      // path to end in `.pdf`, so a PDF with no extension, a renamed one, or a temp/download path
+      // was refused correctly but never got the "Open …" button — silently, since the error text
+      // itself renders regardless.
+      mountView();
+      await deliverRefusedPdf("/tmp/CourrierCaisse__0038_MTB23_SMB188_85073d94");
+
+      expect(wrapper!.find(".error-action").exists()).toBe(true);
+      expect(wrapper!.find(".error-action").text()).toBe(
+        "Open CourrierCaisse__0038_MTB23_SMB188_85073d94",
+      );
+    });
+
+    it("offers the hand-off from the file picker too, not only from a drop (code review 2026-09-14)", async () => {
+      // The same `ocr-pdf-wrong-tool` code is reachable via "Choose an image…" -> `showFileSource`
+      // -> `ocr_grant_asset`, which sniffs the identical magic bytes. The first version only
+      // populated the redirect state from the drop-specific watcher, so picking a misidentified
+      // PDF hit the same wall a drop would, with no way out of it.
+      openMock.mockResolvedValueOnce("/tmp/scan.pdf");
+      invokeMock.mockRejectedValueOnce({
+        code: "ocr-pdf-wrong-tool",
+        message: "PDFs open in the PDF tool.",
+        position: null,
+        context: null,
+      });
+      mountView();
+
+      await wrapper!.find(".drop-target button").trigger("click");
+      await flushPromises();
+
+      const action = wrapper!.find(".error-action");
+      expect(action.exists()).toBe(true);
+      expect(action.text()).toBe("Open scan.pdf");
+    });
+
     it("does not offer the PDF hand-off for an unrelated failure (AC37)", async () => {
       // The offer is specific to one code. An image that simply failed to decode has nothing to
       // carry anywhere, and a button suggesting otherwise would be a wrong answer offered

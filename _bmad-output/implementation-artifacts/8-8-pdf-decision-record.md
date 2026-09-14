@@ -306,11 +306,12 @@ The line reads: *"Bucket (OCR) and **PDF** tools accept drag-and-drop of files/s
 
 **Recorded as a decision *for* 8.9, per AC4a's requirement:** the `bucket-` prefix outlives this story **on purpose**, in exactly two codes, in exactly one module. 8.9 inherits a decision, not an ambiguity.
 
-**Amended 2026-09-11 (implementation).** PDF now raises **nine** codes, not six. Three were added after this section was written, and all three are 8.8's own — none change what 8.9 inherits:
+**Amended 2026-09-11 (implementation).** PDF now raises **eight** codes, not six. **Correction 2026-09-14 (code review):** this section originally said "nine," miscounting the already-decided `pdf-input-too-large`/`pdf-internal` pair above as part of the new total rather than the original six they belong to — grepping the shipped Rust source confirms eight distinct `pdf-*` `ToolError` codes exist, no ninth. Two were added after this section was written, and both are 8.8's own — neither changes what 8.9 inherits:
 
 - `pdf-render-unavailable` (Group H) — raised by `src-tauri/src/render/` when the OS has no PDF renderer or a render fails.
 - `pdf-cannot-delete-all-pages` (AC38's slice) — split out of `pdf-invalid-range`, which was carrying five distinct failures under one code. Deleting every page is not an out-of-range request; every page asked for exists.
-- Plus the `pdf-input-too-large` / `pdf-internal` pair already decided above.
+
+(The `pdf-input-too-large` / `pdf-internal` pair decided above was already part of the original six — not additional.)
 
 **AC42 — stale references owed to Story 8.9.** `src-tauri/src/commands/image.rs` carries two comments naming commands that **no longer exist** under those names after AC4a's rename:
 
@@ -457,6 +458,8 @@ Current text (`prd.md:91`), a single unrevised sentence since 2026-07-19:
 
 > **FR27.** PDF: open a document and work on its pages — merge several PDFs into one, select pages to extract, delete, rotate or reorder them, and read a PDF's text — all locally. The tool states honestly when a PDF is a scan with no text layer to read. **Revised 2026-09-10 (Story 8.8):** the original three-verb wording was inherited from Epic 6's one-line description and never revisited; it described three independent operations, each re-picking the same file. Operations that require rendering a page as pixels — signature, redaction, annotation, crop, thumbnails — are deliberately **out of scope for this tool** and gated behind the rasterizer decision recorded in issue #132.
 
+> **SUPERSEDED the next day (§1.5, §1.6.1) — flagged 2026-09-14 at code review.** This proposal grouped **thumbnails** with the permanently-cut editing operations. The developer's 2026-09-10 render-review challenge ("how can someone select some pages to extract if they don't even remember what each title page matches with each page?") put page previews back in scope that same session, and the 2026-09-11 OS-native pivot shipped them at zero bundle cost — see §1.5/§1.6.1 for the full reversal. **What actually propagated to `prd.md:91` is a further-evolved text, not this paragraph verbatim** — §7.2's table entry below should be read with that correction; the live `prd.md` text is accurate, this section is the historical intermediate step.
+
 ### 7.2 Propagation — in this story, per AC2
 
 AC2's second half exists because Story 8.6 recorded an FR revision in its decision record only, and the resulting upstream drift needed `sprint-change-proposal-2026-09-06.md` to clear. **Both edits land in this story, not a later one.**
@@ -527,5 +530,7 @@ The developer signed off on all of the following, and authorised the upstream pr
 - §4.1's duplicate-not-migrate call, **recorded as binding on Story 8.9**
 - §4.3 — the **third hand-off**, which the story's AC4 does not currently list
 - §6.2 `lopdf` 0.45.0 with `default-features = false` kept for a new reason
-- §7.1's FR27 rewrite and §7.2's five propagation edits
-- §8's eight cut ideas, and the go-ahead to file them as GitHub issues
+- §7.1's FR27 rewrite and §7.2's five propagation edits — **superseded the next day**, see §7.1's supersession note; the developer's later 2026-09-11 authorisation ("For the issues you can proceed," recorded in the story file's 2026-09-11 Change Log entry) covers the corrected state, not a re-signing of this section
+- §8's eight cut ideas, and the go-ahead to file them as GitHub issues — **#141 and #132 renarrowed 2026-09-11**, per the story file's Change Log; the corrections were posted as comments (not body edits) with the developer's explicit authorisation, keeping the superseded reasoning legible the same way this section's own supersession notes do
+
+**Flagged 2026-09-14 at code review:** this section is dated 2026-09-10 and was never itself amended after the 2026-09-11 corrections above landed — a reader treating this list as the final word on what was approved would miss that two of its eight items were materially revised the next day, with their own, separate authorisation. Both corrections are real and covered by that later authorisation; this note exists so the gap between "signed off" and "shipped" is visible in the one section whose job is to state what was approved.

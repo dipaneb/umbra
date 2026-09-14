@@ -17,7 +17,7 @@ use objc2_core_graphics::{
 };
 use umbra_core::ToolError;
 
-use super::{MAX_THUMBNAIL_HEIGHT, PageRenderer, render_error};
+use super::{PageRenderer, fit_within_thumbnail, render_error};
 
 pub(crate) struct Backend;
 
@@ -53,20 +53,14 @@ impl PageRenderer for Backend {
             (crop.size.width, crop.size.height)
         };
 
-        if source_width <= 0.0 || source_height <= 0.0 {
-            return Err(render_error(format!(
-                "page {page_number} has no drawable area"
-            )));
-        }
-
-        // Fit to whichever axis binds first. Scaling to width alone leaves the height derived
-        // from an aspect ratio PDF does not bound — see `MAX_THUMBNAIL_HEIGHT` — so a sliver page
-        // would allocate a bitmap measured in gigabytes and abort the process. Taking the smaller
-        // of the two scales keeps the aspect ratio exactly and bounds both dimensions.
-        let scale = (f64::from(max_width) / source_width)
-            .min(f64::from(MAX_THUMBNAIL_HEIGHT) / source_height);
-        let width = ((source_width * scale).round() as usize).max(1);
-        let height = ((source_height * scale).round() as usize).max(1);
+        // The fit — both axes bounded, aspect kept, non-finite sizes refused — is the shared
+        // `fit_within_thumbnail`, so this backend and the Windows one cannot drift on the one
+        // invariant that decides whether a sliver page allocates gigabytes. Both results are at
+        // most 640 x 10240, so the buffer arithmetic below cannot overflow.
+        let (width, height) = fit_within_thumbnail(source_width, source_height, max_width)
+            .map_err(|_| render_error(format!("page {page_number} has no drawable area")))?;
+        let width = width as usize;
+        let height = height as usize;
 
         // Four bytes per pixel, RGBA. `NoneSkipLast` rather than a premultiplied-alpha format:
         // the canvas is filled opaque white below, so there is no transparency to premultiply,
@@ -139,41 +133,12 @@ fn encode_png(buffer: &[u8], width: u32, height: u32) -> Result<Vec<u8>, ToolErr
 mod tests {
     use super::*;
 
-    /// A one-page PDF built by hand, so the test needs no checked-in binary fixture — the same
-    /// approach `umbra-core`'s own pdf.rs tests use.
+    use crate::render::fixtures::page_pdf;
+
+    /// The shared one-page fixture (`render::fixtures`), so every platform is held to the same
+    /// document rather than each testing whatever was convenient.
     fn one_page_pdf() -> Vec<u8> {
         page_pdf(200, 400)
-    }
-
-    /// The same builder with the page box as an argument, so a test can state the shape it is
-    /// actually about rather than working around a fixed one.
-    fn page_pdf(width: i64, height: i64) -> Vec<u8> {
-        use lopdf::{Document, Object, dictionary};
-
-        let mut doc = Document::with_version("1.5");
-        let pages_id = doc.new_object_id();
-        let page_id = doc.add_object(dictionary! {
-            "Type" => "Page",
-            "Parent" => pages_id,
-            "MediaBox" => vec![0.into(), 0.into(), width.into(), height.into()],
-        });
-        doc.objects.insert(
-            pages_id,
-            Object::Dictionary(dictionary! {
-                "Type" => "Pages",
-                "Kids" => vec![page_id.into()],
-                "Count" => 1_u32,
-            }),
-        );
-        let catalog_id = doc.add_object(dictionary! {
-            "Type" => "Catalog",
-            "Pages" => pages_id,
-        });
-        doc.trailer.set("Root", catalog_id);
-
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
-        bytes
     }
 
     /// A page 1pt wide and 14400pt tall — PDF's own maximum dimension — is a legal document and
@@ -188,7 +153,7 @@ mod tests {
         let image = image::load_from_memory(&png).unwrap();
 
         assert!(
-            image.height() <= MAX_THUMBNAIL_HEIGHT,
+            image.height() <= crate::render::MAX_THUMBNAIL_HEIGHT,
             "height must be bounded, got {}",
             image.height()
         );

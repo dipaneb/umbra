@@ -28,11 +28,12 @@ import { useRegistryStore } from "../../stores/registry";
 //
 // This file is no longer a move-gate artifact — it is this tool's own spec.
 
-const { writeClipboardTextMock, invokeMock, openMock, saveMock } = vi.hoisted(() => ({
+const { writeClipboardTextMock, invokeMock, openMock, saveMock, askMock } = vi.hoisted(() => ({
   writeClipboardTextMock: vi.fn(),
   invokeMock: vi.fn(),
   openMock: vi.fn(),
   saveMock: vi.fn(),
+  askMock: vi.fn(),
 }));
 
 vi.mock("../../shell/clipboard", () => ({
@@ -46,7 +47,55 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...args: unknown[]) => openMock(...args),
   save: (...args: unknown[]) => saveMock(...args),
+  ask: (...args: unknown[]) => askMock(...args),
 }));
+
+/**
+ * jsdom has no `IntersectionObserver`, and the view degrades to fetching the first batch eagerly
+ * without one — which is what every test above the AC45 block relies on. The AC45 tests install
+ * this instead: a minimal observer whose intersections the TEST fires, so "what scrolls into view
+ * is what gets fetched" can be asserted rather than assumed.
+ */
+class FakeIntersectionObserver {
+  static instances: FakeIntersectionObserver[] = [];
+  readonly observed = new Set<Element>();
+  constructor(private readonly callback: IntersectionObserverCallback) {
+    FakeIntersectionObserver.instances.push(this);
+  }
+  observe(element: Element) {
+    this.observed.add(element);
+  }
+  unobserve(element: Element) {
+    this.observed.delete(element);
+  }
+  disconnect() {
+    this.observed.clear();
+  }
+  /** Simulates the given page cells scrolling into view. */
+  intersect(pages: number[]) {
+    const entries = [...this.observed]
+      .filter((element) => pages.includes(Number((element as HTMLElement).dataset.page)))
+      .map((target) => ({ target, isIntersecting: true }) as IntersectionObserverEntry);
+    this.callback(entries, this as unknown as IntersectionObserver);
+  }
+}
+
+function installIntersectionObserver() {
+  FakeIntersectionObserver.instances = [];
+  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+}
+
+function fakeObserver() {
+  const instance = FakeIntersectionObserver.instances[FakeIntersectionObserver.instances.length - 1];
+  if (!instance) throw new Error("no IntersectionObserver was created");
+  return instance;
+}
+
+function requestedTextPages(): number[][] {
+  return invokeMock.mock.calls
+    .filter((call) => call[0] === "pdf_page_text")
+    .map((call) => (call[1] as { pageNumbers: number[] }).pageNumbers);
+}
 
 let wrapper: VueWrapper | undefined;
 let pinia: Pinia;
@@ -62,11 +111,17 @@ afterEach(() => {
   invokeMock.mockReset();
   openMock.mockReset();
   saveMock.mockReset();
+  askMock.mockReset();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
 function mountView() {
   pinia = createPinia();
+  // VTU renders every `TransitionGroup` as `<transition-group-stub>` — the queue (AC50) and the
+  // page grid (AC51) both — so selectors here use the CLASS, never the tag. The stub keeps keyed
+  // identity (which is what the AC50/AC51 identity assertions need) without the leave-transition
+  // frames a real TransitionGroup would wait on under fake timers.
   wrapper = mount(PdfView, { global: { plugins: [pinia] }, attachTo: document.body });
   return wrapper;
 }
@@ -123,6 +178,47 @@ async function openOneDocument(pageCount = 3) {
   await flushPromises();
 }
 
+/**
+ * Every cell currently carrying the roving-focus marker (render review 2026-09-14, second pass —
+ * the marker moved from `:focus-visible` to a class bound to `focusedPage`). Returns the whole
+ * list rather than a single boolean: asserting the full set is what catches a marker LEFT BEHIND
+ * on a previously-focused cell, not just its presence on the new one.
+ */
+function rovingPages() {
+  return wrapper!
+    .findAll(".page-cell")
+    .filter((cell) => cell.classes("roving-focus"))
+    .map((cell) => cell.attributes("data-page"));
+}
+
+/**
+ * Like `mockOpen`, but the working copy's page count FOLLOWS the edits the view sends, the way
+ * the real file's would — so a test of local application can check the grid against what the
+ * file says rather than against a count that never changes.
+ */
+function mockEditableDocument(pageCount: number, canRenderPreviews = false) {
+  let workingCount = pageCount;
+  invokeMock.mockImplementation((command: string, args?: Record<string, unknown>) => {
+    if (command === "pdf_open") {
+      const count = args?.path === "/tmp/working.pdf" ? workingCount : pageCount;
+      return Promise.resolve({ pageCount: count, textLayer: "partial", canRenderPreviews });
+    }
+    if (command === "pdf_page_text") {
+      const pages = args?.pageNumbers as number[];
+      return Promise.resolve(pages.map((page) => ({ page, text: `Heading ${page}` })));
+    }
+    if (command === "pdf_render_pages") {
+      const pages = args?.pageNumbers as number[];
+      return Promise.resolve(pages.map((page) => ({ page, pngBase64: `PNG${page}` })));
+    }
+    if (command === "pdf_begin_edit") return Promise.resolve("/tmp/working.pdf");
+    if (command === "pdf_delete_pages") {
+      workingCount -= (args?.pageNumbers as number[]).length;
+    }
+    return Promise.resolve(undefined);
+  });
+}
+
 describe("PdfView", () => {
   describe("the resting surface (AC20)", () => {
     it("shows one drop target with a single way in, not three pickers", () => {
@@ -137,6 +233,12 @@ describe("PdfView", () => {
 
     it("descends heading ranks without skipping (AC26)", async () => {
       await openOneDocument();
+      // The rank sequence itself, not "some h1 and some h2 exist": the first heading is the tool's
+      // h1 and nothing below h2 appears anywhere on the surface.
+      const headings = wrapper!.findAll("h1, h2, h3, h4, h5, h6").map((h) => h.element.tagName);
+      expect(headings[0]).toBe("H1");
+      expect(headings.filter((tag) => tag === "H1")).toHaveLength(1);
+      expect(headings.every((tag) => tag === "H1" || tag === "H2")).toBe(true);
 
       expect(wrapper!.findAll("h1")).toHaveLength(1);
       expect(wrapper!.findAll("h2").length).toBeGreaterThan(0);
@@ -168,7 +270,7 @@ describe("PdfView", () => {
     it("lays pages out as a grid whose density follows the size control (AC54)", async () => {
       await openOneDocument(3);
 
-      const grid = wrapper!.find("ul.page-grid");
+      const grid = wrapper!.find(".page-grid");
       // Medium is the default; the class is what drives the grid's track width.
       expect(grid.classes()).toContain("size-m");
 
@@ -176,7 +278,7 @@ describe("PdfView", () => {
       await large.trigger("click");
       await flushPromises();
 
-      expect(wrapper!.find("ul.page-grid").classes()).toContain("size-l");
+      expect(wrapper!.find(".page-grid").classes()).toContain("size-l");
       expect(large.attributes("aria-pressed")).toBe("true");
     });
 
@@ -293,13 +395,207 @@ describe("PdfView", () => {
 
     it("never asks for the whole document's pages at once (AC45)", async () => {
       // A 400-page document must not become a 400-entry IPC payload. The batch ceiling is the
-      // contract; the exact number is not.
+      // contract; the exact number is not. Without an observer (plain jsdom) the view fetches
+      // one eager batch and nothing more.
       await openOneDocument(400);
 
-      const textCall = invokeMock.mock.calls.find((call) => call[0] === "pdf_page_text");
-      const requested = (textCall?.[1] as { pageNumbers: number[] }).pageNumbers;
-      expect(requested.length).toBeLessThan(400);
-      expect(requested[0]).toBe(1);
+      const batches = requestedTextPages();
+      expect(batches).toHaveLength(1);
+      expect(batches[0].length).toBeLessThan(400);
+      expect(batches[0][0]).toBe(1);
+    });
+
+    describe("per visible range (AC45)", () => {
+      // The first build had one sentinel below the LAST row of the whole document and always
+      // fetched "the next 24 from the top", so on a long document the middle stayed blank until
+      // the user reached the very bottom. These tests pin what AC45 actually says: the pages on
+      // screen are the pages fetched.
+      beforeEach(() => {
+        installIntersectionObserver();
+      });
+
+      it("keeps loading working for a SECOND document opened after the first is closed (render review 2026-09-14)", async () => {
+        // The bug this pins: `observeUnloadedCells` does `observer ??= new IntersectionObserver(
+        // ..., { root: list })`. `root` is captured once, at construction — reusing the same
+        // observer instance across documents left it bound to the FIRST document's now-unmounted
+        // `<ul>` as root, so a second document's cells never reported an intersection at all.
+        // Every preview and every page's text silently never loaded, on any size step, until an
+        // edit's own explicit `requestPages` call touched a page directly.
+        invokeMock.mockImplementation((command: string, args?: { path?: string; pageNumbers?: number[] }) => {
+          if (command === "pdf_open") {
+            return Promise.resolve({ pageCount: 2, textLayer: "partial", canRenderPreviews: true });
+          }
+          if (command === "pdf_page_text") {
+            return Promise.resolve(
+              (args!.pageNumbers as number[]).map((page) => ({
+                page,
+                text: `${args!.path} page ${page}`,
+              })),
+            );
+          }
+          if (command === "pdf_render_pages") {
+            return Promise.resolve(
+              (args!.pageNumbers as number[]).map((page) => ({ page, pngBase64: `PNG-${page}` })),
+            );
+          }
+          return Promise.resolve(undefined);
+        });
+        openMock.mockResolvedValueOnce(["/tmp/first.pdf"]);
+        mountView();
+        await clickButton(wrapper!, "Open PDF…");
+        await flushPromises();
+        fakeObserver().intersect([1, 2]);
+        await flushPromises();
+        expect(wrapper!.findAll("img.thumb")).toHaveLength(2);
+
+        await clickButtonByLabel(wrapper!, "Close");
+        openMock.mockResolvedValueOnce(["/tmp/second.pdf"]);
+        await clickButton(wrapper!, "Open PDF…");
+        await flushPromises();
+
+        // A fresh observer for the fresh grid — not the first document's, now-detached one.
+        expect(FakeIntersectionObserver.instances).toHaveLength(2);
+        fakeObserver().intersect([1, 2]);
+        await flushPromises();
+
+        const cells = wrapper!.findAll(".page-cell");
+        expect(cells).toHaveLength(2);
+        expect(cells[0].find("img.thumb").attributes("src")).toBe("data:image/png;base64,PNG-1");
+        expect(cells[0].text()).toContain("/tmp/second.pdf page 1");
+      });
+
+      it("fetches exactly the pages that scroll into view, in bounded batches", async () => {
+        await openOneDocument(400);
+        expect(requestedTextPages()).toHaveLength(0);
+
+        fakeObserver().intersect(Array.from({ length: 30 }, (_, i) => i + 1));
+        await flushPromises();
+
+        // Thirty visible cells become two batches — one full, one the remainder — and nothing
+        // beyond what is on screen.
+        expect(requestedTextPages()).toEqual([
+          Array.from({ length: 24 }, (_, i) => i + 1),
+          [25, 26, 27, 28, 29, 30],
+        ]);
+      });
+
+      it("fetches the middle of a long document when the user lands there", async () => {
+        await openOneDocument(400);
+
+        fakeObserver().intersect([200, 201, 202]);
+        await flushPromises();
+
+        expect(requestedTextPages()).toEqual([[200, 201, 202]]);
+        expect(wrapper!.findAll(".page-cell")[199].text()).toContain("Heading 200");
+      });
+
+      it("never requests a page twice, however often it re-enters the viewport", async () => {
+        await openOneDocument(50);
+
+        fakeObserver().intersect([1, 2, 3]);
+        fakeObserver().intersect([1, 2, 3]);
+        await flushPromises();
+        fakeObserver().intersect([1, 2, 3]);
+        await flushPromises();
+
+        expect(requestedTextPages()).toEqual([[1, 2, 3]]);
+      });
+
+      it("keeps every batch that arrives, whatever order they arrive in", async () => {
+        // The first build put batches on a latest-wins runner, so a second batch starting while
+        // the first was in flight silently discarded the first — and its rows were never asked
+        // for again. Batches are independent work: both must land.
+        const resolvers: Record<number, (value: unknown) => void> = {};
+        invokeMock.mockImplementation((command: string, args?: { pageNumbers?: number[] }) => {
+          if (command === "pdf_open") {
+            return Promise.resolve({ pageCount: 60, textLayer: "partial", canRenderPreviews: false });
+          }
+          if (command === "pdf_page_text") {
+            return new Promise((resolve) => {
+              resolvers[args!.pageNumbers![0]] = resolve;
+            });
+          }
+          return Promise.resolve(undefined);
+        });
+        openMock.mockResolvedValueOnce(["/tmp/report.pdf"]);
+        mountView();
+        await clickButton(wrapper!, "Open PDF…");
+        await flushPromises();
+
+        fakeObserver().intersect([1, 2]);
+        await flushPromises();
+        fakeObserver().intersect([40, 41]);
+        await flushPromises();
+
+        // The later batch lands first.
+        resolvers[40]([{ page: 40, text: "Forty" }, { page: 41, text: "Forty-one" }]);
+        await flushPromises();
+        resolvers[1]([{ page: 1, text: "One" }, { page: 2, text: "Two" }]);
+        await flushPromises();
+
+        const cells = wrapper!.findAll(".page-cell");
+        expect(cells[39].text()).toContain("Forty");
+        expect(cells[0].text()).toContain("One");
+      });
+
+      it("drops a batch that belongs to a document that has since been closed", async () => {
+        let resolveText: ((value: unknown) => void) | undefined;
+        invokeMock.mockImplementation((command: string) => {
+          if (command === "pdf_open") {
+            return Promise.resolve({ pageCount: 5, textLayer: "partial", canRenderPreviews: false });
+          }
+          if (command === "pdf_page_text") {
+            return new Promise((resolve) => {
+              resolveText = resolve;
+            });
+          }
+          return Promise.resolve(undefined);
+        });
+        openMock.mockResolvedValueOnce(["/tmp/first.pdf"]);
+        mountView();
+        await clickButton(wrapper!, "Open PDF…");
+        await flushPromises();
+        fakeObserver().intersect([1]);
+        await flushPromises();
+
+        // Replace the document (by drop) while the batch is in flight, then let the old batch land.
+        useRegistryStore(pinia).dropResult = {
+          toolId: "pdf",
+          value: [{ path: "/tmp/second.pdf", pageCount: 5, textLayer: "partial" }],
+        };
+        await flushPromises();
+        resolveText!([{ page: 1, text: "From the FIRST document" }]);
+        await flushPromises();
+
+        expect(wrapper!.text()).not.toContain("From the FIRST document");
+      });
+
+      it("marks a page the renderer omitted as text-only rather than forever loading (AC46)", async () => {
+        invokeMock.mockImplementation((command: string) => {
+          if (command === "pdf_open") {
+            return Promise.resolve({ pageCount: 2, textLayer: "partial", canRenderPreviews: true });
+          }
+          if (command === "pdf_page_text") {
+            return Promise.resolve([{ page: 1, text: "A" }, { page: 2, text: "B" }]);
+          }
+          // Page 2 fails to draw and is omitted, the shape `pdf_render_pages` returns.
+          if (command === "pdf_render_pages") return Promise.resolve([{ page: 1, pngBase64: "AAAA" }]);
+          return Promise.resolve(undefined);
+        });
+        openMock.mockResolvedValueOnce(["/tmp/report.pdf"]);
+        mountView();
+        await clickButton(wrapper!, "Open PDF…");
+        await flushPromises();
+        fakeObserver().intersect([1, 2]);
+        await flushPromises();
+
+        const cells = wrapper!.findAll(".page-cell");
+        expect(cells[0].find("img.thumb").exists()).toBe(true);
+        expect(cells[1].find("img.thumb").exists()).toBe(false);
+        // Settled, not pending: the observer has let go of it.
+        expect(fakeObserver().observed.has(cells[1].element)).toBe(false);
+        expect(cells[1].text()).toContain("B");
+      });
     });
   });
 
@@ -371,13 +667,33 @@ describe("PdfView", () => {
       expect(wrapper!.text()).toContain("This PDF has no pages.");
       expect(wrapper!.text()).not.toContain("This PDF is a scan");
     });
+
+    it("says 0 pages, not 1, for a page-less document (code review 2026-09-14)", async () => {
+      // `pageCount`/`selectedCount` used vue-i18n's `|`-pipe plural syntax (`"1 page | {count}
+      // pages"`), which this codebase's own `i18n.ts` documents avoiding everywhere else in favour
+      // of an explicit `…One`/`…Other` key pair, precisely because its plural-index mapping "isn't
+      // straightforward to verify without a running app." Direct testing here did not reproduce a
+      // concrete `count === 0` failure in either locale with the pipe form (vue-i18n's default
+      // 2-choice rule maps 0 to the "other" index, and the app's own custom French override was
+      // not observed to change that from a component-level `t()` call) — so this is a convention
+      // fix, not a confirmed-regression fix: it removes reliance on framework plural-index
+      // behaviour this codebase has already decided not to trust, in favour of the explicit
+      // selection `JsonView.vue`/`UuidView.vue` use, which is what this test actually pins.
+      mockOpen(0, { textLayer: "empty" });
+      openMock.mockResolvedValueOnce(["/tmp/empty.pdf"]);
+      mountView();
+      await clickButton(wrapper!, "Open PDF…");
+      await flushPromises();
+
+      expect(wrapper!.find(".chip").text()).toBe("0 pages");
+    });
   });
 
   describe("selection (AC22)", () => {
     it("is a real listbox with per-row selected state", async () => {
       await openOneDocument();
 
-      const list = wrapper!.find("ul.page-grid");
+      const list = wrapper!.find(".page-grid");
       expect(list.attributes("role")).toBe("listbox");
       expect(list.attributes("aria-multiselectable")).toBe("true");
 
@@ -387,11 +703,24 @@ describe("PdfView", () => {
       expect(rows[0].attributes("aria-selected")).toBe("false");
     });
 
+    it("moves real DOM focus onto a clicked cell, not only the visual selected state", async () => {
+      // WebKit does not focus non-form elements on click by default (Chromium and Firefox do),
+      // so a click that only updated reactive state left `document.activeElement` untouched —
+      // the arrow-key handler below is bound to the grid and never received the keydown at all,
+      // and the browser's native page-scroll ran instead (render review 2026-09-14).
+      await openOneDocument(3);
+      const cell = wrapper!.findAll(".page-cell")[1];
+
+      await cell.trigger("click");
+
+      expect(document.activeElement).toBe(cell.element);
+    });
+
     it("toggles the focused row with Space, without a mouse", async () => {
       // NFR5 admits no exceptions. This is the keyboard path end-to-end, not the model unit test.
       await openOneDocument();
 
-      const list = wrapper!.find("ul.page-grid");
+      const list = wrapper!.find(".page-grid");
       await list.trigger("keydown", { key: " " });
       expect(wrapper!.findAll(".page-cell")[0].attributes("aria-selected")).toBe("true");
 
@@ -402,20 +731,151 @@ describe("PdfView", () => {
     it("extends a range with Shift+ArrowDown", async () => {
       await openOneDocument(4);
 
-      const list = wrapper!.find("ul.page-grid");
+      const list = wrapper!.find(".page-grid");
       await list.trigger("keydown", { key: "ArrowDown", shiftKey: true });
       await flushPromises();
 
       const selected = wrapper!
         .findAll(".page-cell")
-        .filter((row) => row.attributes("aria-selected") === "true");
-      expect(selected).toHaveLength(2);
+        .filter((row) => row.attributes("aria-selected") === "true")
+        .map((row) => row.attributes("data-page"));
+      // Which two, not merely two: a range anchored at the focused page and extended one step.
+      expect(selected).toEqual(["1", "2"]);
+    });
+
+    it("moves through the grid in two dimensions, with Home and End (AC22/AC54)", async () => {
+      // jsdom lays out one column, so Up/Down step by one here; Left/Right and Home/End are the
+      // keys the list never had and the grid needs.
+      await openOneDocument(6);
+      const list = wrapper!.find(".page-grid");
+
+      await list.trigger("keydown", { key: "ArrowRight" });
+      await flushPromises();
+      expect(document.activeElement?.getAttribute("data-page")).toBe("2");
+      expect(rovingPages()).toEqual(["2"]);
+
+      await list.trigger("keydown", { key: "End" });
+      await flushPromises();
+      expect(document.activeElement?.getAttribute("data-page")).toBe("6");
+      expect(rovingPages()).toEqual(["6"]);
+
+      await list.trigger("keydown", { key: "ArrowLeft" });
+      await flushPromises();
+      expect(document.activeElement?.getAttribute("data-page")).toBe("5");
+      expect(rovingPages()).toEqual(["5"]);
+
+      await list.trigger("keydown", { key: "Home" });
+      await flushPromises();
+      expect(document.activeElement?.getAttribute("data-page")).toBe("1");
+      expect(rovingPages()).toEqual(["1"]);
+    });
+
+    it("stays on the current cell at a grid edge, rather than jumping to page 1 or the last page", async () => {
+      // Render review 2026-09-14: `clampPage`'s saturating behaviour meant ArrowUp on the top row
+      // (or ArrowLeft on the first cell) landed on page 1 from wherever focus actually was — a
+      // large, unexplained jump the developer read as broken rather than as "there's nothing
+      // above this row." Arrow keys with no cell in that direction are now a no-op; only Home/End
+      // are a real jump to the edge.
+      await openOneDocument(6);
+      const list = wrapper!.find(".page-grid");
+
+      // Real focus has to actually land somewhere first (Home always moves, even to where focus
+      // already conceptually is) before a no-op can be told apart from "nothing was ever focused".
+      await list.trigger("keydown", { key: "Home" });
+      await flushPromises();
+      expect(document.activeElement?.getAttribute("data-page")).toBe("1");
+      expect(rovingPages()).toEqual(["1"]);
+
+      await list.trigger("keydown", { key: "ArrowLeft" });
+      await flushPromises();
+      expect(document.activeElement?.getAttribute("data-page")).toBe("1");
+      expect(rovingPages()).toEqual(["1"]);
+
+      await list.trigger("keydown", { key: "End" });
+      await flushPromises();
+      expect(document.activeElement?.getAttribute("data-page")).toBe("6");
+      expect(rovingPages()).toEqual(["6"]);
+
+      await list.trigger("keydown", { key: "ArrowRight" });
+      await flushPromises();
+      expect(document.activeElement?.getAttribute("data-page")).toBe("6");
+      expect(rovingPages()).toEqual(["6"]);
+    });
+
+    it("marks where the keyboard is with state, not with :focus-visible (render review 2026-09-14, second pass)", async () => {
+      // `:focus-visible` is a browser heuristic ("did this look keyboard-like?") and it does not
+      // reliably match a `.focus()` issued from a keydown handler after a microtask boundary —
+      // which is exactly how `focusRow()` calls it. In the real WebView the ring appeared late,
+      // on the wrong cell, or not at all. The marker is now the `roving-focus` class, bound
+      // directly to `focusedPage` — the same ref that already drives `:tabindex`.
+      //
+      // jsdom applies no real stylesheet and cannot evaluate `:focus-visible`/`:focus-within`
+      // against synthetic events, so this proves the CLASS is correctly bound to state across
+      // every kind of move — not that a ring renders. That's exactly the mechanism the bug was
+      // in, and exactly what no unit test could previously have caught; the live `pnpm tauri dev`
+      // check is what closes the loop on pixels.
+      await openOneDocument(6);
+      expect(rovingPages()).toEqual(["1"]);
+
+      await wrapper!.findAll(".page-cell")[2].trigger("click");
+      expect(rovingPages()).toEqual(["3"]);
+
+      const list = wrapper!.find(".page-grid");
+      await list.trigger("keydown", { key: "ArrowRight" });
+      await flushPromises();
+      expect(rovingPages()).toEqual(["4"]);
+      // A plain arrow move only moves FOCUS — the click's selection (page 3) must be untouched,
+      // not extended to the cell focus just landed on.
+      expect(
+        wrapper!
+          .findAll(".page-cell")
+          .filter((cell) => cell.attributes("aria-selected") === "true")
+          .map((cell) => cell.attributes("data-page")),
+      ).toEqual(["3"]);
+
+      await list.trigger("keydown", { key: "Home" });
+      await flushPromises();
+      expect(rovingPages()).toEqual(["1"]);
+
+      await list.trigger("keydown", { key: "End" });
+      await flushPromises();
+      expect(rovingPages()).toEqual(["6"]);
+
+      // No-op at the edge: the marker must stay exactly where it is, not vanish or duplicate.
+      await list.trigger("keydown", { key: "ArrowRight" });
+      await flushPromises();
+      expect(rovingPages()).toEqual(["6"]);
+    });
+
+    it("keeps the keyboard marker on the moving end of a Shift-extended selection", async () => {
+      // The one sequence where the two models genuinely diverge: Shift+arrow grows SELECTION,
+      // a plain arrow afterwards moves FOCUS only. Proves `roving-focus` tracks `focusedPage`,
+      // not `isSelected` — the two were easy to conflate since a click sets both to the same page.
+      await openOneDocument(4);
+      const list = wrapper!.find(".page-grid");
+
+      await list.trigger("keydown", { key: "ArrowDown", shiftKey: true });
+      await flushPromises();
+
+      const selectedPages = () =>
+        wrapper!
+          .findAll(".page-cell")
+          .filter((cell) => cell.attributes("aria-selected") === "true")
+          .map((cell) => cell.attributes("data-page"));
+      expect(selectedPages()).toEqual(["1", "2"]);
+      expect(rovingPages()).toEqual(["2"]);
+
+      await list.trigger("keydown", { key: "ArrowUp" });
+      await flushPromises();
+
+      expect(selectedPages()).toEqual(["1", "2"]);
+      expect(rovingPages()).toEqual(["1"]);
     });
 
     it("selects every page with Cmd+A while focus is in the list", async () => {
       await openOneDocument(4);
 
-      await wrapper!.find("ul.page-grid").trigger("keydown", { key: "a", metaKey: true });
+      await wrapper!.find(".page-grid").trigger("keydown", { key: "a", metaKey: true });
 
       const selected = wrapper!
         .findAll(".page-cell")
@@ -426,7 +886,7 @@ describe("PdfView", () => {
     it("announces the selected count as a status (AC22/AC29)", async () => {
       await openOneDocument(3);
 
-      await wrapper!.find("ul.page-grid").trigger("keydown", { key: "a", metaKey: true });
+      await wrapper!.find(".page-grid").trigger("keydown", { key: "a", metaKey: true });
 
       // Announced, not merely displayed — the live region is what a screen-reader user gets.
       expect(wrapper!.find("[role='status']").text()).toContain("3 pages selected");
@@ -484,6 +944,27 @@ describe("PdfView", () => {
       });
     });
 
+    it("extracts a gapped selection as the selection, not the range it spans", async () => {
+      // The bug this pins: ⌘-clicking pages 2 and 4 said "2 pages selected" and wrote pages 2-4.
+      // Core has only a range command, so the selection is expressed by deleting its complement
+      // into the destination.
+      await openOneDocument(5);
+      const cells = wrapper!.findAll(".page-cell");
+      await cells[1].trigger("click");
+      await cells[3].trigger("click", { metaKey: true });
+      saveMock.mockResolvedValueOnce("/tmp/out.pdf");
+
+      await clickButton(wrapper!, "Extract to new PDF");
+      await flushPromises();
+
+      expect(invokeMock).not.toHaveBeenCalledWith("pdf_extract_pages", expect.anything());
+      expect(invokeMock).toHaveBeenCalledWith("pdf_delete_pages", {
+        path: "/tmp/report.pdf",
+        pageNumbers: [1, 3, 5],
+        outputPath: "/tmp/out.pdf",
+      });
+    });
+
     it("rotates in place without asking where to save (AC52)", async () => {
       // The behaviour this pins is the render-review correction: *"if I select a page and click
       // rotate, it prompts me to save the file instead of just rotating the page."* An edit verb
@@ -532,17 +1013,172 @@ describe("PdfView", () => {
       expect(begins).toHaveLength(1);
     });
 
-    it("reloads the page list after an edit so the change is visible (AC52)", async () => {
+    it("shows the edit immediately and re-reads the working copy to confirm it (AC52)", async () => {
       // Without this the operation succeeded and the list showed pre-edit pages, which is what
-      // made the tool look broken even when it had worked.
-      await openOneDocument(3);
+      // made the tool look broken even when it had worked. The grid is updated locally, then
+      // `pdf_open` on the working copy confirms the page count agrees.
+      mockEditableDocument(3);
+      openMock.mockResolvedValueOnce(["/tmp/report.pdf"]);
+      mountView();
+      await clickButton(wrapper!, "Open PDF…");
+      await flushPromises();
       await wrapper!.findAll(".page-cell")[0].trigger("click");
       await clickButton(wrapper!, "Delete");
       await flushPromises();
 
       const opens = invokeMock.mock.calls.filter((call) => call[0] === "pdf_open");
-      expect(opens.length).toBeGreaterThan(1);
       expect(opens[opens.length - 1][1]).toEqual({ path: "/tmp/working.pdf" });
+      const cells = wrapper!.findAll(".page-cell");
+      expect(cells).toHaveLength(2);
+      // Renumbered, and the surviving pages kept their text — nothing was re-fetched.
+      expect(cells.map((c) => c.attributes("data-page"))).toEqual(["1", "2"]);
+      expect(cells[0].text()).toContain("Heading 2");
+      expect(requestedTextPages()).toEqual([[1, 2, 3]]);
+    });
+
+    describe("local application of edits (AC51/AC52)", () => {
+      async function openEditable(pageCount = 4, canRenderPreviews = false) {
+        mockEditableDocument(pageCount, canRenderPreviews);
+        openMock.mockResolvedValueOnce(["/tmp/report.pdf"]);
+        mountView();
+        await clickButton(wrapper!, "Open PDF…");
+        await flushPromises();
+      }
+
+      it("keeps a cell's identity across a move, so the grid can animate it (AC51)", async () => {
+        await openEditable(4);
+        const cells = wrapper!.findAll(".page-cell");
+        const movedElement = cells[0].element;
+        await cells[0].trigger("click");
+
+        await clickButton(wrapper!, "Move down");
+        await flushPromises();
+
+        expect(invokeMock).toHaveBeenCalledWith("pdf_reorder_pages", {
+          newOrder: [2, 1, 3, 4],
+          path: "/tmp/working.pdf",
+          outputPath: "/tmp/working.pdf",
+        });
+        const after = wrapper!.findAll(".page-cell");
+        // The same DOM node, now second — which is the one thing FLIP needs.
+        expect(after[1].element).toBe(movedElement);
+        expect(after.map((c) => c.attributes("data-page"))).toEqual(["1", "2", "3", "4"]);
+        expect(after[1].text()).toContain("Heading 1");
+      });
+
+      it("keeps the selection on the pages that moved, so moving again moves the same block", async () => {
+        await openEditable(4);
+        await wrapper!.findAll(".page-cell")[0].trigger("click");
+
+        await clickButton(wrapper!, "Move down");
+        await flushPromises();
+
+        const selected = wrapper!
+          .findAll(".page-cell")
+          .filter((c) => c.attributes("aria-selected") === "true")
+          .map((c) => c.attributes("data-page"));
+        expect(selected).toEqual(["2"]);
+      });
+
+      it("keeps thumbnails across a move and re-fetches only a rotated page's", async () => {
+        await openEditable(3, true);
+        const before = wrapper!.findAll(".page-cell");
+        expect(before[0].find("img.thumb").attributes("src")).toBe("data:image/png;base64,PNG1");
+        await before[0].trigger("click");
+
+        await clickButton(wrapper!, "Move down");
+        await flushPromises();
+        const renders = () => invokeMock.mock.calls.filter((call) => call[0] === "pdf_render_pages");
+        expect(renders()).toHaveLength(1);
+        expect(wrapper!.findAll(".page-cell")[1].find("img.thumb").attributes("src")).toBe(
+          "data:image/png;base64,PNG1",
+        );
+
+        const rotate = wrapper!.findAll("button").find((b) => b.text().includes("Rotate"))!;
+        await rotate.trigger("click");
+        await flushPromises();
+        // One more render, for the rotated page alone (now at position 2).
+        expect(renders()).toHaveLength(2);
+        expect((renders()[1][1] as { pageNumbers: number[] }).pageNumbers).toEqual([2]);
+      });
+
+      it("disables Move up at the top and Move down at the bottom rather than writing a no-op", async () => {
+        await openEditable(3);
+        const cells = wrapper!.findAll(".page-cell");
+        await cells[0].trigger("click");
+
+        const button = (text: string) => wrapper!.findAll("button").find((b) => b.text() === text)!;
+        expect(button("Move up").attributes("disabled")).toBeDefined();
+        expect(button("Move down").attributes("disabled")).toBeUndefined();
+
+        await cells[2].trigger("click");
+        expect(button("Move up").attributes("disabled")).toBeUndefined();
+        expect(button("Move down").attributes("disabled")).toBeDefined();
+        expect(invokeMock).not.toHaveBeenCalledWith("pdf_reorder_pages", expect.anything());
+      });
+
+      it("returns focus to the grid after an edit instead of dropping it on <body> (NFR5)", async () => {
+        await openEditable(3);
+        await wrapper!.findAll(".page-cell")[0].trigger("click");
+        await clickButton(wrapper!, "Delete");
+        await flushPromises();
+
+        expect(document.activeElement?.classList.contains("page-cell")).toBe(true);
+      });
+
+      it("rebuilds the grid from the file if the local edit and the file ever disagree", async () => {
+        // The verification step is not decorative: a wrong grid is worse than a blank one.
+        mockOpen(3); // a working copy whose count never changes, i.e. the edit did not "take"
+        openMock.mockResolvedValueOnce(["/tmp/report.pdf"]);
+        mountView();
+        await clickButton(wrapper!, "Open PDF…");
+        await flushPromises();
+        await wrapper!.findAll(".page-cell")[0].trigger("click");
+
+        await clickButton(wrapper!, "Delete");
+        await flushPromises();
+
+        expect(wrapper!.findAll(".page-cell")).toHaveLength(3);
+      });
+
+      it("ignores an edit that finishes after its document was closed", async () => {
+        let finishDelete: ((value: unknown) => void) | undefined;
+        invokeMock.mockImplementation((command: string) => {
+          if (command === "pdf_open") {
+            return Promise.resolve({ pageCount: 2, textLayer: "partial", canRenderPreviews: false });
+          }
+          if (command === "pdf_page_text") {
+            return Promise.resolve([{ page: 1, text: "A" }, { page: 2, text: "B" }]);
+          }
+          if (command === "pdf_begin_edit") return Promise.resolve("/tmp/working.pdf");
+          if (command === "pdf_delete_pages") {
+            return new Promise((resolve) => {
+              finishDelete = resolve;
+            });
+          }
+          return Promise.resolve(undefined);
+        });
+        openMock.mockResolvedValueOnce(["/tmp/first.pdf"]);
+        mountView();
+        await clickButton(wrapper!, "Open PDF…");
+        await flushPromises();
+        await wrapper!.findAll(".page-cell")[0].trigger("click");
+        await clickButton(wrapper!, "Delete");
+        await flushPromises();
+
+        // A drop replaces the document while the delete is still in flight.
+        useRegistryStore(pinia).dropResult = {
+          toolId: "pdf",
+          value: [{ path: "/tmp/second.pdf", pageCount: 2, textLayer: "partial" }],
+        };
+        await flushPromises();
+        finishDelete!(undefined);
+        await flushPromises();
+
+        // The new document is not marked dirty by the old document's edit.
+        expect(wrapper!.findAll("button").some((b) => b.text() === "Save a copy…")).toBe(false);
+        expect(wrapper!.findAll(".page-cell")).toHaveLength(2);
+      });
     });
 
     it("clears the selection after an edit rather than keeping stale page numbers (AC52)", async () => {
@@ -607,6 +1243,9 @@ describe("PdfView", () => {
       const status = wrapper!.find("[role='status']").text();
       expect(status).toContain("Saved out.pdf");
       expect(status).not.toContain("/tmp/secret-dir");
+      // And SHOWN, not only announced: the live region is clipped off-screen, and a sighted user
+      // who extracted pages otherwise saw nothing change.
+      expect(wrapper!.find(".completion").text()).toContain("Saved out.pdf");
     });
 
     it("keeps an operation error out of the document scope, and vice versa (AC31)", async () => {
@@ -632,6 +1271,22 @@ describe("PdfView", () => {
       expect(alert.exists()).toBe(true);
       expect(alert.text()).toContain("That page range isn't in this document");
       expect(alert.text()).toContain("page 3");
+
+      // The other scope, raised afterwards, does not clear it — and the reverse holds.
+      // ⌘-click toggles the one selected page off, which brings the document-scoped verbs back.
+      await wrapper!.findAll(".page-cell")[0].trigger("click", { metaKey: true });
+      invokeMock.mockRejectedValueOnce({
+        code: "pdf-corrupt",
+        message: "unreadable",
+        position: null,
+        context: null,
+      });
+      await clickButton(wrapper!, "Read text");
+      await flushPromises();
+      const alerts = wrapper!.findAll("[role='alert']").map((a) => a.text());
+      expect(alerts).toHaveLength(2);
+      expect(alerts.some((text) => text.includes("page 3"))).toBe(true);
+      expect(alerts.some((text) => text.includes("unreadable"))).toBe(true);
     });
 
     it("reports a failure to open in the document scope", async () => {
@@ -769,6 +1424,248 @@ describe("PdfView", () => {
       expect(wrapper!.text()).toContain("carried.pdf");
       // One-shot: consumed and cleared, so navigating back later does not re-open it.
       expect(registry.handOffPath).toBeNull();
+    });
+
+    it("opens a handed-off document even when a merge queue is on screen", async () => {
+      // "Open in the PDF tool" means open. The first build appended the file to the queue.
+      mockOpen(2);
+      openMock.mockResolvedValueOnce(["/tmp/a.pdf", "/tmp/b.pdf"]);
+      mountView();
+      await clickButton(wrapper!, "Open PDF…");
+      await flushPromises();
+      expect(wrapper!.text()).toContain("Merge queue");
+
+      store().handOffPath = { toolId: "pdf", path: "/tmp/carried.pdf" };
+      await flushPromises();
+
+      expect(wrapper!.text()).not.toContain("Merge queue");
+      expect(wrapper!.text()).toContain("carried.pdf");
+      expect(wrapper!.findAll(".page-cell")).toHaveLength(2);
+    });
+
+    it("shows a failed drop while the queue is on screen (AC31)", async () => {
+      // The queue panel used to render only the operation scope, so an encrypted file dropped
+      // onto a queue produced nothing at all.
+      mockOpen(2);
+      openMock.mockResolvedValueOnce(["/tmp/a.pdf", "/tmp/b.pdf"]);
+      mountView();
+      await clickButton(wrapper!, "Open PDF…");
+      await flushPromises();
+
+      store().dropResult = {
+        toolId: "pdf",
+        error: { code: "pdf-encrypted", message: "encrypted", position: null, context: null },
+      };
+      await flushPromises();
+
+      expect(wrapper!.find("[role='alert']").text()).toContain("password-protected");
+    });
+  });
+
+  describe("unsaved edits (AC52, code review 2026-09-13)", () => {
+    async function openAndRotate() {
+      await openOneDocument(3);
+      await wrapper!.findAll(".page-cell")[0].trigger("click");
+      const rotate = wrapper!.findAll("button").find((b) => b.text().includes("Rotate"))!;
+      await rotate.trigger("click");
+      await flushPromises();
+      expect(wrapper!.findAll("button").some((b) => b.text() === "Save a copy…")).toBe(true);
+    }
+
+    it("asks before closing a document with unsaved edits, and keeps it on Cancel", async () => {
+      await openAndRotate();
+      askMock.mockResolvedValueOnce(false);
+
+      await clickButtonByLabel(wrapper!, "Close");
+      await flushPromises();
+
+      expect(askMock).toHaveBeenCalledTimes(1);
+      expect((askMock.mock.calls[0][0] as string)).toContain("report.pdf");
+      expect(wrapper!.text()).toContain("report.pdf");
+    });
+
+    it("discards when the user confirms", async () => {
+      await openAndRotate();
+      askMock.mockResolvedValueOnce(true);
+
+      await clickButtonByLabel(wrapper!, "Close");
+      await flushPromises();
+
+      expect(wrapper!.find(".drop-target").exists()).toBe(true);
+    });
+
+    it("asks before a dropped file replaces a document with unsaved edits", async () => {
+      await openAndRotate();
+      askMock.mockResolvedValueOnce(false);
+
+      useRegistryStore(pinia).dropResult = {
+        toolId: "pdf",
+        value: [{ path: "/tmp/other.pdf", pageCount: 1, textLayer: "partial" }],
+      };
+      await flushPromises();
+
+      expect(askMock).toHaveBeenCalledTimes(1);
+      expect(wrapper!.text()).toContain("report.pdf");
+      expect(wrapper!.text()).not.toContain("other.pdf");
+    });
+
+    it("does not ask when there is nothing to lose", async () => {
+      await openOneDocument(3);
+
+      await clickButtonByLabel(wrapper!, "Close");
+      await flushPromises();
+
+      expect(askMock).not.toHaveBeenCalled();
+      expect(wrapper!.find(".drop-target").exists()).toBe(true);
+    });
+  });
+
+  describe("Merge with… (AC23/AC24, code review 2026-09-13)", () => {
+    it("queues the open document with ONE picked file instead of replacing it", async () => {
+      // The most natural merge gesture — this document plus one other — used to close the
+      // document and open the other one.
+      await openOneDocument(3);
+      openMock.mockResolvedValueOnce(["/tmp/other.pdf"]);
+
+      await clickButton(wrapper!, "Merge with…");
+      await flushPromises();
+
+      expect(wrapper!.text()).toContain("Merge queue");
+      const names = wrapper!.findAll(".file-list li").map((li) => li.text());
+      expect(names).toHaveLength(2);
+      expect(names[0]).toContain("report.pdf");
+      expect(names[1]).toContain("other.pdf");
+    });
+
+    it("merges the EDITED document, shown under the name the user opened", async () => {
+      await openOneDocument(3);
+      await wrapper!.findAll(".page-cell")[0].trigger("click");
+      const rotate = wrapper!.findAll("button").find((b) => b.text().includes("Rotate"))!;
+      await rotate.trigger("click");
+      await flushPromises();
+      // The selection survives a rotate (so it can be rotated again); clear it to reach the
+      // document-scoped verbs.
+      await wrapper!.findAll(".page-cell")[0].trigger("click", { metaKey: true });
+      openMock.mockResolvedValueOnce(["/tmp/other.pdf"]);
+      await clickButton(wrapper!, "Merge with…");
+      await flushPromises();
+      saveMock.mockResolvedValueOnce("/tmp/merged.pdf");
+
+      const first = wrapper!.findAll(".file-list li")[0];
+      expect(first.text()).toContain("report.pdf");
+      expect(first.find(".file-name").attributes("title")).toBe("/tmp/report.pdf");
+      await clickButton(wrapper!, "Merge PDFs");
+      await flushPromises();
+
+      // The working copy is what gets merged — the rotation is in the output.
+      expect(invokeMock).toHaveBeenCalledWith("pdf_merge", {
+        paths: ["/tmp/working.pdf", "/tmp/other.pdf"],
+        outputPath: "/tmp/merged.pdf",
+      });
+    });
+
+    it("never queues the same file twice", async () => {
+      await openOneDocument(3);
+      openMock.mockResolvedValueOnce(["/tmp/report.pdf", "/tmp/other.pdf", "/tmp/other.pdf"]);
+
+      await clickButton(wrapper!, "Merge with…");
+      await flushPromises();
+
+      expect(wrapper!.findAll(".file-list li")).toHaveLength(2);
+    });
+
+    it("shows on its row why a queued file's count could not be read", async () => {
+      invokeMock.mockImplementation((command: string, args?: { path?: string }) => {
+        if (command === "pdf_open" && args?.path === "/tmp/locked.pdf") {
+          return Promise.reject({
+            code: "pdf-encrypted",
+            message: "encrypted",
+            position: null,
+            context: null,
+          });
+        }
+        if (command === "pdf_open") {
+          return Promise.resolve({ pageCount: 2, textLayer: "partial", canRenderPreviews: false });
+        }
+        return Promise.resolve(undefined);
+      });
+      openMock.mockResolvedValueOnce(["/tmp/a.pdf", "/tmp/locked.pdf"]);
+      mountView();
+      await clickButton(wrapper!, "Open PDF…");
+      await flushPromises();
+
+      const rows = wrapper!.findAll(".file-list li");
+      expect(rows[0].text()).toContain("2 pages");
+      expect(rows[1].text()).toContain("password-protected");
+    });
+  });
+
+  describe("opening (AC29, code review 2026-09-13)", () => {
+    it("shows the document's name and an Opening… hint while the parse runs", async () => {
+      let finishOpen: ((value: unknown) => void) | undefined;
+      invokeMock.mockImplementation((command: string) => {
+        if (command === "pdf_open") {
+          return new Promise((resolve) => {
+            finishOpen = resolve;
+          });
+        }
+        return Promise.resolve([]);
+      });
+      openMock.mockResolvedValueOnce(["/tmp/slow.pdf"]);
+      mountView();
+      await clickButton(wrapper!, "Open PDF…");
+      await flushPromises();
+
+      // The resting surface is gone and the header is up before a single byte has been parsed.
+      expect(wrapper!.find(".drop-target").exists()).toBe(false);
+      expect(wrapper!.text()).toContain("slow.pdf");
+      expect(wrapper!.text()).toContain("Opening…");
+
+      finishOpen!({ pageCount: 1, textLayer: "partial", canRenderPreviews: false });
+      await flushPromises();
+      expect(wrapper!.text()).not.toContain("Opening…");
+      expect(wrapper!.findAll(".page-cell")).toHaveLength(1);
+    });
+  });
+
+  describe("display changes (AC55b)", () => {
+    it("re-renders previews when the device pixel ratio changes under the window", async () => {
+      // `devicePixelRatio` is not reactive; the view listens for the `(resolution:)` media query
+      // to stop matching, which is what happens when the window is dragged to another display.
+      let changeListener: (() => void) | undefined;
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: (_: string, listener: () => void) => {
+          changeListener = listener;
+        },
+        removeEventListener: () => {},
+      }));
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 2 });
+      invokeMock.mockImplementation((command: string) => {
+        if (command === "pdf_open") {
+          return Promise.resolve({ pageCount: 1, textLayer: "partial", canRenderPreviews: true });
+        }
+        if (command === "pdf_page_text") return Promise.resolve([{ page: 1, text: "A" }]);
+        if (command === "pdf_render_pages") return Promise.resolve([{ page: 1, pngBase64: "AA" }]);
+        return Promise.resolve(undefined);
+      });
+      openMock.mockResolvedValueOnce(["/tmp/report.pdf"]);
+      mountView();
+      await clickButton(wrapper!, "Open PDF…");
+      await flushPromises();
+      const widths = () =>
+        invokeMock.mock.calls
+          .filter((call) => call[0] === "pdf_render_pages")
+          .map((call) => (call[1] as { maxWidth: number }).maxWidth);
+      expect(widths()).toEqual([296]);
+
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 1 });
+      changeListener!();
+      await flushPromises();
+
+      expect(widths()).toEqual([296, 148]);
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 1 });
     });
   });
 

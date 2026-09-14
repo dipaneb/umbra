@@ -1,3 +1,4 @@
+use tauri::Runtime;
 use umbra_core::ToolError;
 use umbra_core::pdf::{self, MAX_INPUT_BYTES};
 
@@ -102,9 +103,12 @@ pub async fn pdf_open(path: String) -> Result<PdfDocumentInfo, ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
         check_file_size(&path)?;
         let bytes = crate::fs_helper::read_file_bytes(&path)?;
+        // One parse, not two: `page_count` + `classify_text_layer` each loaded the document, so
+        // a 100 MB file was parsed twice per open (code review 2026-09-13).
+        let summary = pdf::summarise(&bytes)?;
         Ok(PdfDocumentInfo {
-            page_count: pdf::page_count(&bytes)?,
-            text_layer: pdf::classify_text_layer(&bytes)?,
+            page_count: summary.page_count,
+            text_layer: summary.text_layer,
             // AC46: a fact about the build, not about the document — true on macOS and Windows,
             // false wherever `render/unsupported.rs` is compiled. The view reads it once, at
             // open, to choose between thumbnail rows and the text-only rows AC21 keeps.
@@ -140,9 +144,10 @@ pub async fn pdf_open_dropped(paths: Vec<String>) -> Result<Vec<PdfDroppedDocume
         for path in paths {
             check_file_size(&path)?;
             let bytes = crate::fs_helper::read_file_bytes(&path)?;
+            let summary = pdf::summarise(&bytes)?;
             opened.push(PdfDroppedDocument {
-                page_count: pdf::page_count(&bytes)?,
-                text_layer: pdf::classify_text_layer(&bytes)?,
+                page_count: summary.page_count,
+                text_layer: summary.text_layer,
                 path,
             });
         }
@@ -168,10 +173,40 @@ pub async fn pdf_page_text(
     .map_err(map_join_error)?
 }
 
-/// Where working copies live: one app-owned subdirectory of the OS temp dir, so they are easy to
-/// find, easy to sweep, and never sit beside the user's own file.
-fn working_dir() -> std::path::PathBuf {
-    std::env::temp_dir().join("umbra-pdf-edits")
+/// Where working copies live: a `pdf-edits` subdirectory of the app's **per-user** cache
+/// directory (`~/Library/Caches/<id>`, `%LOCALAPPDATA%\<id>`, `~/.cache/<id>`), so they are easy
+/// to find, easy to sweep, and never sit beside the user's own file.
+///
+/// **Per-user, not the OS temp dir** (code review 2026-09-13). `std::env::temp_dir()` is the
+/// shared `/tmp` on Linux, and a directory created there with default permissions left every
+/// PDF a user edited readable by every other local account — on the one platform where the tool
+/// has no renderer but full editing. Tauri's cache dir is per-user by construction on all three
+/// platforms, which closes that without a `cfg(unix)` permissions branch (AC44 keeps its single
+/// platform switch). Tauri documents it as *"intended for temporary files that can be deleted"*,
+/// which is exactly what a working copy is.
+///
+/// Test builds resolve to a temp directory instead, `models_dir`-style (`ocr.rs`): the tests
+/// must not write into the developer's real cache, and `test-support` extends that to the
+/// integration-test binaries, which `cfg(test)` never reaches.
+#[cfg(not(any(test, feature = "test-support")))]
+fn working_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<std::path::PathBuf, ToolError> {
+    // Imported here rather than at the top: `path()` is the only `Manager` method this file
+    // uses, and the test build's `working_dir` never calls it, which would leave the import unused.
+    use tauri::Manager;
+    app.path()
+        .app_cache_dir()
+        .map(|dir| dir.join("pdf-edits"))
+        .map_err(|err| ToolError {
+            code: "file-write-error".to_string(),
+            message: format!("could not resolve the app cache directory: {err}"),
+            position: None,
+            context: None,
+        })
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn working_dir<R: Runtime>(_app: &tauri::AppHandle<R>) -> Result<std::path::PathBuf, ToolError> {
+    Ok(std::env::temp_dir().join("umbra-pdf-edits-test"))
 }
 
 /// How long a working copy has to sit untouched before it is treated as abandoned. Generous on
@@ -179,17 +214,31 @@ fn working_dir() -> std::path::PathBuf {
 /// sweeping early is another session's unsaved work.
 const WORKING_COPY_STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-/// Serialises the copy below, because the working copy's name is per-process and two edits can
-/// genuinely overlap: `runDocument` is latest-wins in the view, so a superseded open still runs to
-/// completion in Rust. Without this, both calls write the same `…umbra-tmp-{pid}` staging file and
-/// one of the two renames loses it, surfacing as `file-write-error: No such file or directory` on
-/// a PDF that is perfectly fine. Surfaced by three tests colliding; the app can reach it by
-/// opening two documents quickly.
+/// Serialises **every** command that reads or writes the working copy, because its name is
+/// per-process and two of them can genuinely overlap: `runDocument` is latest-wins in the view,
+/// so a superseded open still runs to completion in Rust. Without this, both calls write the same
+/// `…umbra-tmp-{pid}` staging file and one of the two renames loses it, surfacing as
+/// `file-write-error: No such file or directory` on a PDF that is perfectly fine — or worse, one
+/// document's edited bytes land as the other's working copy. Surfaced by three tests colliding;
+/// the app can reach it by opening two documents quickly.
+///
+/// **Taken by `pdf_begin_edit`, the three page edits, and `pdf_save_copy` alike** (code review
+/// 2026-09-13: the first version took it only in `pdf_begin_edit`, which left the guard depending
+/// on the view's `working` flag disabling the edit buttons — true today, but a command layer
+/// whose safety lives in a UI flag is a latent bug for the next caller).
 ///
 /// One live working copy per process is deliberate, and it is why a lock is the right answer
 /// rather than a unique filename per edit: the surface opens one document at a time, and naming
 /// each edit separately would leave a 100 MB file behind for every document opened in a session.
 static WORKING_COPY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Acquires `WORKING_COPY_LOCK`, ignoring poisoning: the guarded data is `()`, and a panicked
+/// earlier edit leaves no invariant for the next one to be confused by.
+fn working_copy_guard() -> std::sync::MutexGuard<'static, ()> {
+    WORKING_COPY_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Removes working copies left behind by sessions that never got to clean up after themselves.
 ///
@@ -232,16 +281,18 @@ fn sweep_stale_working_copies(dir: &std::path::Path) {
 /// Stale copies from previous sessions are swept here rather than on close: a crash or a force
 /// quit never runs a close handler, so cleanup that only happens on the way out is cleanup that
 /// eventually stops happening. **By age, never wholesale** — see `sweep_stale_working_copies`.
+// Generic over `R: Runtime` for the same reason `ocr_extract_text` is (see its comment): the
+// `AppHandle` is what resolves the per-user cache directory, and the mock runtime the tests use
+// is a different `R` from the app's `Wry`.
 #[tauri::command]
-pub async fn pdf_begin_edit(path: String) -> Result<String, ToolError> {
+pub async fn pdf_begin_edit<R: Runtime>(
+    path: String,
+    app: tauri::AppHandle<R>,
+) -> Result<String, ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
         check_file_size(&path)?;
-        // Poisoning is not a failure mode worth propagating here: the guarded data is `()`, and
-        // a panicked earlier edit leaves no invariant for this one to be confused by.
-        let _guard = WORKING_COPY_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let dir = working_dir();
+        let _guard = working_copy_guard();
+        let dir = working_dir(&app)?;
         std::fs::create_dir_all(&dir).map_err(|err| ToolError {
             code: "file-write-error".to_string(),
             message: format!("{}: {err}", dir.display()),
@@ -266,10 +317,17 @@ pub async fn pdf_begin_edit(path: String) -> Result<String, ToolError> {
 /// A byte copy rather than a re-save through `lopdf`: the working copy is already exactly what the
 /// page list shows, and round-tripping it through the parser again would be a second chance to
 /// change something the user did not ask to change.
+///
+/// **The one command that does not call `check_file_size`, deliberately** (AC19 as amended at the
+/// code review, 2026-09-13). The cap exists to bound what the parser is asked to decode, and this
+/// command never parses. Applying it here re-checked the app's *own* working copy against the
+/// *input* cap — and a `lopdf` re-save can be larger than the original (object streams are
+/// written back as individual objects), so an original just under the cap became a document the
+/// user had edited, could see, and could not save.
 #[tauri::command]
 pub async fn pdf_save_copy(path: String, output_path: String) -> Result<(), ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
-        check_file_size(&path)?;
+        let _guard = working_copy_guard();
         let bytes = crate::fs_helper::read_file_bytes(&path)?;
         crate::fs_helper::write_file_bytes(&output_path, &bytes)
     })
@@ -338,6 +396,7 @@ pub async fn pdf_delete_pages(
 ) -> Result<(), ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
         check_file_size(&path)?;
+        let _guard = working_copy_guard();
         let bytes = crate::fs_helper::read_file_bytes(&path)?;
         let result = pdf::delete_pages(&bytes, &page_numbers)?;
         crate::fs_helper::write_file_bytes(&output_path, &result)
@@ -355,6 +414,7 @@ pub async fn pdf_rotate_pages(
 ) -> Result<(), ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
         check_file_size(&path)?;
+        let _guard = working_copy_guard();
         let bytes = crate::fs_helper::read_file_bytes(&path)?;
         let result = pdf::rotate_pages(&bytes, &page_numbers, quarter_turns)?;
         crate::fs_helper::write_file_bytes(&output_path, &result)
@@ -371,6 +431,7 @@ pub async fn pdf_reorder_pages(
 ) -> Result<(), ToolError> {
     tauri::async_runtime::spawn_blocking(move || {
         check_file_size(&path)?;
+        let _guard = working_copy_guard();
         let bytes = crate::fs_helper::read_file_bytes(&path)?;
         let result = pdf::reorder_pages(&bytes, &new_order)?;
         crate::fs_helper::write_file_bytes(&output_path, &result)
@@ -475,6 +536,17 @@ mod tests {
         let mut buffer = Vec::new();
         doc.save_to(&mut buffer).unwrap();
         buffer
+    }
+
+    /// The mock runtime handle `pdf_begin_edit` needs to resolve its working directory. Same
+    /// construction as `ocr.rs`'s tests; under `cfg(test)` `working_dir` ignores it and answers
+    /// with a temp directory, so no test writes into the developer's real cache.
+    fn mock_app_handle() -> tauri::AppHandle<tauri::test::MockRuntime> {
+        tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("failed to build mock app")
+            .handle()
+            .clone()
     }
 
     fn temp_file_path(name: &str) -> String {
@@ -689,7 +761,7 @@ mod tests {
         // Slice 3 replaced the hardcoded `false` with the real backend capability. Asserted
         // against `render::is_available()` rather than against a literal, deliberately: this
         // test's job is to prove the field is WIRED to the renderer, and duplicating the
-        // platform table here would put a second `cfg(target_os)` in the codebase, which AC44
+        // platform table here would put a second `cfg(target_os)` in runtime source, which AC44
         // forbids. Which platforms have a backend is asserted in `render/mod.rs`'s own tests —
         // the one file allowed to know.
         assert_eq!(info.can_render_previews, crate::render::is_available());
@@ -784,7 +856,9 @@ mod tests {
         let original = generate_test_pdf_bytes(&["One", "Two"]);
         std::fs::write(&path, &original).unwrap();
 
-        let working = pdf_begin_edit(path.clone()).await.unwrap();
+        let working = pdf_begin_edit(path.clone(), mock_app_handle())
+            .await
+            .unwrap();
 
         assert_ne!(working, path, "the working copy must be a different file");
         assert_eq!(std::fs::read(&working).unwrap(), original);
@@ -818,15 +892,18 @@ mod tests {
         let path = temp_file_path("begin-edit-sweep.pdf");
         std::fs::write(&path, generate_test_pdf_bytes(&["One"])).unwrap();
 
-        std::fs::create_dir_all(working_dir()).unwrap();
-        let stale = working_dir().join("stale-from-a-previous-run.pdf");
+        let dir = working_dir(&mock_app_handle()).unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        let stale = dir.join("stale-from-a-previous-run.pdf");
         std::fs::write(&stale, b"leftovers").unwrap();
         age_by(
             &stale,
             WORKING_COPY_STALE_AFTER + std::time::Duration::from_secs(60),
         );
 
-        let _ = pdf_begin_edit(path.clone()).await.unwrap();
+        let _ = pdf_begin_edit(path.clone(), mock_app_handle())
+            .await
+            .unwrap();
 
         assert!(
             !stale.exists(),
@@ -847,12 +924,15 @@ mod tests {
         let path = temp_file_path("begin-edit-concurrent.pdf");
         std::fs::write(&path, generate_test_pdf_bytes(&["One"])).unwrap();
 
-        std::fs::create_dir_all(working_dir()).unwrap();
+        let dir = working_dir(&mock_app_handle()).unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
         // Another running instance's copy: a different pid, written moments ago.
-        let other = working_dir().join("working-999999.pdf");
+        let other = dir.join("working-999999.pdf");
         std::fs::write(&other, b"another session's unsaved edits").unwrap();
 
-        let _ = pdf_begin_edit(path.clone()).await.unwrap();
+        let _ = pdf_begin_edit(path.clone(), mock_app_handle())
+            .await
+            .unwrap();
 
         assert!(
             other.exists(),
@@ -904,11 +984,15 @@ mod tests {
     }
 
     /// AC19: the size guard is worthless if a new verb forgets to call it, so this covers the
-    /// DIMENSION — every command, not the two that happened to have coverage already. The file is
-    /// a sparse 100MB+ placeholder that is never valid PDF, so reaching core at all would fail
-    /// with `pdf-corrupt` instead; `pdf-input-too-large` proves the check ran BEFORE the read.
+    /// DIMENSION — every command that parses, not the ones that happened to have coverage
+    /// already. The code review (2026-09-13) found it covering 8 of 12 while its name claimed
+    /// all; `pdf_open_dropped`, `pdf_render_pages` and `pdf_begin_edit` are now here, and
+    /// `pdf_save_copy` is asserted as the one deliberate exemption below. The file is a sparse
+    /// 100MB+ placeholder that is never valid PDF, so reaching core at all would fail with
+    /// `pdf-corrupt` instead; `pdf-input-too-large` proves the check ran BEFORE the read.
     #[tokio::test]
     async fn every_command_rejects_an_oversize_file_without_reading_it() {
+        let _serialised = EDIT_TESTS.lock().await;
         let path = temp_file_path("oversize-all.pdf");
         let out = temp_file_path("oversize-all-out.pdf");
         let file = std::fs::File::create(&path).unwrap();
@@ -917,6 +1001,24 @@ mod tests {
 
         assert_eq!(
             pdf_open(path.clone()).await.unwrap_err().code,
+            "pdf-input-too-large"
+        );
+        assert_eq!(
+            pdf_open_dropped(vec![path.clone()]).await.unwrap_err().code,
+            "pdf-input-too-large"
+        );
+        assert_eq!(
+            pdf_render_pages(path.clone(), vec![1], 100)
+                .await
+                .unwrap_err()
+                .code,
+            "pdf-input-too-large"
+        );
+        assert_eq!(
+            pdf_begin_edit(path.clone(), mock_app_handle())
+                .await
+                .unwrap_err()
+                .code,
             "pdf-input-too-large"
         );
         assert_eq!(
@@ -953,6 +1055,31 @@ mod tests {
         );
 
         std::fs::remove_file(&path).unwrap();
+    }
+
+    /// AC19's one exemption, asserted so it stays deliberate: `pdf_save_copy` never parses, and
+    /// the app's own working copy can legitimately exceed the *input* cap after a `lopdf`
+    /// re-save. A sparse placeholder over the cap must copy through rather than be refused —
+    /// the alternative was a document the user had edited and could not save.
+    #[tokio::test]
+    async fn pdf_save_copy_is_exempt_from_the_input_size_cap() {
+        let source = temp_file_path("oversize-save-copy-src.pdf");
+        let destination = temp_file_path("oversize-save-copy-dst.pdf");
+        let file = std::fs::File::create(&source).unwrap();
+        file.set_len(MAX_INPUT_BYTES as u64 + 1).unwrap();
+        drop(file);
+
+        pdf_save_copy(source.clone(), destination.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            std::fs::metadata(&destination).unwrap().len(),
+            MAX_INPUT_BYTES as u64 + 1
+        );
+
+        std::fs::remove_file(&source).unwrap();
+        std::fs::remove_file(&destination).unwrap();
     }
 
     #[tokio::test]

@@ -4,7 +4,6 @@ import {
   emptySelection,
   extendTo,
   isSelected,
-  renumberAfterDelete,
   selectAll,
   selectOnly,
   togglePage,
@@ -99,13 +98,5 @@ describe("pageSelection", () => {
     expect(clampPage(3, 5)).toBe(3);
     // A document with no pages still has to produce a usable number rather than 0 or NaN.
     expect(clampPage(2, 0)).toBe(1);
-  });
-
-  it("renumbers the surviving pages after a delete", () => {
-    // Deleting shifts every later page down. Without this, a selection carried across the
-    // operation points at the wrong rows — silently, and only after the first deleted page.
-    expect(renumberAfterDelete(5, [2, 4])).toEqual([1, 3, 5]);
-    expect(renumberAfterDelete(3, [])).toEqual([1, 2, 3]);
-    expect(renumberAfterDelete(3, [1, 2, 3])).toEqual([]);
   });
 });

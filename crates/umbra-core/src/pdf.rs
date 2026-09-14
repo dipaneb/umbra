@@ -6,7 +6,7 @@
 use crate::error::ToolError;
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 // Same rationale as ocr.rs's/hash.rs's own constants (CWE-400 unbounded allocation from an
 // arbitrarily large dropped file). Each input file is capped individually; there is no
@@ -53,9 +53,13 @@ fn pdf_error_with_context(
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TextLayer {
-    /// The document has pages, and not one of them yields non-whitespace text. A scan.
+    /// The document has pages, at least one of them is readable, and not one readable page
+    /// yields non-whitespace text. A scan.
     Scanned,
-    /// At least one page yields text.
+    /// At least one page yields text — **or no page could be read at all.** The second case is
+    /// deliberate (code review 2026-09-13): a document whose fonts `lopdf` cannot decode is not a
+    /// scan, and AC40's "This PDF is a scan" sentence would be a false claim about it. The
+    /// text-only rows are the honest answer when the evidence is missing rather than negative.
     Partial,
     /// The document has no pages at all. Distinct from `Scanned`: nothing to read versus
     /// nothing readable.
@@ -274,6 +278,24 @@ fn invalid_range_error(start_page: u32, end_page: u32, total_pages: u32) -> Tool
     )
 }
 
+/// AC17's open round trip in one parse: the page count (AC8) and the text-layer classification
+/// (AC10) from a single `load_document`, rather than parsing up to 100 MB twice for the same two
+/// facts (code review 2026-09-13). `page_count` and `classify_text_layer` remain the per-fact
+/// entry points; this is the one the open command should call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DocumentSummary {
+    pub page_count: u32,
+    pub text_layer: TextLayer,
+}
+
+pub fn summarise(bytes: &[u8]) -> Result<DocumentSummary, ToolError> {
+    let doc = load_document(bytes)?;
+    Ok(DocumentSummary {
+        page_count: doc.get_pages().len() as u32,
+        text_layer: classify_loaded(&doc),
+    })
+}
+
 /// AC8: how many pages, and nothing else. Deliberately does **not** extract text — the count is
 /// the cheapest useful fact about a PDF and the view wants it immediately, while text is a
 /// bounded streaming pass (AC9/AC45).
@@ -349,25 +371,42 @@ pub fn page_texts(bytes: &[u8], page_numbers: &[u32]) -> Result<Vec<PageText>, T
 ///
 /// **Short-circuits on the first page that yields text**, which is what keeps this affordable at
 /// document-open time: a text document exits on page one, and only a genuine scan pays the full
-/// pass — where the pass is cheap precisely because there is no text to decode. An unreadable
-/// page is not evidence of a scan and does not vote either way.
+/// pass — where the pass is cheap precisely because there is no text to decode.
 pub fn classify_text_layer(bytes: &[u8]) -> Result<TextLayer, ToolError> {
     let doc = load_document(bytes)?;
+    Ok(classify_loaded(&doc))
+}
+
+/// The classification proper, over an already-loaded document (shared with `summarise`).
+///
+/// **An unreadable page is not evidence of a scan and does not vote either way** — and that has
+/// to hold at the end of the loop as well as inside it. The first version fell through to
+/// `Scanned` after the loop, so a document whose *every* page failed to decode was reported as a
+/// scan; the code review caught it. Only a readable-but-blank page is evidence of a scan, so
+/// `Scanned` needs at least one such vote, and a document with no evidence at all reports
+/// `Partial` — the state whose view rendering makes no claim.
+fn classify_loaded(doc: &Document) -> TextLayer {
     let pages: Vec<u32> = doc.get_pages().keys().copied().collect();
 
     if pages.is_empty() {
-        return Ok(TextLayer::Empty);
+        return TextLayer::Empty;
     }
 
+    let mut any_readable = false;
     for page in pages {
-        if let Some(text) = read_page_text(&doc, page)
-            && !text.trim().is_empty()
-        {
-            return Ok(TextLayer::Partial);
+        if let Some(text) = read_page_text(doc, page) {
+            if !text.trim().is_empty() {
+                return TextLayer::Partial;
+            }
+            any_readable = true;
         }
     }
 
-    Ok(TextLayer::Scanned)
+    if any_readable {
+        TextLayer::Scanned
+    } else {
+        TextLayer::Partial
+    }
 }
 
 /// Validates a set of 1-indexed page numbers against the document, rejecting anything out of
@@ -383,12 +422,13 @@ fn validate_page_selection(selection: &[u32], total_pages: u32) -> Result<(), To
         return Err(invalid_range_error(0, 0, total_pages));
     }
 
-    let mut seen: Vec<u32> = Vec::with_capacity(selection.len());
+    // A set, not a `Vec::contains` loop: a reorder is always every page, so on a large document
+    // the quadratic version was the slowest step of the edit (code review 2026-09-13).
+    let mut seen: HashSet<u32> = HashSet::with_capacity(selection.len());
     for &page in selection {
-        if page < 1 || page > total_pages || seen.contains(&page) {
+        if page < 1 || page > total_pages || !seen.insert(page) {
             return Err(invalid_range_error(page, page, total_pages));
         }
-        seen.push(page);
     }
     Ok(())
 }
@@ -412,8 +452,50 @@ pub fn delete_pages(bytes: &[u8], page_numbers: &[u32]) -> Result<Vec<u8>, ToolE
         ));
     }
 
+    // `Document::delete_pages` walks each deleted page's `/Parent` chain to decrement `/Count`,
+    // and that walk has no cycle guard (verified in vendored 0.45.0 `processor.rs`). A hostile
+    // document with a `/Parent` cycle loads and validates fine — `get_pages()` follows `/Kids`,
+    // never `/Parent` — and would then spin the blocking thread forever, with the view stuck on
+    // "working" and every button disabled. Same invariant as `resolve_inherited`'s bound, applied
+    // to the crate's walk before handing over (code review 2026-09-13).
+    let pages = doc.get_pages();
+    for page in page_numbers {
+        if let Some(&page_id) = pages.get(page) {
+            ensure_parent_chain_terminates(&doc, page_id)?;
+        }
+    }
+
     doc.delete_pages(page_numbers);
     save_document(doc)
+}
+
+/// How far up a `/Parent` chain any walk in this module will go before calling the document
+/// malformed. PDF page trees are shallow in practice (a handful of levels); 64 is far past any
+/// real document and far short of anything that would read as a hang.
+const PARENT_CHAIN_LIMIT: usize = 64;
+
+/// Rejects a page whose `/Parent` chain does not reach a root within `PARENT_CHAIN_LIMIT` hops.
+/// Mirrors the crate's own walk (stop at the first ancestor that is not a dictionary), so a
+/// document this accepts is one the crate's unguarded walk also terminates on.
+fn ensure_parent_chain_terminates(doc: &Document, page_id: ObjectId) -> Result<(), ToolError> {
+    let mut current = page_id;
+    for _ in 0..PARENT_CHAIN_LIMIT {
+        let Ok(dict) = doc.get_dictionary(current) else {
+            return Ok(());
+        };
+        match dict
+            .get(b"Parent")
+            .ok()
+            .and_then(|parent| parent.as_reference().ok())
+        {
+            Some(parent) => current = parent,
+            None => return Ok(()),
+        }
+    }
+    Err(pdf_error(
+        "pdf-corrupt",
+        "the page tree's /Parent chain does not terminate",
+    ))
 }
 
 /// Walks the `/Parent` chain to resolve an inheritable page attribute.
@@ -426,7 +508,7 @@ pub fn delete_pages(bytes: &[u8], page_numbers: &[u32]) -> Result<Vec<u8>, ToolE
 /// cycle, and NFR4's "never a crash" includes "never an infinite loop".
 fn resolve_inherited(doc: &Document, page_id: ObjectId, key: &[u8]) -> Option<Object> {
     let mut current = page_id;
-    for _ in 0..64 {
+    for _ in 0..PARENT_CHAIN_LIMIT {
         let dict = doc.get_dictionary(current).ok()?;
         if let Ok(value) = dict.get(key) {
             let (_, resolved) = doc.dereference(value).ok()?;
@@ -474,8 +556,13 @@ pub fn rotate_pages(
         let Some(&page_id) = pages.get(&page) else {
             continue;
         };
+        // `as_float`, not `as_i64`: `/Rotate` must be an integer per the spec, but some
+        // generators write `90.0`, and Preview/Acrobat honour it. Reading it as 0 would make a
+        // quarter-turn silently overwrite the real orientation — the exact failure the doc
+        // comment above names, reached through a different type tag (code review 2026-09-13).
         let existing = resolve_inherited(&doc, page_id, b"Rotate")
-            .and_then(|object| object.as_i64().ok())
+            .and_then(|object| object.as_float().ok())
+            .map(|degrees| degrees.round() as i64)
             .unwrap_or(0);
         let rotation =
             normalise_rotation(normalise_rotation(existing) + i64::from(quarter_turns) * 90);
@@ -732,6 +819,58 @@ mod tests {
         assert_eq!(classify_text_layer(&bytes).unwrap(), TextLayer::Empty);
     }
 
+    /// Replaces one page's content with a stream `lopdf` refuses to extract from: a `Tf` with no
+    /// operands makes `extract_text_chunks_from_page` return `Err` for the whole page (vendored
+    /// 0.45.0 `parser_aux.rs`, the `missing font operand` path), which is what `read_page_text`
+    /// reports as `None` — "unreadable", as opposed to "readable and blank".
+    fn make_page_unreadable(doc: &mut Document, page: u32) {
+        let page_id = *doc.get_pages().get(&page).unwrap();
+        let content = Content {
+            operations: vec![Operation::new("BT", vec![]), Operation::new("Tf", vec![])],
+        };
+        let content_id = doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+        doc.get_dictionary_mut(page_id)
+            .unwrap()
+            .set("Contents", content_id);
+    }
+
+    #[test]
+    fn classify_text_layer_does_not_call_an_unreadable_document_a_scan() {
+        // Code review 2026-09-13: every page unreadable used to fall through to `Scanned`, so a
+        // text document with fonts lopdf cannot decode got the "This PDF is a scan" sentence.
+        let mut doc = generate_test_document(&["Real text", "More text"]);
+        make_page_unreadable(&mut doc, 1);
+        make_page_unreadable(&mut doc, 2);
+        let bytes = document_bytes(&mut doc);
+        assert_eq!(classify_text_layer(&bytes).unwrap(), TextLayer::Partial);
+    }
+
+    #[test]
+    fn classify_text_layer_lets_a_blank_readable_page_vote_scan_beside_an_unreadable_one() {
+        // The abstention is one-sided: an unreadable page casts no vote, but a readable blank
+        // page still does, so this document is a scan with one page we could not read.
+        let mut doc = generate_test_document(&["   ", "Unreadable"]);
+        make_page_unreadable(&mut doc, 2);
+        let bytes = document_bytes(&mut doc);
+        assert_eq!(classify_text_layer(&bytes).unwrap(), TextLayer::Scanned);
+    }
+
+    #[test]
+    fn summarise_agrees_with_page_count_and_classify_text_layer_from_one_parse() {
+        let bytes = document_bytes(&mut generate_test_document(&["A", "   ", "C"]));
+        let summary = summarise(&bytes).unwrap();
+        assert_eq!(summary.page_count, page_count(&bytes).unwrap());
+        assert_eq!(summary.text_layer, classify_text_layer(&bytes).unwrap());
+        assert_eq!(summary.page_count, 3);
+        assert_eq!(summary.text_layer, TextLayer::Partial);
+    }
+
+    #[test]
+    fn summarise_errors_on_a_corrupt_document_like_page_count_does() {
+        let err = summarise(b"%PDF-1.5 definitely not a pdf").unwrap_err();
+        assert_eq!(err.code, "pdf-corrupt");
+    }
+
     #[test]
     fn delete_pages_removes_exactly_the_requested_pages() {
         let bytes = document_bytes(&mut generate_test_document(&[
@@ -809,6 +948,30 @@ mod tests {
     }
 
     #[test]
+    fn delete_pages_rejects_a_parent_cycle_rather_than_spinning_forever() {
+        // Code review 2026-09-13: `lopdf::Document::delete_pages` walks `/Parent` upward with no
+        // cycle guard. `get_pages()` never follows `/Parent`, so this document loads and
+        // validates cleanly and only the crate's walk would hang. Root `Pages` -> page 1 closes
+        // the loop.
+        let mut doc = generate_test_document(&["One", "Two"]);
+        let page_one = *doc.get_pages().get(&1).unwrap();
+        let root_id = doc
+            .catalog()
+            .unwrap()
+            .get(b"Pages")
+            .unwrap()
+            .as_reference()
+            .unwrap();
+        doc.get_dictionary_mut(root_id)
+            .unwrap()
+            .set("Parent", page_one);
+        let bytes = document_bytes(&mut doc);
+
+        let err = delete_pages(&bytes, &[1]).unwrap_err();
+        assert_eq!(err.code, "pdf-corrupt");
+    }
+
+    #[test]
     fn delete_pages_rejects_a_duplicated_page_number() {
         let bytes = document_bytes(&mut generate_test_document(&["One", "Two", "Three"]));
 
@@ -871,6 +1034,31 @@ mod tests {
                 .unwrap(),
             180
         );
+    }
+
+    #[test]
+    fn rotate_pages_reads_an_existing_rotation_stored_as_a_real() {
+        // Code review 2026-09-13: `/Rotate 90.0` is out-of-spec but emitted by some generators
+        // and honoured by Preview/Acrobat. Read as 0, one quarter-turn would write 90 — the
+        // orientation the page already had — and the user's rotation would appear to do nothing.
+        let mut doc = generate_test_document(&["Real rotate"]);
+        let page_id = *doc.get_pages().get(&1).unwrap();
+        doc.get_dictionary_mut(page_id)
+            .unwrap()
+            .set("Rotate", Object::Real(90.0));
+        let bytes = document_bytes(&mut doc);
+
+        let rotated = rotate_pages(&bytes, &[1], 1).unwrap();
+        let doc = Document::load_mem(&rotated).unwrap();
+        let page_id = *doc.get_pages().get(&1).unwrap();
+        let rotate = doc
+            .get_dictionary(page_id)
+            .unwrap()
+            .get(b"Rotate")
+            .unwrap()
+            .as_i64()
+            .unwrap();
+        assert_eq!(rotate, 180);
     }
 
     #[test]

@@ -29,9 +29,14 @@ use umbra_core::ToolError;
 use windows::Data::Pdf::{PdfDocument, PdfPageRenderOptions};
 use windows::Storage::Streams::{DataReader, DataWriter, InMemoryRandomAccessStream};
 
-use super::{PageRenderer, render_error};
+use super::{PageRenderer, fit_within_thumbnail, render_error};
 
 pub(crate) struct Backend;
+
+/// Ceiling on the encoded PNG read back from WinRT. A lossless 640 x 10240 RGBA frame is 26 MB
+/// raw and PNG never exceeds raw by more than a small header — 64 MB is far past any preview this
+/// module can request, and far short of the 4 GB `u32` the stream size arrives as.
+const MAX_PNG_BYTES: usize = 64 * 1024 * 1024;
 
 /// Every WinRT call returns `windows::core::Error`; funnel them all through one conversion so the
 /// backend cannot drift in how it reports failure.
@@ -83,14 +88,30 @@ impl PageRenderer for Backend {
             .GetPage(page_number - 1)
             .map_err(win_err("could not open that page"))?;
 
+        // Both dimensions, from the shared fit — not width alone (code review 2026-09-13). The
+        // first version set only `DestinationWidth` and let WinRT derive the height from the
+        // page's aspect ratio, which PDF does not bound: the 1 x 14400 pt sliver page that
+        // `mod.rs` documents and `mac.rs` fits against became a 640 x 9,216,000 px render request
+        // here, with nothing between it and the allocator. `fit_within_thumbnail` returns the
+        // aspect-preserving size inside both ceilings, so setting both destination dimensions
+        // does not stretch: the box IS the page's own shape, scaled. `PdfPage.Size` is the
+        // page's displayed size with its `/Rotate` already applied, which is the same size WinRT
+        // derives from under a width-only render.
+        let size = page
+            .Size()
+            .map_err(win_err("could not measure that page"))?;
+        let (width, height) =
+            fit_within_thumbnail(f64::from(size.Width), f64::from(size.Height), max_width)
+                .map_err(|_| render_error(format!("page {page_number} has no drawable area")))?;
+
         let options =
             PdfPageRenderOptions::new().map_err(win_err("could not set up page rendering"))?;
-        // Width only. Setting both would stretch the page to fit a box; setting one lets the API
-        // derive the other from the page's own aspect ratio, which is what the macOS backend's
-        // `drawing_transform` does with `preserve_aspect_ratio: true`.
         options
-            .SetDestinationWidth(max_width)
+            .SetDestinationWidth(width)
             .map_err(win_err("could not set the preview width"))?;
+        options
+            .SetDestinationHeight(height)
+            .map_err(win_err("could not set the preview height"))?;
 
         let target =
             InMemoryRandomAccessStream::new().map_err(win_err("could not open a stream"))?;
@@ -119,6 +140,11 @@ impl PageRenderer for Backend {
             .get()
             .map_err(win_err("could not read the rendered page"))?;
 
+        // The PNG of a bitmap bounded to 640 x 10240 is a few MB at the very most; anything
+        // WinRT claims beyond that is not a preview this tool asked for.
+        if size as usize > MAX_PNG_BYTES {
+            return Err(render_error("the rendered page was implausibly large"));
+        }
         let mut png = vec![0u8; size as usize];
         reader
             .ReadBytes(&mut png)
@@ -178,6 +204,28 @@ mod tests {
     fn a_page_number_past_the_end_is_an_error_not_a_blank_image() {
         let err = Backend::render_page(&one_page_pdf(), 2, 100).unwrap_err();
         assert_eq!(err.code, "pdf-render-unavailable");
+    }
+
+    /// The same sliver page `mac.rs` asserts on. Before the shared fit this backend scaled to
+    /// width alone and would have asked WinRT for a 640 x 9,216,000 px bitmap.
+    #[test]
+    fn an_extreme_aspect_ratio_is_bounded_rather_than_allocating_gigabytes() {
+        let pdf = crate::render::fixtures::page_pdf(1, 14400);
+
+        let png = Backend::render_page(&pdf, 1, crate::render::MAX_THUMBNAIL_WIDTH).unwrap();
+        let image = image::load_from_memory(&png).unwrap();
+
+        assert!(
+            image.height() <= crate::render::MAX_THUMBNAIL_HEIGHT,
+            "height must be bounded, got {}",
+            image.height()
+        );
+        assert!(
+            image.width() < image.height(),
+            "a 1:14400 page must not come back wider than it is tall ({}x{})",
+            image.width(),
+            image.height()
+        );
     }
 
     #[test]

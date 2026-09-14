@@ -5,8 +5,9 @@
 mod clipboard_watch;
 pub mod commands;
 mod fs_helper;
-// AC44: the render backends live here, and `render/mod.rs` holds the codebase's only
-// `cfg(target_os)` switch. Nothing else branches on operating system.
+// AC44: the render backends live here, and `render/mod.rs` holds the only `cfg(target_os)`
+// switch in this crate's runtime source. (`build.rs` has carried one since Story 4.1 for the
+// Windows resource embed — a build script, not shipped code.) Nothing else branches on OS.
 mod render;
 
 use commands::base64::{

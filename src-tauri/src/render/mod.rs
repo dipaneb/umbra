@@ -1,5 +1,7 @@
-//! Page rendering (AC43-AC47) — the only place in this codebase that branches on operating
-//! system.
+//! Page rendering (AC43-AC47) — the only place in this codebase's *runtime* source that branches
+//! on operating system. (`build.rs` has carried `cfg(target_os = "windows")` since Story 4.1 for
+//! the Windows resource embed; it is a build script, not shipped code, and AC44 is scoped to
+//! runtime source accordingly.)
 //!
 //! **Why this lives in `src-tauri` and not `umbra-core`.** AD-11 forbids `umbra-core` any
 //! `cfg(target_os)` branch at all, and AD-2 forbids it touching platform APIs. `src-tauri` is
@@ -25,8 +27,9 @@
 //! third-party binary in the supply chain to solve a problem two platforms already solve for
 //! free. See the story's Group H for the full reasoning.
 //!
-//! **The `cfg` switch appears exactly once — right here.** `commands/pdf.rs`, the view and the
-//! core all call this module's platform-blind functions and never mention an operating system.
+//! **The `cfg` switch appears exactly once in runtime source — right here.** `commands/pdf.rs`,
+//! the view and the core all call this module's platform-blind functions and never mention an
+//! operating system.
 //! Adding a platform later is one new file plus three lines below.
 
 use umbra_core::ToolError;
@@ -86,6 +89,54 @@ pub const MAX_THUMBNAIL_WIDTH: u32 = 640;
 /// A page that would exceed this is scaled to fit the height instead, so it renders narrower and
 /// correct rather than squashed or refused — 16:1 is already far past any real document shape.
 pub const MAX_THUMBNAIL_HEIGHT: u32 = MAX_THUMBNAIL_WIDTH * 16;
+
+/// Fits a page's drawable size inside `max_width` x [`MAX_THUMBNAIL_HEIGHT`], keeping its aspect
+/// ratio, and returns the bitmap size to draw at.
+///
+/// **One function, both backends** (code review 2026-09-13). The first build wrote this fit
+/// inline in `mac.rs` and left `win.rs` scaling to width alone — so the 23.6 GB sliver page
+/// documented above was bounded on macOS and unbounded on Windows, and nothing on a macOS
+/// developer machine could have said so, because `win.rs` is not compiled here. Sharing the
+/// arithmetic is what makes the invariant testable on every platform, in this file's tests, for
+/// a backend that only CI compiles.
+///
+/// Rejects — rather than saturates on — a source that is not a positive finite size. A CropBox
+/// of two positive subnormals is syntactically legal PDF and passes a `<= 0.0` check, but the
+/// scale it produces is `+inf`, and `inf as usize` saturates to `usize::MAX` before the buffer
+/// multiply overflows. NFR4 admits neither the panic nor the allocation.
+pub(crate) fn fit_within_thumbnail(
+    source_width: f64,
+    source_height: f64,
+    max_width: u32,
+) -> Result<(u32, u32), ToolError> {
+    let drawable = source_width.is_finite()
+        && source_height.is_finite()
+        && source_width > 0.0
+        && source_height > 0.0;
+    if !drawable {
+        return Err(render_error("page has no drawable area"));
+    }
+
+    // Fit to whichever axis binds first. Scaling to width alone leaves the height derived from
+    // an aspect ratio PDF does not bound; taking the smaller of the two scales keeps the aspect
+    // ratio exactly and bounds both dimensions.
+    let scale =
+        (f64::from(max_width) / source_width).min(f64::from(MAX_THUMBNAIL_HEIGHT) / source_height);
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err(render_error("page has no drawable area"));
+    }
+
+    // The clamps are belt-and-braces against rounding: a scale of exactly `max / source` can
+    // round `source * scale` to `max + 1` in floating point, and `as u32` on a value already
+    // known finite and positive is then exact.
+    let width = (source_width * scale)
+        .round()
+        .clamp(1.0, f64::from(MAX_THUMBNAIL_WIDTH)) as u32;
+    let height = (source_height * scale)
+        .round()
+        .clamp(1.0, f64::from(MAX_THUMBNAIL_HEIGHT)) as u32;
+    Ok((width, height))
+}
 
 /// Whether this build renders page previews (AC17/AC46).
 ///
@@ -152,18 +203,105 @@ mod tests {
     }
 
     /// AC45: a caller cannot talk this module into rendering a wall-sized thumbnail, whatever it
-    /// asks for. Asserted through the public entry point, since the clamp is the contract.
+    /// asks for. **Asserted through the public entry point on a real render**, decoding the PNG
+    /// that comes back — the first version of this test called `u32::clamp` directly and would
+    /// have stayed green with the clamp deleted from `render_page` (code review 2026-09-13).
+    /// `cfg`-gated to the platforms with a backend rather than skipped at runtime (AC47b); on the
+    /// no-renderer build there is no bitmap whose width could be asserted.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn requested_width_is_clamped_to_the_thumbnail_ceiling() {
+        let pdf = fixtures::page_pdf(200, 400);
+
+        let png = render_page(&pdf, 1, u32::MAX).unwrap();
+        let decoded = image::load_from_memory(&png).unwrap();
+
         assert_eq!(
-            u32::MAX.clamp(1, MAX_THUMBNAIL_WIDTH),
+            decoded.width(),
             MAX_THUMBNAIL_WIDTH,
             "an absurd request must clamp, not allocate"
         );
-        assert_eq!(
-            0u32.clamp(1, MAX_THUMBNAIL_WIDTH),
-            1,
-            "zero must not divide"
+        // 200x400 at 640 wide is 1280 tall: the clamp fed the real fit, not a squash.
+        assert_eq!(decoded.height(), MAX_THUMBNAIL_WIDTH * 2);
+    }
+
+    #[test]
+    fn fit_keeps_the_aspect_ratio_when_width_binds() {
+        assert_eq!(fit_within_thumbnail(200.0, 400.0, 100).unwrap(), (100, 200));
+    }
+
+    /// The sliver page from `MAX_THUMBNAIL_HEIGHT`'s own doc comment, asserted on the shared
+    /// arithmetic so the bound holds for the Windows backend too — not only for the one that
+    /// happens to compile on the developer's machine.
+    #[test]
+    fn fit_bounds_the_height_of_an_extreme_aspect_ratio() {
+        let (width, height) = fit_within_thumbnail(1.0, 14400.0, MAX_THUMBNAIL_WIDTH).unwrap();
+        assert_eq!(height, MAX_THUMBNAIL_HEIGHT);
+        assert!(
+            width < height,
+            "a sliver must stay a sliver ({width}x{height})"
         );
+        assert!(width >= 1, "and must never round to nothing");
+    }
+
+    #[test]
+    fn fit_rejects_a_source_that_is_not_a_positive_finite_size() {
+        for (w, h) in [
+            (0.0, 400.0),
+            (200.0, 0.0),
+            (-200.0, 400.0),
+            (f64::NAN, 400.0),
+            (f64::INFINITY, 400.0),
+            // Two positive subnormals: legal syntax, passes `<= 0.0`, and the scale is `+inf`.
+            (f64::from_bits(1), f64::from_bits(1)),
+        ] {
+            let err = fit_within_thumbnail(w, h, MAX_THUMBNAIL_WIDTH).unwrap_err();
+            assert_eq!(err.code, "pdf-render-unavailable", "for {w}x{h}");
+        }
+    }
+
+    #[test]
+    fn fit_never_exceeds_either_ceiling() {
+        let (width, height) = fit_within_thumbnail(14400.0, 14400.0, u32::MAX).unwrap();
+        assert!(width <= MAX_THUMBNAIL_WIDTH * 16 && height <= MAX_THUMBNAIL_HEIGHT);
+        let (width, height) = fit_within_thumbnail(14400.0, 1.0, MAX_THUMBNAIL_WIDTH).unwrap();
+        assert_eq!((width, height), (MAX_THUMBNAIL_WIDTH, 1));
+    }
+}
+
+/// Test-only PDF builder shared by this module's tests and the backends', so every platform is
+/// held to the same fixture rather than each testing whatever was convenient.
+#[cfg(test)]
+pub(crate) mod fixtures {
+    /// A one-page PDF built by hand, so no checked-in binary fixture is needed — the same
+    /// approach `umbra-core`'s own pdf.rs tests use. The page box is an argument so a test can
+    /// state the shape it is actually about.
+    pub(crate) fn page_pdf(width: i64, height: i64) -> Vec<u8> {
+        use lopdf::{Document, Object, dictionary};
+
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), width.into(), height.into()],
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1_u32,
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+        doc.trailer.set("Root", catalog_id);
+
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
     }
 }

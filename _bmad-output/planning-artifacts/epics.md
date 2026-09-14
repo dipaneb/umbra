@@ -78,7 +78,7 @@ No UX design contract exists; UX constraints are carried by the PRD itself (NFR5
 
 **F8 — Bucket growth (P2)**
 
-- FR27: PDF: merge multiple PDFs, split/extract page ranges, extract text — all locally.
+- FR27: PDF: merge multiple PDFs, split/extract page ranges, extract text — all locally. **Revised 2026-09-10 (Story 8.8):** the three-verb wording described three independent, re-picking-the-same-file operations with no document behind them — replaced by an open-once document surface (merge, select-extract, delete, rotate, reorder, read text, honest scan reporting) with OS-native page previews on macOS/Windows. See `prd.md` FR27 for the full revision and its own mid-story correction.
 - FR28: Images: convert between PNG/JPEG/WebP/HEIC and compress with a quality slider showing estimated output size. **Scope update (Story 6.2, 2026-08-10):** HEIC descoped from v1 — every real Rust HEIC crate candidate investigated carries a concrete, unresolved blocker (AGPL/commercial dual license, unpublished/unconfirmed license, or a GPL/LGPL codec-dependency risk to the AD-11 CI compile gate). v1 ships PNG/JPEG/WebP only; see Story 6.2's Task 1 for the full verification trail.
 
 **F9 — Second AI feature (P2 — pick one, backlog the other)**
@@ -172,7 +172,7 @@ No UX design contract exists for this project (confirmed 2026-07-20). UX constra
 - FR24: Epic 4 — Editable result, one-click copy, <~3 s typical
 - FR25: Epic 4 — English OCR v1 (French coupling rule recorded)
 - FR26: Epic 4 — Explicit empty/failure states
-- FR27: Epic 6 — PDF merge/split/extract text — **revised 2026-09-10 (Story 8.8)**: the PDF tool becomes an open-once document surface (merge, select-extract, delete, rotate, reorder, read text, honest scan reporting). Rendering-dependent operations are explicitly out of scope. See `prd.md` FR27.
+- FR27: Epic 6 — PDF merge/split/extract text — **revised 2026-09-10 (Story 8.8)**: the PDF tool becomes an open-once document surface (merge, select-extract, delete, rotate, reorder, read text, honest scan reporting), with **OS-native page previews in scope** (macOS/Windows, by OS capability — corrected 2026-09-11 at implementation, after an earlier draft of this line wrongly excluded them). Only the further **point-at-the-page editing surface** — signature, redaction, annotation, crop — remains out of scope, deferred to a future second PDF tool (issue #141). See `prd.md` FR27.
 - FR28: Epic 6 — Image convert + compress with quality slider
 - FR29: Epic 6 — Second AI feature (decision story + implementation)
 - FR30: Epic 5 — Signed + notarized macOS builds
@@ -214,6 +214,8 @@ Anyone can download a signed, notarized Umbra from the landing page, and install
 ### Epic 6: Bucket growth — PDF, images & the second AI feature
 
 The Bucket becomes a real file workbench: PDF merge/split/extract-text, image format conversion and compression — plus the FR29 choice (regex-explain vs OCR→structured) carried as an explicit decision story, then implemented behind an AD-8-style port.
+
+**Revised 2026-09-10 (Story 8.8):** "the Bucket" as a tool grouping no longer exists — Story 8.7 deleted it, splitting it into three independent tools (Image to Text, PDF, Images; see `prd.md`'s glossary). The FR27 portion of this line describes what shipped in Story 6.1, since revised by Story 8.8 into an open-once document surface with page previews; the sentence above stays as the record of what was originally scoped rather than being rewritten. See `epics.md`'s own FR27 entry above and `prd.md` FR27.
 **FRs covered:** FR27, FR28, FR29
 
 ### Epic 7: Rebrand — shell chrome alignment
@@ -1388,3 +1390,5 @@ Discovery + redesign per the shared shape above, scoped to the **PDF tool** (`sr
 Discovery + redesign per the shared shape above, scoped to the **Images tool** (`src/tools/image/ImageView.vue`, `crates/umbra-core/src/image_convert.rs`, `src-tauri/src/commands/image.rs`).
 
 **Depends on Story 8.7**, which splits the shared `BucketView.vue` into three separate tools and moves this one across verbatim. 8.9 inherits that container decision and does not reopen it. Handed to this story in writing: rename the still-`bucket_*` image commands and error codes to `image_*`.
+
+**Also handed to this story by Story 8.8 (2026-09-10), named precisely rather than left generic:** exactly **two** shared error codes — `bucket-input-too-large` and `bucket-internal` — are duplicated (not migrated) into `pdf-*` equivalents in `commands/pdf.rs`; the `bucket-*` pair stays live for `commands/image.rs` and this story owns retiring it. Two dangling comments in `commands/image.rs` (`:46`, `:66`) still name `bucket_merge_pdfs`/`bucket_extract_pdf_text`, commands renamed by 8.8 to `pdf_merge`/`pdf_extract_text` — those comments are stale as of 8.8 and are this story's to fix. See `8-8-pdf-decision-record.md`'s AC42/§4.1 for the full detail; this story inherits a decision, not an ambiguity.

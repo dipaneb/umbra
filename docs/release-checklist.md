@@ -130,6 +130,10 @@ Story 5.3, but a tool may have been added since:
   the very first use of the OCR engine in the running session.** First use is the specific
   moment a forgotten bundled-model reference would surface as an actual download,
   rather than as a bug that shows up somewhere else.
+  - **Drop a PDF here** (Story 8.8's hand-off). The tool should refuse it and offer to
+    **open it in the PDF tool with that document already loaded** — not a bare "PDFs open
+    in the PDF tool" with nothing to click, and not a redirect to an empty PDF view
+    demanding the file be re-picked.
 - **PDF** (Story 6.1, redesigned in Story 8.8) — open a PDF into the document surface and
   exercise the page verbs against the working copy: rotate, delete, reorder, extract a
   selection, read text, save a copy. Then drop two or more PDFs at once to merge them.
@@ -145,6 +149,10 @@ Story 5.3, but a tool may have been added since:
     as pixels — and the page verbs should stay available.
   - Open a **password-protected** PDF and confirm the refusal reads as a sentence in both
     languages, not as an error code.
+  - **Merge queue:** with a document already open and unsaved edits pending, use "Merge
+    with…" and confirm the *edited working copy* is what merges, not the original file —
+    then reorder and remove entries in the queue before merging, to exercise the controls
+    a straight two-file drop never touches.
 - **Image** (Story 6.2) — convert a PNG to JPEG with a quality change, confirming the live
   size estimate updates as the slider moves.
 

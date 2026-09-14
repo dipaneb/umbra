@@ -412,7 +412,13 @@ watch(
   () => registry.dropSourcePath,
   (source) => {
     if (!source || source.toolId !== "ocr") return;
-    droppedPdfPath.value = source.path.toLowerCase().endsWith(".pdf") ? source.path : null;
+    // Code review 2026-09-14: no longer gated on the path ending in `.pdf`. The refusal this
+    // offers to redirect (`ocr-pdf-wrong-tool`) is raised by the Rust side sniffing the file's
+    // magic bytes, not its name — a PDF with no extension, a renamed one, or a temp/download path
+    // is refused exactly the same way, and the extension check here silently hid the offer for
+    // precisely that class of file. `pdfRedirect` already gates on the error code alone; capturing
+    // the path unconditionally is what makes that the ONLY gate.
+    droppedPdfPath.value = source.path;
   },
   { flush: "sync" },
 );
@@ -505,6 +511,12 @@ async function onChooseImage() {
     const path = await open({ multiple: false });
     if (path === null) return;
 
+    // Code review 2026-09-14: the picker is the other place `ocr-pdf-wrong-tool` is reachable
+    // (via `showFileSource` -> `ocr_grant_asset`, which sniffs the same magic bytes as the drop
+    // path). Captured unconditionally, exactly like the drop watcher above — `pdfRedirect`'s
+    // error-code gate is what decides whether it is ever shown, not this assignment. Without it,
+    // picking a misidentified PDF hit the identical wall a drop would, with no way out of it.
+    droppedPdfPath.value = path;
     resetForNewSource();
     pastedImage.value = null;
     await showFileSource(path);

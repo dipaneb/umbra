@@ -7,8 +7,11 @@
 //! crash and never a blank frame — is the same behaviour macOS and Windows fall into whenever an
 //! individual page fails to draw.
 //!
-//! Framing it that way is what keeps this code alive: it is exercised on every platform in CI
-//! through the shared `mod.rs` tests, rather than being a stub only a Linux user would ever meet.
+//! Framing it that way is what keeps this code alive: the *contract* it implements — an error
+//! from `render::render_page`, never a panic and never an empty image — is what `mod.rs`'s
+//! shared tests assert on every platform. This module's own body is compiled and run only where
+//! it is the selected backend (the Linux CI runner); on macOS and Windows those same tests
+//! exercise their backend's error path instead. One contract, three implementations, one test.
 
 use umbra_core::ToolError;
 

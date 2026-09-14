@@ -25,7 +25,7 @@ export function isSelected(selection: PageSelection, page: number): boolean {
   return selection.pages.includes(page);
 }
 
-/** Replaces the selection with exactly this page — a plain click, or `Space` on an unselected row. */
+/** Replaces the selection with exactly this page — a plain click. (`Space` always toggles, per AC22.) */
 export function selectOnly(page: number): PageSelection {
   return { anchor: page, pages: [page] };
 }
@@ -67,19 +67,4 @@ export function selectAll(totalPages: number): PageSelection {
 export function clampPage(page: number, totalPages: number): number {
   if (totalPages < 1) return 1;
   return Math.min(Math.max(page, 1), totalPages);
-}
-
-/**
- * The pages remaining after `removed` are deleted, renumbered to their new positions.
- *
- * Deleting pages shifts every later page down, so a selection held across the operation would
- * otherwise point at the wrong rows — silently, and only for the pages after the first deletion.
- */
-export function renumberAfterDelete(totalPages: number, removed: number[]): number[] {
-  const gone = new Set(removed);
-  const remaining: number[] = [];
-  for (let page = 1; page <= totalPages; page += 1) {
-    if (!gone.has(page)) remaining.push(page);
-  }
-  return remaining;
 }

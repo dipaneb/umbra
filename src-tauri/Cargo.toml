@@ -66,8 +66,12 @@ umbra-core = { path = "../crates/umbra-core" }
 # There is deliberately NO Linux block: Linux has no OS-level PDF rendering API, and its two
 # de-facto libraries are licence-incompatible with this app (Poppler is GPL, MuPDF is AGPL). It
 # compiles `render/unsupported.rs` and degrades honestly (AC46). That is a decision, not a gap.
-# `image` is not listed here: `umbra-core` already depends on it and re-exports nothing, so
-# `render/mac.rs` uses this crate's own dev/runtime copy via the workspace resolution.
+# `image` IS listed under both target blocks below, as a runtime dependency: `render/mac.rs`
+# encodes its bitmap to PNG with it, and `render/win.rs`'s tests decode with it. It was already a
+# dev-dependency of this crate and a runtime dependency of `umbra-core`, so no new crate enters
+# the tree (AC43) — this is the same version, resolved once by the workspace, declared where the
+# backends can actually see it. (An earlier comment here said the opposite; code review
+# 2026-09-13.)
 [target.'cfg(target_os = "macos")'.dependencies]
 # Core Graphics' PDF API — the engine behind Preview.app. Features are per-header in the objc2
 # family, so each one this backend touches is named explicitly rather than pulling the crate's
