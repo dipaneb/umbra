@@ -81,18 +81,21 @@ describe("TOOLS clipboardMatch field (AC3/AC4/AC12, Story 7.8)", () => {
     expect(eligible).toEqual(["base64", "json", "jwt", "ocr"]);
   });
 
-  // AC33/AC35 (Story 8.8): the PDF entry is the only one that declares `multiple`, and that
-  // exclusivity is the whole safety property of an additive flag — if a second tool picked it up
-  // by accident, its handler would start receiving `paths` where it expects `path`, silently.
-  it("declares drop.multiple on the PDF tool and on nothing else", () => {
+  // AC33/AC35 (Story 8.8) established `multiple` as an additive, opt-in flag — its safety
+  // property is that a tool only ever receives `paths` where its own handler expects that shape,
+  // not that exactly one tool may ever declare it. Story 8.9's Images entry is the second (AC14),
+  // deliberately reusing the same shape rather than inventing a second one; this test was
+  // updated to name both rather than assert PDF stays the only one forever.
+  it("declares drop.multiple only on the tools whose handlers expect a paths array", () => {
     setActivePinia(createPinia());
     const registry = useRegistryStore();
 
     const multiple = registry.tools
       .filter((tool) => tool.drop?.multiple)
-      .map((tool) => tool.id);
+      .map((tool) => tool.id)
+      .sort();
 
-    expect(multiple).toEqual(["pdf"]);
+    expect(multiple).toEqual(["image", "pdf"]);
   });
 
   it("gives the PDF tool aliases for its new verbs in both locales (AC35)", () => {

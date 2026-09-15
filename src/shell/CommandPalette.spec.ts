@@ -143,13 +143,13 @@ describe("CommandPalette", () => {
     await wrapper.vm.$nextTick();
 
     // Default empty query lists all registry entries (JSON, Base64, UUID, Hash, JWT, Cron,
-    // Image to Text, PDF, Image).
+    // Image to Text, PDF, Images).
     // ArrowUp from index 0 should wrap to the last item, not go negative.
     dispatch({ key: "ArrowUp" });
     await wrapper.vm.$nextTick();
     // `toBe`, not `toContain`: "Image to Text" also contains "Image", so only an exact
     // match proves the wrap landed on the LAST entry rather than the OCR one.
-    expect(wrapper.find("li.active").text()).toBe("Image");
+    expect(wrapper.find("li.active").text()).toBe("Images");
 
     // ArrowDown from the last item should wrap back to the first.
     dispatch({ key: "ArrowDown" });

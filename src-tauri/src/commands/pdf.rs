@@ -15,12 +15,13 @@ fn check_file_size(path: &str) -> Result<(), ToolError> {
         .len();
     if len > MAX_INPUT_BYTES as u64 {
         return Err(ToolError {
-            // AC18: `pdf-input-too-large` and `pdf-internal` are NEW codes minted here, and the
-            // `bucket-input-too-large` / `bucket-internal` pair is deliberately left LIVE and
-            // untouched for the Images tool, which raises both from `commands/image.rs`. This is
-            // duplication, not migration — 8.7's own precedent — because retiring the shared pair
-            // would mean editing a second tool's command file mid-story. **Story 8.9 owns
-            // retiring it**, and `commands/image.rs` is not edited by this story.
+            // AC18: `pdf-input-too-large` and `pdf-internal` are NEW codes minted here, duplicating
+            // rather than sharing what was then the `bucket-input-too-large` / `bucket-internal`
+            // pair (8.7's own precedent, since retiring the shared pair would have meant editing a
+            // second tool's command file mid-story). Story 8.9 has since retired that pair outright
+            // in `commands/image.rs` — it owns that file directly, so `image-input-too-large` /
+            // `image-internal` are minted there instead of duplicated again. `pdf.rs` needed no
+            // change of its own for that retirement; this comment is corrected to say so.
             code: "pdf-input-too-large".to_string(),
             message: format!("file is {len} bytes, which exceeds the {MAX_INPUT_BYTES}-byte limit"),
             position: None,

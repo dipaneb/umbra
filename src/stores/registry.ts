@@ -222,13 +222,32 @@ const TOOLS: ToolRegistryEntry[] = [
     component: () => import("../tools/pdf/PdfView.vue"),
   },
   {
-    // `name` is provisional — Story 8.9's to change (AC28).
+    // AC4b: `"Images"`, not the provisional `"Image"` Story 8.7 shipped — matches the
+    // epic/story title and reads as a proper noun the way `"PDF"` does, rather than a
+    // category label that never got finished.
     id: "image",
-    name: "Image",
+    name: "Images",
     descriptionKey: "tools.image.description",
-    aliases: ["image", "convert", "compress", "png", "jpeg", "webp", "convertir", "compresser"],
+    aliases: [
+      "image",
+      "images",
+      "convert",
+      "compress",
+      "resize",
+      "png",
+      "jpeg",
+      "webp",
+      "avif",
+      "convertir",
+      "compresser",
+      "redimensionner",
+    ],
     route: "/tools/image",
     icon: "image",
+    // AC5/AC14: drop adopted, multi-file — the first decision for this tool, not a
+    // re-decision (unlike PDF's Story 6.1 history). Reuses the exact additive shape Story
+    // 8.8 already built rather than inventing a second one.
+    drop: { acceptedMimeTypes: [], handler: "image_ingest_dropped", multiple: true },
     component: () => import("../tools/image/ImageView.vue"),
   },
 ];

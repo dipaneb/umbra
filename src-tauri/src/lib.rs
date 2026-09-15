@@ -16,7 +16,7 @@ use commands::base64::{
 };
 use commands::cron::cron_explain;
 use commands::hash::{hash_compute, hash_compute_file};
-use commands::image::{bucket_convert_image, bucket_estimate_image_size};
+use commands::image::{image_convert, image_estimate_size, image_ingest_dropped};
 use commands::json::{
     json_diff, json_format, json_minify, json_parse, json_query, json_repair, json_transform,
 };
@@ -87,8 +87,9 @@ pub fn run() {
             pdf_delete_pages,
             pdf_rotate_pages,
             pdf_reorder_pages,
-            bucket_convert_image,
-            bucket_estimate_image_size
+            image_convert,
+            image_estimate_size,
+            image_ingest_dropped
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

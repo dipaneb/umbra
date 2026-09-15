@@ -153,8 +153,18 @@ Story 5.3, but a tool may have been added since:
     with…" and confirm the *edited working copy* is what merges, not the original file —
     then reorder and remove entries in the queue before merging, to exercise the controls
     a straight two-file drop never touches.
-- **Image** (Story 6.2) — convert a PNG to JPEG with a quality change, confirming the live
-  size estimate updates as the slider moves.
+- **Images** (Story 6.2, redesigned in Story 8.9) — drop **several** images at once (mixing a
+  good file with one the tool can't read) and confirm the bad one shows its own error while
+  the rest convert normally, not one failure blanking the whole batch. Convert the batch to
+  each target format in turn, including **AVIF** — the tool's newest target, and the one
+  whose encoder feature (`ravif`) is easiest to leave uncompiled by accident. Try **resize**
+  with the aspect lock on and off — locked should never upscale past the source's own size;
+  unlocked should honor a typed value larger than the source. Convert a transparent PNG to
+  JPEG and confirm the **background color** picker actually controls what shows through,
+  not just white. Open **Compare** on a finished item and drag the slider, then move it with
+  the **arrow keys alone** (NFR5) — dragging must never be the only way. "Convert all" should
+  ask for a destination **folder** once, not a save dialog per file, and a name collision in
+  that folder should get an auto-suffix rather than a silent overwrite.
 
 Also open **Settings** and the **⌘K palette** during the capture. Neither makes any
 `invoke`/`fetch` call today (confirmed by reading `SettingsView.vue` and
