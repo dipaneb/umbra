@@ -1,7 +1,7 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { i18n } from "../i18n";
-import { formatDate as formatLocaleDate } from "./locale";
+import { formatDate as formatLocaleDate, resolveLocale } from "./locale";
 import type { useSettingsStore } from "../stores/settings";
 
 export type { Update };
@@ -39,6 +39,52 @@ export function getUpdateSeverityLabel(severity: UpdateSeverity): string {
 // markup to end users, so the marker is stripped before the notes reach any UI surface.
 export function stripSeverityMarker(body: string | undefined): string | undefined {
   return body?.replace(SECURITY_MARKER, "");
+}
+
+// Tauri's latest.json `notes` field is a single string with no native per-locale
+// variant (Context7-confirmed against the v2 updater docs — same schema for both the
+// static-file and dynamic-server forms). This project's own convention, documented in
+// docs/release-checklist.md, packs every supported language into that one string as
+// `[xx]`-headed blocks — a `[security]`-marker line (matched, stripped above) then a
+// bare `[en]`/`[fr]` line, then that language's notes, e.g.:
+//   [en]
+//   Fixes a crash when opening large files.
+//
+//   [fr]
+//   Corrige un plantage lors de l'ouverture de fichiers volumineux.
+// A header must be alone on its line (`$` before the newline) so it can't false-match
+// inline bracket text elsewhere in the notes (e.g. "see [en] docs" mid-sentence).
+const LOCALE_HEADER = /^\[([a-z]{2})][ \t]*$/gm;
+
+// Releases tagged before this convention existed carry no `[xx]` headers at all — for
+// those, `blocks` comes back empty and the caller falls back to the raw (unlabeled)
+// text below, so old tags keep rendering exactly as they always have.
+function parseLocaleBlocks(text: string): Map<string, string> {
+  const headers = [...text.matchAll(LOCALE_HEADER)];
+  const blocks = new Map<string, string>();
+  headers.forEach((header, index) => {
+    const start = header.index + header[0].length;
+    const end = headers[index + 1]?.index ?? text.length;
+    blocks.set(header[1].toLowerCase(), text.slice(start, end).trim());
+  });
+  return blocks;
+}
+
+// Picks this release's notes in the UI's current language: the resolved locale's block
+// if present, else the "en" block (mirrors vue-i18n's own fallbackLocale in i18n/index.ts),
+// else whichever block came first in the tag message. Takes `settings` rather than an
+// already-resolved locale to match formatUpdateDate's convention just below — resolution
+// stays centralized in resolveLocale (./locale), not duplicated at each call site.
+export function getLocalizedNotes(
+  body: string | undefined,
+  settings: Pick<ReturnType<typeof useSettingsStore>, "locale">,
+): string | undefined {
+  const withoutSeverity = stripSeverityMarker(body);
+  if (!withoutSeverity) return withoutSeverity;
+  const blocks = parseLocaleBlocks(withoutSeverity);
+  if (blocks.size === 0) return withoutSeverity.trim();
+  const uiLocale = resolveLocale(settings.locale, navigator.languages);
+  return blocks.get(uiLocale) ?? blocks.get("en") ?? blocks.values().next().value;
 }
 
 // Update.date is a plain, unparsed string (latest.json's optional pub_date field passed
