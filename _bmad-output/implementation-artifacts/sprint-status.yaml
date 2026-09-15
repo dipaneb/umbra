@@ -41,7 +41,8 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-15  # story 8-9 Task 2b (implementation) DONE, same session as Task 2a's
+last_updated: 2026-09-15  # story 8-9 code review complete, "review" -> "done" (see note below).
+# Previous entry, same day -- story 8-9 Task 2b (implementation) DONE, same session as Task 2a's
 # design confirmation. Full redesign landed: crates/umbra-core/src/image_convert.rs (bucket-image-*
 # -> image-*, resize with an explicit-dimensions + allow_upscale core-layer API, AVIF as an encode
 # target via AvifEncoder::new_with_speed_quality, background-color flatten replacing the hardcoded
@@ -1739,7 +1740,40 @@ development_status:
   # Unlike PDF, Images' drag-and-drop question is framed as a first decision, not a
   # re-decision -- EXPERIENCE.md never claimed Images accepts drops the way it wrongly did
   # for PDF. Not committed.
-  8-9-reimagine-the-bucket-images: review
+  8-9-reimagine-the-bucket-images: done
+  # note: story 8-9 code review 2026-09-15 (bmad-code-review, "review" -> "done") -- three
+  # parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor against the full spec)
+  # over git diff main...HEAD, baseline ff3f8ac. The exhaustive bucket_*->image_* rename
+  # inventory (AC4a) was independently cross-checked and confirmed complete. 26 raw findings,
+  # deduplicated to 17 unique + 1 dismissed. 1 decision-needed (AC19's literal "one shared
+  # runner per action-type" vs the per-item createLatestWinsRunner actually built) resolved
+  # with the developer: accepted the per-item design as correct, AC19's text amended in place
+  # rather than left to drift. 15 patches applied + full green gate re-run (cargo test 444 /
+  # clippy / fmt / pnpm test 1182 / lint / vue-tsc / build all clean): apply_resize's no-
+  # upscale guard changed from AND to OR across axes (a mixed larger/smaller request used to
+  # bypass it and silently upscale one axis); resize dimensions gained an upper bound via a
+  # check_dimensions re-check after resize (an unbounded huge value or a rounds-to-zero value
+  # both used to reach resize_exact unchecked -- the same CWE-400 class MAX_DECODED_PIXELS
+  # already guards for decode); the AC29 batch-summary announcement now branches on the actual
+  # `done` count instead of queue.length (was announcing "1 of 1 converted" on a failing
+  # single-item batch); top-level picker/drop failures gained a visible role="alert" paragraph
+  # matching PdfView.vue's own pattern (previously sr-only only); unique_output_path now
+  # reserves each candidate name atomically via create_new instead of a racy exists() check,
+  # closing a real concurrent-dispatch clobber window, plus a bounded suffix-attempt cap;
+  # readyCount no longer counts already-"done" items as ready (Convert button silent-no-op
+  # after a successful batch); resolveOutputDir gained an in-flight-promise guard against a
+  # double folder-picker open; the compare overlay gained Escape-to-close and initial focus
+  # management; the compare Before/After tags now hide at the divider's 0/100 extremes instead
+  # of mislabeling the frame; aspectReference now recomputes from a remaining queue item when
+  # its source item is removed; .error-text gained a :title affordance; two doc-comment
+  # accuracy fixes (toolError.ts's AC31 audit list, grant_asset_access's two-call-site
+  # justification). 2 deferred -> deferred-work.md, both low severity: check_dimensions'
+  # zero-dimension code (pre-existing, not reconsidered by this story's rewrite) and the
+  # ingest-then-convert double file read (reclassified from patch mid-review -- eliminating it
+  # needs cross-command byte caching, a design decision, not an unambiguous fix). Regression
+  # tests added for every applied patch, including a genuine tokio::join! concurrency test
+  # proving the output-path race fix. Not committed -- all review changes are UNCOMMITTED
+  # working-tree changes on feat/story-8-9-reimagine-the-bucket-images.
   epic-8-retrospective: optional
 
 action_items:

@@ -164,6 +164,9 @@ export const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
 // - `image-input-too-large`, `image-internal` — the same two shapes every other tool's
 //   `*-input-too-large`/`*-internal` pair is excluded for (a byte count in prose; a
 //   `spawn_blocking` join failure's own runtime text).
+// - `image-asset-grant-failed` — embeds the file path and the asset-protocol scope's own error
+//   text (`grant_asset_access`, `commands/image.rs`); added to this list at code review
+//   2026-09-15 (was missing from the original AC31 pass despite being excluded correctly).
 
 // Story 8.7 AC26: the `ocr-*` codes deliberately NOT in the set above, each with its reason.
 // "Not yet done" is not one of them — every exclusion here is a property of the code itself:

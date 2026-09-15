@@ -38,7 +38,10 @@ afterEach(() => {
 });
 
 function mountView() {
-  wrapper = mount(ImageView, { global: { plugins: [pinia] } });
+  // attachTo: document.body — same convention PdfView/OcrView/CronView's own specs use, needed
+  // so `document.activeElement` assertions (the compare overlay's focus-on-open fix) actually
+  // reflect real focus rather than jsdom's no-op on a detached element.
+  wrapper = mount(ImageView, { global: { plugins: [pinia] }, attachTo: document.body });
   return wrapper;
 }
 
@@ -103,6 +106,38 @@ describe("ImageView", () => {
       expect(wrapper!.find(".drop-target").exists()).toBe(true);
     });
 
+    it("shows a visible error, not just an sr-only announcement, when a whole drop fails (code review 2026-09-15)", async () => {
+      mountView();
+
+      store().dropResult = {
+        toolId: "image",
+        error: { code: "file-read-error", message: "could not read the dropped file", position: null, context: null },
+      };
+      await flushPromises();
+
+      const alert = wrapper!.find("[role='alert']");
+      expect(alert.exists()).toBe(true);
+      expect(alert.text()).toBe("could not read the dropped file");
+    });
+
+    it("shows a visible error when the picker/ingest call itself fails", async () => {
+      openMock.mockResolvedValueOnce(["/tmp/a.png"]);
+      invokeMock.mockRejectedValueOnce({
+        code: "file-read-error",
+        message: "disk unplugged",
+        position: null,
+        context: null,
+      });
+      mountView();
+
+      await clickButton(wrapper!, "Choose images…");
+      await flushPromises();
+
+      const alert = wrapper!.find("[role='alert']");
+      expect(alert.exists()).toBe(true);
+      expect(alert.text()).toBe("disk unplugged");
+    });
+
     it("shows a per-file error row for a dropped file that failed ingest, alongside good ones (AC15/AC17)", async () => {
       mountView();
 
@@ -127,6 +162,9 @@ describe("ImageView", () => {
       // The good file is unaffected and still convertible — pending rows render no status
       // chip at all (render review 2026-09-15), so its absence here is itself the assertion.
       expect(rows[0].find(".chip").exists()).toBe(false);
+      // Code review 2026-09-15: a long/truncated error had no way to be read in full — `title`
+      // gives it the same affordance `.file-name` already has via `:title="item.path"`.
+      expect(rows[1].find(".error-text").attributes("title")).toBe("bad format");
     });
 
     it("does not duplicate a file that is already queued", async () => {
@@ -206,6 +244,29 @@ describe("ImageView", () => {
 
       const height = wrapper!.find<HTMLInputElement>('[aria-label="Height"]');
       expect(height.element.value).toBe("50");
+    });
+
+    it("recomputes the aspect-lock reference from a remaining item once its source item is removed (code review 2026-09-15)", async () => {
+      mountView();
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/a.png", 200, 100), ingestOutcome("/tmp/b.png", 50, 50)],
+      };
+      await flushPromises();
+
+      // /tmp/a.png (200x100, a 2:1 ratio) is first in, so it seeds aspectReference.
+      await wrapper!.find('button[aria-label="Remove"]').trigger("click");
+      await flushPromises();
+      expect(wrapper!.text()).not.toContain("a.png");
+
+      // Only /tmp/b.png (50x50, a 1:1 ratio) remains — the reference must now derive from it,
+      // not keep computing from the removed 2:1 file.
+      const width = wrapper!.find<HTMLInputElement>('[aria-label="Width"]');
+      await width.setValue("40");
+      await width.trigger("input");
+
+      const height = wrapper!.find<HTMLInputElement>('[aria-label="Height"]');
+      expect(height.element.value).toBe("40");
     });
 
     it("stops recomputing the paired field once the lock is toggled off", async () => {
@@ -379,6 +440,29 @@ describe("ImageView", () => {
       expect(status.text()).toBe("1 of 2 converted");
     });
 
+    it("announces the true settled count when a single-item batch fails, not a false success (AC29, code review 2026-09-15)", async () => {
+      mountView();
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/solo.png")],
+      };
+      await flushPromises();
+
+      openMock.mockResolvedValueOnce("/tmp/out");
+      invokeMock.mockRejectedValueOnce({
+        code: "image-encode-failed",
+        message: "nope",
+        position: null,
+        context: null,
+      });
+
+      await clickButton(wrapper!, "Convert");
+      await flushPromises();
+
+      const status = wrapper!.find("[role='status'][aria-live='polite']");
+      expect(status.text()).toBe("0 of 1 converted");
+    });
+
     it("retries a single failed item on its own, without re-running the others (AC33)", async () => {
       mountView();
       store().dropResult = {
@@ -447,6 +531,47 @@ describe("ImageView", () => {
       );
     });
 
+    it("opens the destination folder picker only once for two near-simultaneous triggers (code review 2026-09-15)", async () => {
+      mountView();
+      store().dropResult = {
+        toolId: "image",
+        value: [
+          ingestOutcome("/tmp/a.png"),
+          {
+            path: "/tmp/bad.png",
+            width: 10,
+            height: 10,
+            error: { code: "image-unsupported-format", message: "bad", position: null, context: null },
+          },
+        ],
+      };
+      await flushPromises();
+
+      let resolveOpen!: (path: string) => void;
+      openMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveOpen = resolve;
+          }),
+      );
+      invokeMock.mockResolvedValue({ outputPath: "/tmp/out/x.jpg", originalBytes: 1000, convertedBytes: 400 });
+
+      const convertAllClick = clickButton(wrapper!, "Convert all");
+      await flushPromises();
+      const retryClick = clickButton(wrapper!, "Retry");
+      await flushPromises();
+
+      // Both triggers are now awaiting the SAME still-pending folder pick.
+      expect(openMock).toHaveBeenCalledTimes(1);
+
+      resolveOpen("/tmp/out");
+      await convertAllClick;
+      await retryClick;
+      await flushPromises();
+
+      expect(openMock).toHaveBeenCalledTimes(1);
+    });
+
     it("removes an item from the queue and never sends it to Convert all again", async () => {
       mountView();
       store().dropResult = {
@@ -460,6 +585,25 @@ describe("ImageView", () => {
 
       expect(wrapper!.findAll(".queue-row")).toHaveLength(1);
       expect(wrapper!.text()).not.toContain("a.png");
+    });
+
+    it("disables Convert all and reports zero ready once every item has already converted (code review 2026-09-15)", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
+
+      openMock.mockResolvedValueOnce("/tmp/out");
+      invokeMock.mockResolvedValueOnce({
+        outputPath: "/tmp/out/a.jpg",
+        originalBytes: 1000,
+        convertedBytes: 400,
+      });
+      await clickButton(wrapper!, "Convert");
+      await flushPromises();
+
+      const button = wrapper!.findAll("button").find((candidate) => candidate.text() === "Convert");
+      expect(button?.attributes("disabled")).toBeDefined();
+      expect(wrapper!.text()).toContain("0 of 1 files ready");
     });
   });
 
@@ -510,6 +654,32 @@ describe("ImageView", () => {
 
       await handle.trigger("keydown", { key: "End" });
       expect(handle.attributes("aria-valuenow")).toBe("100");
+    });
+
+    it("hides the tag for whichever image is fully covered at the divider's extremes (code review 2026-09-15)", async () => {
+      await convertOneItem();
+      await clickButton(wrapper!, "Compare");
+
+      const handle = wrapper!.find("[role='slider']");
+      await handle.trigger("keydown", { key: "Home" });
+      expect(wrapper!.find(".compare-tag-before").exists()).toBe(false);
+      expect(wrapper!.find(".compare-tag-after").exists()).toBe(true);
+
+      await handle.trigger("keydown", { key: "End" });
+      expect(wrapper!.find(".compare-tag-before").exists()).toBe(true);
+      expect(wrapper!.find(".compare-tag-after").exists()).toBe(false);
+    });
+
+    it("closes on Escape and moves focus to the divider handle on open (code review 2026-09-15)", async () => {
+      await convertOneItem();
+      await clickButton(wrapper!, "Compare");
+      await flushPromises();
+
+      const handle = wrapper!.find("[role='slider']").element;
+      expect(document.activeElement).toBe(handle);
+
+      await wrapper!.find(".compare-overlay").trigger("keydown", { key: "Escape" });
+      expect(wrapper!.find(".compare-overlay").exists()).toBe(false);
     });
 
     // Render review feedback (2026-09-15): moving the cursor off the handle mid-drag was letting

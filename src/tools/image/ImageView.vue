@@ -6,7 +6,7 @@
 // per action-type" here means every runner drives the same convert action, but each is scoped to
 // its own item's reactive slot, so reconverting item A can never supersede item B's in-flight
 // result, and reconverting A a second time correctly supersedes A's own first attempt.
-import { computed, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -49,6 +49,9 @@ const backgroundColor = ref("#ffffff");
 // real dimensions, at the core layer — a reference chosen here for the FIELDS cannot make that
 // per-item decision wrong for a differently-shaped file.
 const aspectReference = ref<{ width: number; height: number } | null>(null);
+// Code review 2026-09-15: which queue item currently backs `aspectReference`, so `removeItem` can
+// tell whether the item being removed is the one to recompute the reference away from.
+let aspectReferenceSourceId: number | null = null;
 
 function onResizeWidthInput() {
   if (!aspectLocked.value || !aspectReference.value) return;
@@ -90,6 +93,11 @@ interface QueueItem {
   path: string;
   status: "pending" | "converting" | "done" | "error";
   error: ToolError | null;
+  /** The item's own natural dimensions, learned for free from ingest's `probe()` — kept on the
+   *  item (not just folded into `aspectReference`) so `removeItem` can recompute the aspect-lock
+   *  reference from whatever remains in the queue once its current source item is removed. */
+  width: number | null;
+  height: number | null;
   outputPath: string | null;
   originalBytes: number | null;
   convertedBytes: number | null;
@@ -105,6 +113,11 @@ interface QueueItem {
 let nextItemId = 0;
 const queue = ref<QueueItem[]>([]);
 const announcement = ref("");
+// Code review 2026-09-15: a picker/drop-ingest failure used to only ever reach the sr-only
+// `announcement` region, leaving sighted users with zero visible feedback when a pick or drop
+// failed outright (before any queue item exists to show its own error). Mirrors PdfView.vue's own
+// visible `role="alert"` pattern for the same class of top-level failure.
+const topLevelError = ref<ToolError | null>(null);
 
 interface IngestOutcome {
   path: string;
@@ -119,15 +132,19 @@ function addOutcomes(outcomes: IngestOutcome[]) {
   for (const outcome of outcomes) {
     if (known.has(outcome.path)) continue;
     known.add(outcome.path);
+    const id = (nextItemId += 1);
     if (aspectReference.value === null && outcome.width && outcome.height) {
       aspectReference.value = { width: outcome.width, height: outcome.height };
+      aspectReferenceSourceId = id;
     }
     queue.value.push(
       reactive({
-        id: (nextItemId += 1),
+        id,
         path: outcome.path,
         status: outcome.error ? "error" : "pending",
         error: outcome.error,
+        width: outcome.width,
+        height: outcome.height,
         outputPath: null,
         originalBytes: null,
         convertedBytes: null,
@@ -144,11 +161,14 @@ async function onChooseImages() {
     if (picked === null) return;
     const paths = Array.isArray(picked) ? picked : [picked];
     const outcomes = await invoke<IngestOutcome[]>("image_ingest_dropped", { paths });
+    topLevelError.value = null;
     addOutcomes(outcomes);
   } catch (err) {
     // A picker/ingest-call failure (not a per-file outcome — those are always `Ok` entries)
     // has nowhere else to land; a single line above the queue is enough for what should be rare.
-    announcement.value = toolErrorMessage(toToolError(err), t);
+    const error = toToolError(err);
+    topLevelError.value = error;
+    announcement.value = toolErrorMessage(error, t);
   }
 }
 
@@ -163,9 +183,11 @@ watch(
     if (!result || result.toolId !== "image") return;
     registry.dropResult = null;
     if ("error" in result) {
+      topLevelError.value = result.error;
       announcement.value = toolErrorMessage(result.error, t);
       return;
     }
+    topLevelError.value = null;
     addOutcomes(result.value as IngestOutcome[]);
   },
 );
@@ -173,6 +195,15 @@ watch(
 function removeItem(item: QueueItem) {
   queue.value = queue.value.filter((entry) => entry.id !== item.id);
   if (compareItem.value?.id === item.id) closeCompare();
+  // Code review 2026-09-15: `aspectReference` used to be set once and never revisited, so
+  // removing the item that supplied it left the resize fields' aspect-lock math deriving from a
+  // file no longer in the queue. Recompute from whatever remains (or clear it) whenever the
+  // removed item is the one currently backing the reference.
+  if (item.id === aspectReferenceSourceId) {
+    const next = queue.value.find((entry) => entry.width && entry.height);
+    aspectReference.value = next ? { width: next.width!, height: next.height! } : null;
+    aspectReferenceSourceId = next?.id ?? null;
+  }
 }
 
 // ---- conversion (AC17/AC18/AC19/AC28/AC29) ----
@@ -187,13 +218,27 @@ const converting = ref(false);
 // here and reused silently for every later conversion or retry, and the dialog only reappears if
 // nothing has been chosen yet.
 const lastOutputDir = ref<string | null>(null);
+// Code review 2026-09-15: `resolveOutputDir` only short-circuited on the already-resolved
+// `lastOutputDir`, so two near-simultaneous callers (e.g. "Convert all" awaiting the first folder
+// dialog, plus an unguarded `retryItem` click) could both see it as unset and open the native
+// folder picker twice. This tracks the in-flight promise so a concurrent caller awaits the same
+// pick instead of starting a second one.
+let pendingOutputDir: Promise<string | null> | null = null;
 
 async function resolveOutputDir(): Promise<string | null> {
   if (lastOutputDir.value) return lastOutputDir.value;
-  const picked = await open({ directory: true });
-  if (picked === null || Array.isArray(picked)) return null;
-  lastOutputDir.value = picked;
-  return picked;
+  if (pendingOutputDir) return pendingOutputDir;
+  pendingOutputDir = (async () => {
+    const picked = await open({ directory: true });
+    if (picked === null || Array.isArray(picked)) return null;
+    lastOutputDir.value = picked;
+    return picked;
+  })();
+  try {
+    return await pendingOutputDir;
+  } finally {
+    pendingOutputDir = null;
+  }
 }
 
 function currentResize(): { width: string; height: string; allowUpscale: boolean } | undefined {
@@ -229,7 +274,13 @@ async function convertItem(item: QueueItem, outputDir: string) {
   }
 }
 
-const readyCount = computed(() => queue.value.filter((item) => item.status !== "error").length);
+// Code review 2026-09-15: was `status !== "error"`, which also counted already-"done" items as
+// "ready" — after a fully successful batch the button stayed enabled and the hint still read
+// "N of N ready," but clicking it was a silent no-op since `onConvertAll`'s own `runnable` filter
+// below is the true "can be (re)converted" set. Kept in sync with that filter explicitly.
+const readyCount = computed(
+  () => queue.value.filter((item) => item.status === "pending" || item.status === "error").length,
+);
 
 /** AC18: "Convert all" — pending and previously-errored items are (re)run; a "done" item is left
  *  alone unless the user explicitly retries it (see `retryItem`), so reconverting everything on
@@ -248,8 +299,11 @@ async function onConvertAll() {
   } finally {
     converting.value = false;
     const done = queue.value.filter((item) => item.status === "done").length;
+    // Code review 2026-09-15: this branches on `done`, the count the sentence is actually about
+    // — not on `queue.value.length`, which used to select "1 of 1 converted" even when that one
+    // item's conversion had failed.
     announcement.value =
-      queue.value.length === 1
+      done === 1
         ? t("tools.image.summaryOne", { total: queue.value.length })
         : t("tools.image.summaryOther", { done, total: queue.value.length });
   }
@@ -299,15 +353,27 @@ function basename(path: string): string {
 const compareItem = ref<QueueItem | null>(null);
 const dividerPercent = ref(50);
 let dragFrame: HTMLElement | null = null;
+// Code review 2026-09-15: the compare overlay is `role="dialog" aria-modal="true"` but nothing
+// moved focus into it on open or let a keyboard user dismiss it with Escape. `compareHandle`
+// gives `openCompare` something focusable to hand focus to once the overlay has rendered.
+const compareHandle = ref<HTMLElement | null>(null);
 
 function openCompare(item: QueueItem) {
   compareItem.value = item;
   dividerPercent.value = 50;
+  void nextTick(() => compareHandle.value?.focus());
 }
 
 function closeCompare() {
   compareItem.value = null;
   dragFrame = null;
+}
+
+function onCompareOverlayKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeCompare();
+  }
 }
 
 function setDividerFromClientX(clientX: number) {
@@ -384,6 +450,13 @@ onUnmounted(() => {
       aria-live="polite"
     >
       {{ announcement }}
+    </p>
+    <p
+      v-if="topLevelError"
+      class="error"
+      role="alert"
+    >
+      {{ toolErrorMessage(topLevelError, t) }}
     </p>
 
     <!-- AC5/AC20: the empty state is the drop target; once files are queued the settings + queue
@@ -584,7 +657,10 @@ onUnmounted(() => {
             </template>
 
             <template v-else-if="item.status === 'error'">
-              <span class="error-text">{{ toolErrorMessage(item.error!, t) }}</span>
+              <span
+                class="error-text"
+                :title="toolErrorMessage(item.error!, t)"
+              >{{ toolErrorMessage(item.error!, t) }}</span>
               <button
                 type="button"
                 class="ghost-button"
@@ -633,6 +709,7 @@ onUnmounted(() => {
       role="dialog"
       aria-modal="true"
       :aria-label="t('tools.image.compare')"
+      @keydown="onCompareOverlayKeydown"
     >
       <div
         class="compare-frame"
@@ -658,6 +735,7 @@ onUnmounted(() => {
           :style="{ left: dividerPercent + '%' }"
         />
         <div
+          ref="compareHandle"
           class="compare-handle"
           role="slider"
           tabindex="0"
@@ -669,8 +747,18 @@ onUnmounted(() => {
           @keydown="onDividerKeydown"
           @pointerdown="onDividerPointerDown"
         />
-        <span class="compare-tag compare-tag-before">{{ t('tools.image.before') }}</span>
-        <span class="compare-tag compare-tag-after">{{ t('tools.image.after') }}</span>
+        <!-- Code review 2026-09-15: these used to render unconditionally, mislabeling the frame
+             at the divider's extremes (both reachable via the Home/End keys AC27a requires) —
+             at dividerPercent 0 the whole frame shows only the after-image, yet "Before" still
+             rendered; at 100 the reverse. Hidden exactly when their own image is fully covered. -->
+        <span
+          v-if="dividerPercent > 0"
+          class="compare-tag compare-tag-before"
+        >{{ t('tools.image.before') }}</span>
+        <span
+          v-if="dividerPercent < 100"
+          class="compare-tag compare-tag-after"
+        >{{ t('tools.image.after') }}</span>
       </div>
       <p class="hint">
         {{ compareItem ? statsLabel(compareItem) : '' }}
@@ -973,6 +1061,15 @@ h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-body-family);
+  font-size: var(--font-body-size);
+  color: var(--color-accent-destructive);
+}
+
+/* Code review 2026-09-15: top-level picker/drop failures used to have no visible surface, only
+   the sr-only announcement below — mirrors PdfView.vue's own `.error` class exactly. */
+.error {
+  margin: 0;
   font-family: var(--font-body-family);
   font-size: var(--font-body-size);
   color: var(--color-accent-destructive);

@@ -87,9 +87,20 @@ fn source_stem(path: &str) -> String {
 // collision policy that a native save dialog would otherwise handle (asking to overwrite) has
 // to be decided here instead. An auto-appended numeric suffix, never a silent overwrite and
 // never an interrupting per-file prompt for what is meant to be an unattended batch operation.
-// Same accepted TOCTOU as every other check-then-act path in this codebase (`check_file_size`
-// itself, `pdf.rs`/`ocr.rs`/`base64.rs`'s own reads) — a second process racing to create the
-// exact same suffixed name in the same instant is not a threat model this app defends against.
+//
+// Code review 2026-09-15: unlike `check_file_size`/`pdf.rs`/`ocr.rs`'s own read-only checks, this
+// TOCTOU is NOT an accepted cross-process race — "Convert all" dispatches every runnable item
+// concurrently from the same process (AC19), so two source files sharing a basename (e.g. two
+// `IMG_0001.jpg` from different folders in one batch — arrival-dedup is keyed on full path) could
+// both observe the candidate name as free under a plain `exists()` check and one would silently
+// clobber the other's output, defeating the "never a silent overwrite" guarantee this mechanism
+// exists to provide. `create_new` claims each candidate atomically at the OS level instead, so a
+// losing concurrent caller reliably sees `AlreadyExists` and advances to the next suffix rather
+// than racing past the check. Bounded at `MAX_SUFFIX_ATTEMPTS`, unlike the old unbounded loop, so
+// a destination folder pre-populated with many same-stemmed files fails cleanly instead of
+// spinning.
+const MAX_SUFFIX_ATTEMPTS: u32 = 10_000;
+
 fn unique_output_path(
     output_dir: &str,
     source_path: &str,
@@ -98,21 +109,52 @@ fn unique_output_path(
     let stem = source_stem(source_path);
     let ext = target_extension(target);
     let dir = std::path::Path::new(output_dir);
-    let mut candidate = dir.join(format!("{stem}.{ext}"));
-    let mut suffix = 2;
-    while candidate.exists() {
-        candidate = dir.join(format!("{stem} ({suffix}).{ext}"));
-        suffix += 1;
+    let mut suffix = 1u32;
+    loop {
+        let candidate = if suffix == 1 {
+            dir.join(format!("{stem}.{ext}"))
+        } else {
+            dir.join(format!("{stem} ({suffix}).{ext}"))
+        };
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(_) => {
+                return candidate
+                    .to_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| ToolError {
+                        code: "image-internal".to_string(),
+                        message: format!("{output_dir}: output path is not valid UTF-8"),
+                        position: None,
+                        context: None,
+                    });
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                suffix += 1;
+                if suffix > MAX_SUFFIX_ATTEMPTS {
+                    return Err(ToolError {
+                        code: "image-internal".to_string(),
+                        message: format!(
+                            "{output_dir}: could not find a free name for '{stem}.{ext}' after {MAX_SUFFIX_ATTEMPTS} attempts"
+                        ),
+                        position: None,
+                        context: None,
+                    });
+                }
+            }
+            Err(err) => {
+                return Err(ToolError {
+                    code: "image-internal".to_string(),
+                    message: format!("{}: {err}", candidate.display()),
+                    position: None,
+                    context: None,
+                });
+            }
+        }
     }
-    candidate
-        .to_str()
-        .map(str::to_string)
-        .ok_or_else(|| ToolError {
-            code: "image-internal".to_string(),
-            message: format!("{output_dir}: output path is not valid UTF-8"),
-            position: None,
-            context: None,
-        })
 }
 
 /// AC27's Compare needs the webview to actually load both the original file and the freshly
@@ -121,10 +163,13 @@ fn unique_output_path(
 /// `ocr_grant_asset` already established (Story 4.2/8.7) — allow-only, in-memory, dies with the
 /// process — duplicated here rather than shared, matching this codebase's own convention of not
 /// sharing per-file command helpers (`check_file_size` above is the same shape). No extra
-/// signature validation before granting, unlike `ocr_grant_asset`'s: by the time this runs,
-/// `path` has already round-tripped through a successful `image_convert::convert` (so it decoded
-/// as a real image) and `output_path` is a file this command just wrote itself — both are
-/// already known-good, so there is nothing left to validate.
+/// signature validation before granting, unlike `ocr_grant_asset`'s — this function has two call
+/// sites, each already known-good for its own reason: from `image_convert`, `path` has
+/// round-tripped through a successful `image_convert::convert` (decoded as a real image) and
+/// `output_path` is a file this command just wrote itself; from `ingest_one` (AC15), `path` has
+/// only been through `image_convert::probe` (decoded, not converted) — a weaker but still
+/// sufficient guarantee, since a `probe` success already proves the path names a real, readable
+/// image and not an arbitrary file.
 fn grant_asset_access<R: Runtime>(app: &tauri::AppHandle<R>, path: &str) -> Result<(), ToolError> {
     use tauri::Manager;
 
@@ -506,6 +551,62 @@ mod tests {
         );
 
         std::fs::remove_file(&path).unwrap();
+        std::fs::remove_dir_all(&output_dir).unwrap();
+    }
+
+    /// Code review 2026-09-15: two DIFFERENT source files sharing a basename (arrival-dedup in
+    /// the view is keyed on full path, so this is reachable — e.g. `dupe.png` dropped from two
+    /// different folders in one batch), converted genuinely concurrently via `tokio::join!` into
+    /// the same destination. The old plain `candidate.exists()` check raced here and could let
+    /// one output silently clobber the other; `unique_output_path`'s `create_new` reservation
+    /// must give each a distinct name regardless of which finishes first.
+    #[tokio::test]
+    async fn image_convert_command_never_clobbers_a_concurrent_same_basename_output() {
+        let dir_a = temp_dir_path("concurrent-source-a");
+        let dir_b = temp_dir_path("concurrent-source-b");
+        let path_a = format!("{dir_a}/dupe.png");
+        let path_b = format!("{dir_b}/dupe.png");
+        std::fs::write(&path_a, generate_test_png_bytes(8, 8)).unwrap();
+        std::fs::write(&path_b, generate_test_png_bytes(16, 16)).unwrap();
+        let output_dir = temp_dir_path("concurrent-dest");
+
+        let (a, b) = tokio::join!(
+            image_convert(
+                path_a.clone(),
+                "png".to_string(),
+                80,
+                output_dir.clone(),
+                None,
+                "#ffffff".to_string(),
+                mock_app_handle(),
+            ),
+            image_convert(
+                path_b.clone(),
+                "png".to_string(),
+                80,
+                output_dir.clone(),
+                None,
+                "#ffffff".to_string(),
+                mock_app_handle(),
+            ),
+        );
+        let a = a.unwrap();
+        let b = b.unwrap();
+
+        assert_ne!(a.output_path, b.output_path);
+        let dims = |outcome: &ImageConvertOutcome| -> (u32, u32) {
+            let bytes = std::fs::read(&outcome.output_path).unwrap();
+            let decoded = image::load_from_memory(&bytes).unwrap();
+            (decoded.width(), decoded.height())
+        };
+        let (dims_a, dims_b) = (dims(&a), dims(&b));
+        assert!(
+            (dims_a == (8, 8) && dims_b == (16, 16)) || (dims_a == (16, 16) && dims_b == (8, 8)),
+            "expected one 8x8 and one 16x16 output, got {dims_a:?} and {dims_b:?} — one output clobbered the other"
+        );
+
+        std::fs::remove_dir_all(&dir_a).unwrap();
+        std::fs::remove_dir_all(&dir_b).unwrap();
         std::fs::remove_dir_all(&output_dir).unwrap();
     }
 

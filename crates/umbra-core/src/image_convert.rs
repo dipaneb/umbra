@@ -115,15 +115,23 @@ fn parse_dimension(raw: &str) -> Result<u32, ToolError> {
 /// before this ever runs. AC21's no-upscale case is a genuine no-op (the source is returned
 /// unchanged), not a clamp to the source's own size — clamping would silently produce a
 /// DIFFERENT resize than either the locked or unlocked request actually asked for.
+///
+/// Checked per-axis with OR, not AND: AC21 requires the image is "not upscaled" when locked, and
+/// stretching even a single axis past the source's own size is still upscaling that axis. A
+/// mixed request (one axis larger than the source, the other smaller — reachable if the view's
+/// lock toggle is re-enabled after typing independent values without recomputing them) must fall
+/// back to the same whole-image no-op as a both-axes-larger request, not resize with the
+/// excessive axis honored.
 fn apply_resize(
     image: image::DynamicImage,
     request: &ResizeRequest,
 ) -> Result<image::DynamicImage, ToolError> {
     let width = parse_dimension(&request.width)?;
     let height = parse_dimension(&request.height)?;
-    if !request.allow_upscale && width >= image.width() && height >= image.height() {
+    if !request.allow_upscale && (width >= image.width() || height >= image.height()) {
         return Ok(image);
     }
+    check_dimensions(width, height)?;
     Ok(image.resize_exact(width, height, FilterType::Lanczos3))
 }
 
@@ -566,6 +574,53 @@ mod tests {
                 "expected '{bad}' to be rejected"
             );
         }
+    }
+
+    /// Code review 2026-09-15: a mixed request (one axis larger than the source, the other
+    /// smaller) used to fall through the old `width >= src && height >= src` guard entirely and
+    /// upscale the excessive axis despite `allow_upscale: false`. Both axis orderings are
+    /// checked, since the old bug was asymmetric between them.
+    #[test]
+    fn locked_resize_is_a_no_op_when_only_one_axis_would_upscale() {
+        let source = source_png_bytes(50, 50);
+        for (width, height) in [("200", "20"), ("20", "200")] {
+            let request = ResizeRequest {
+                width: width.to_string(),
+                height: height.to_string(),
+                allow_upscale: false,
+            };
+            let converted = convert(&source, TargetFormat::Png, 80, Some(&request), WHITE).unwrap();
+            let decoded = image::load_from_memory(&converted).unwrap();
+            assert_eq!(decoded.width(), 50, "width axis for ({width}, {height})");
+            assert_eq!(decoded.height(), 50, "height axis for ({width}, {height})");
+        }
+    }
+
+    /// Code review 2026-09-15: `parse_dimension` had no upper bound, so a huge typed value (or a
+    /// tiny one that rounds to zero) reached `resize_exact` directly instead of being rejected
+    /// the same way an out-of-range decoded image already is via `check_dimensions`.
+    #[test]
+    fn resize_rejects_dimensions_that_would_be_a_decompression_bomb() {
+        let source = source_png_bytes(20, 20);
+        let request = ResizeRequest {
+            width: "999999999".to_string(),
+            height: "999999999".to_string(),
+            allow_upscale: true,
+        };
+        let err = convert(&source, TargetFormat::Png, 80, Some(&request), WHITE).unwrap_err();
+        assert_eq!(err.code, "image-dimensions-too-large");
+    }
+
+    #[test]
+    fn resize_rejects_a_dimension_that_rounds_down_to_zero() {
+        let source = source_png_bytes(20, 20);
+        let request = ResizeRequest {
+            width: "0.4".to_string(),
+            height: "20".to_string(),
+            allow_upscale: true,
+        };
+        let err = convert(&source, TargetFormat::Png, 80, Some(&request), WHITE).unwrap_err();
+        assert_eq!(err.code, "image-unsupported-format");
     }
 
     // ---- AC23: AVIF ----
