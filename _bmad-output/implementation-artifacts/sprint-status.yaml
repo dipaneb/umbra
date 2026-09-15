@@ -41,7 +41,111 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-20
-last_updated: 2026-09-14  # story 8-8 -> done. Group D (docs) code review: 12 findings, 11 patched,
+last_updated: 2026-09-15  # story 8-9 Task 2b (implementation) DONE, same session as Task 2a's
+# design confirmation. Full redesign landed: crates/umbra-core/src/image_convert.rs (bucket-image-*
+# -> image-*, resize with an explicit-dimensions + allow_upscale core-layer API, AVIF as an encode
+# target via AvifEncoder::new_with_speed_quality, background-color flatten replacing the hardcoded
+# white, a probe() fn for AC15's ingest, an EXIF/GPS regression test across all four target
+# formats); src-tauri/src/commands/image.rs (bucket_convert_image/bucket_estimate_image_size ->
+# image_convert/image_estimate_size, bucket-input-too-large/bucket-internal retired to
+# image-input-too-large/image-internal, three stale comments fixed, a new image_ingest_dropped
+# command returning a PER-FILE outcome -- deliberately not `?`-propagating like pdf_open_dropped,
+# per AC15 -- and image_convert now takes a destination FOLDER plus an explicit resize/background
+# and returns both original and converted byte counts alongside the output path so the queue can
+# show real before/after stats). A real design decision surfaced only at implementation, not
+# foreseen at Task 2a: AC27's Compare needs the webview to load both the original and the freshly-
+# written file, arbitrary filesystem paths the asset protocol has no standing access to -- reused
+# ocr_grant_asset's exact allow-file/canonicalize mechanism (Story 4.2/8.7), duplicated locally
+# into commands/image.rs (this codebase's own convention: command-file helpers are not shared)
+# rather than touching ocr.rs, which AC34's file list never authorised. A second real, necessary
+# fix beyond AC34's own list: registry.spec.ts's "PDF is the only tool with drop.multiple" test
+# went stale the moment Images adopted the same shape (AC5/AC14) -- caught by the test suite
+# itself, not a grep sweep, and fixed to assert both rather than deleted. AC26's literal
+# "PNG or WebP" wording for hiding the background-color control was found to be technically
+# incomplete once AVIF shipped -- AVIF's encoder carries alpha the same way PNG/WebP's do, so
+# flattening it would be a real regression, not a stale re-decision -- background now hides for
+# PNG/WebP/AVIF alike (JPEG only shows it); this workflow's edit permissions don't extend to the
+# Acceptance Criteria section itself, so the correction is recorded here and in the story's own
+# Completion Notes rather than silently landing in the AC text. Gate green throughout: cargo test
+# --workspace 441/441 (was 424 baseline; +17), pnpm test 1168/1168 (was 1155; +13: the old
+# single-file suite's 8 tests replaced by a 21-test queue/resize/AVIF/background/compare/AD-16
+# suite), cargo clippy -D warnings clean, cargo fmt --check clean, pnpm lint clean, vue-tsc clean,
+# pnpm build clean. Story moved to review. Nothing committed, nothing pushed.
+# Previous entry, 2026-09-14 -- story 8-9 Task 2a (real ACs) DONE, same session as Task 1. AC8-AC34
+# written across 8 groups (rename/registry, multi-file queue + drag-and-drop, resize, AVIF +
+# background color, before/after + completion feedback, EXIF/GPS claim, i18n/a11y, file surface).
+# The story's own file-surface grep sweep (a discipline named explicitly after 8.6/8.7 both shipped
+# incomplete lists) found two real items neither the story's Dev Notes nor the decision record had
+# named: CommandPalette.spec.ts:152's exact-string "Image" assertion breaks under the name change,
+# and commands/pdf.rs's own comment recording the bucket-input-too-large/bucket-internal hand-off
+# goes stale the moment this story retires the pair. Design canvas "Images Redesign - Story 8.9"
+# published (claude.ai/code/artifact/3567bae8-3193-4b66-b812-c8b0b1878e61): populated queue with
+# Option A composed throughout (single max-dimension resize field, side-by-side before/after,
+# native color-input background picker), plus A/B close-ups of all three for the developer to
+# confirm before Task 2b. A real technical correction caught while drafting the AVIF ACs, not
+# assumed from the Task 1 record: AVIF is free only as an ENCODE target (image 0.25.9's default
+# avif/ravif feature, pure Rust, already compiled in); decoding an AVIF source needs the separate,
+# non-default avif-native/dav1d C dependency and stays out of this story's scope -- corrected in
+# the decision record, prd.md and epics.md.
+# SAME DAY, immediately after: developer picked from the canvas -- Resize = Option B (width x
+# height, aspect-locked by default, unlock allows independent stretch), Before/After = Option B
+# (slider/wipe compare -- the app's FIRST drag-to-compare primitive, so AC27a requires a keyboard-
+# operable equivalent and always-visible stats per NFR5), Background = Option A (native color
+# input, as recommended). AC20-22/AC27-27a rewritten to match; canvas Main.dc.html/MainDark.dc.html
+# updated to show the final combination and republished (version 2). Task 2a fully done and design-
+# confirmed. Task 2b (implementation) is next. Nothing committed, nothing pushed.
+# Previous entry, 2026-09-14 -- story 8-9 Task 1 (discovery) DONE via bmad-party-mode (installed
+# roster, session mode, developer's choice). THE finding worth carrying forward: the developer
+# rejected scoping the tool from their own usage ("that's not the question here... my usage
+# shouldn't be how you scope this tool") and redirected the room to real persona/market research
+# (freelance/backend/frontend/corporate/WordPress/student dev) before any narrowing -- and caught
+# a real gap in that research mid-session (mobile/desktop/gaming personas missing from the first
+# pass, glaring given Umbra IS a desktop app), corrected rather than argued away. Decision record:
+# 8-9-images-decision-record.md. FR28 revised -- resize (a real, total gap vs every named market
+# comparator: Squoosh/ImageOptim/TinyPNG/the WordPress plugins all treat it as core, FR28 never
+# mentioned it), AVIF (near-free -- already reachable via the existing `image` crate dependency,
+# confirmed via Story 8.7's own OCR research, never revisited for this tool), multi-file drag-
+# and-drop, a visual before/after replacing the bare size estimate, a user-configurable JPEG
+# alpha-flatten background (hardcoded white since Story 6.2, deferred twice, developer's own
+# reason: "people often prefer black to white") -- and propagated into prd.md/epics.md in this
+# same story, not deferred (Story 8.6's drift lesson honoured). A genuine free find, verified
+# against the vendored image-0.25.9 source rather than assumed: today's convert() already strips
+# ALL EXIF/GPS metadata as a side effect of the decode/encode round-trip (the decoder never
+# populates an exif field; both encoders default an empty one, never set) -- turned into a tested,
+# disclosed privacy claim rather than new logic. HEIC re-examined per the standing dependency-
+# drift discipline (Story 8.8's lopdf precedent): a NEW pure-Rust MIT/Apache-2.0 candidate,
+# heic-rs, clears every licensing/CI-compile-gate wall that blocked Story 6.2's three original
+# candidates -- verified directly against the crates.io API, not the README (no C toolchain,
+# MSRV 1.85, forbid(unsafe_code)) -- but published 2 days before this session (v0.1.1, 50
+# downloads, 0 reverse dependencies), and the developer's explicit call was NOT to adopt it yet.
+# bucket_* -> image_* rename + shared-code retirement (bucket-input-too-large/bucket-internal,
+# the pair Story 8.8 could only duplicate, this story owns retiring outright) + 3 stale comments
+# resolved per AC4a; registry name -> "Images" per AC4b. AC5 drag-and-drop: adopted, first
+# decision not a re-decision, multi-file. Four cut ideas filed as GitHub backlog-candidate issues
+# (developer's explicit route, all four): a dedicated vector/SVG tool (#150 -- real Rust crates
+# exist, oxvg_optimiser/svgo-rs, but a different asset class = a different future tool, same
+# reasoning that split "Bucket" into three in 8.7), batch watermarking (#151), a favicon/app-icon
+# kit generator (#152 -- also directly serves the late-found desktop/mobile gap), and Story 8.7's
+# own previously-unfiled whole-image-deskew candidate (#153, sat unpicked for two stories).
+# Video and game-dev texture formats (DDS/KTX2) considered and DROPPED OUTRIGHT, not backlogged --
+# developer's explicit call, video being a categorically heavier native-dependency/licensing cost
+# class (this project's own PDF-rasterizer saga is the worked example) and inconsistent with
+# FR35's fortnightly-ship cadence. Task 2a (real ACs) not started -- next session's work, same
+# room per the established Epic 8 pattern.
+# Previous entry, 2026-09-14 -- story 8-9 moved to in-progress (bmad-dev-story). Task 0 (branch
+# setup) done: baseline_commit ff3f8ac re-confirmed as origin/main's real tip via content diff
+# (git diff --stat HEAD origin/main empty) as well as direct SHA match; working tree clean
+# apart from the pre-existing untracked .claude/workflows/. Branched
+# feat/story-8-9-reimagine-the-bucket-images from that tip, story file riding the working tree
+# across as with 8.1-8.8. Task 1 (discovery, developer's choice of bmad-party-mode vs
+# bmad-forge-idea) is next -- HALTED for that per the story's own "run interactively, not
+# autonomously" charter shape shared by every gated Epic 8 story.
+# Previous entry, 2026-09-14 -- story 8-9 created (bmad-create-story) -> ready-for-dev. Epic 8's
+# ninth and final story, scoped to the Images tool. See the development_status note above
+# 8-9-reimagine-the-bucket-images for the full context: inherited hand-offs from 8.7/8.8 (the
+# bucket_* rename, retiring the two codes shared with PDF, three stale comments incl. one not
+# previously documented), and a first-decision (not re-decision) framing for drag-and-drop.
+# Previous entry, 2026-09-14 -- story 8-8 -> done. Group D (docs) code review: 12 findings, 11 patched,
 # 1 dismissed -- zero AC violations but a real drift found: epics.md still described the
 # pre-redesign PDF tool in three places, one of them actively edited THIS cycle to claim page
 # previews (the story's headline feature) are out of scope -- the exact class AC2 exists to
@@ -1616,7 +1720,26 @@ development_status:
   # table (weighed vs. 8.2's smart-detection choice). Not committed.
   8-7-reimagine-the-bucket-ocr: done
   8-8-reimagine-the-bucket-pdf: done
-  8-9-reimagine-the-bucket-images: backlog
+  # note: story 8-9 created 2026-09-14 (bmad-create-story) -- ninth and final Epic 8 story,
+  # explicitly requested by number. Task-1-gated charter story scoped to the Images tool
+  # (src/tools/image/ImageView.vue + crates/umbra-core/src/image_convert.rs +
+  # src-tauri/src/commands/image.rs). Only Task 1's AC1-7 are real; Task 2 ACs deferred to a
+  # Task 2a follow-up edit once 8-9-images-decision-record.md exists, per epics.md.
+  # baseline_commit ff3f8ac confirmed live as origin/main's real tip via content diff (not SHA
+  # ancestry), working tree clean apart from the pre-existing untracked .claude/workflows/.
+  # epic-8 already in-progress (from 8.1), not the first story -> no epic transition. Live-read
+  # the full current Images implementation and live-ran the gate rather than trusting prior
+  # notes: pnpm test 1155/1155 (53 files), cargo test --workspace 424/424 (124 umbra_lib + 1
+  # integration + 299 umbra-core). Inherited hand-offs named explicitly: Story 8.7 left the
+  # `bucket_*` commands/codes unrenamed on the verbatim move; Story 8.8 minted its own
+  # pdf-input-too-large/pdf-internal and deliberately left the SHARED bucket-input-too-large/
+  # bucket-internal pair live for this story to retire (8-8-pdf-decision-record.md Sec 4.1).
+  # Found and recorded a THIRD stale comment beyond the two 8-8 already documented:
+  # commands/image.rs:4 still names a commands/bucket.rs file Story 8.7 deleted entirely.
+  # Unlike PDF, Images' drag-and-drop question is framed as a first decision, not a
+  # re-decision -- EXPERIENCE.md never claimed Images accepts drops the way it wrongly did
+  # for PDF. Not committed.
+  8-9-reimagine-the-bucket-images: review
   epic-8-retrospective: optional
 
 action_items:
