@@ -12,8 +12,14 @@ vi.mock("@tauri-apps/plugin-process", () => ({
   relaunch: () => relaunch(),
 }));
 
-const { checkForUpdate, installUpdate, getUpdateSeverity, stripSeverityMarker, formatUpdateDate } =
-  await import("./updateCheck");
+const {
+  checkForUpdate,
+  installUpdate,
+  getUpdateSeverity,
+  stripSeverityMarker,
+  getLocalizedNotes,
+  formatUpdateDate,
+} = await import("./updateCheck");
 
 describe("checkForUpdate", () => {
   it("resolves the update returned by the plugin unchanged", async () => {
@@ -100,6 +106,47 @@ describe("stripSeverityMarker", () => {
 
   it("passes undefined through unchanged", () => {
     expect(stripSeverityMarker(undefined)).toBeUndefined();
+  });
+});
+
+describe("getLocalizedNotes", () => {
+  it("returns undefined when there is no body", () => {
+    expect(getLocalizedNotes(undefined, { locale: "en" })).toBeUndefined();
+  });
+
+  it("passes an unlabeled legacy body through unchanged, regardless of locale", () => {
+    expect(getLocalizedNotes("Bug fixes and improvements.", { locale: "en" })).toBe(
+      "Bug fixes and improvements.",
+    );
+    expect(getLocalizedNotes("Bug fixes and improvements.", { locale: "fr" })).toBe(
+      "Bug fixes and improvements.",
+    );
+  });
+
+  it("picks the block matching the current UI locale", () => {
+    const body = "[en]\nFixes a crash.\n\n[fr]\nCorrige un plantage.";
+    expect(getLocalizedNotes(body, { locale: "en" })).toBe("Fixes a crash.");
+    expect(getLocalizedNotes(body, { locale: "fr" })).toBe("Corrige un plantage.");
+  });
+
+  it("falls back to the 'en' block when the current locale has no block of its own", () => {
+    const body = "[en]\nFixes a crash.\n\n[de]\nBehebt einen Absturz.";
+    expect(getLocalizedNotes(body, { locale: "fr" })).toBe("Fixes a crash.");
+  });
+
+  it("falls back to the first block when neither the current locale nor 'en' is present", () => {
+    const body = "[de]\nBehebt einen Absturz.\n\n[it]\nCorregge un crash.";
+    expect(getLocalizedNotes(body, { locale: "fr" })).toBe("Behebt einen Absturz.");
+  });
+
+  it("strips a leading [security] marker before selecting the locale block", () => {
+    const body = "[security]\n[en]\nFixes CVE-2026-0001.\n\n[fr]\nCorrige la CVE-2026-0001.";
+    expect(getLocalizedNotes(body, { locale: "fr" })).toBe("Corrige la CVE-2026-0001.");
+  });
+
+  it("does not treat inline bracket text mid-line as a locale header", () => {
+    const body = "See [en] docs for details.";
+    expect(getLocalizedNotes(body, { locale: "en" })).toBe("See [en] docs for details.");
   });
 });
 

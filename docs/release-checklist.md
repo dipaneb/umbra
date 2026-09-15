@@ -50,7 +50,53 @@ with `git cat-file -t <tag>` if you're unsure whether an existing tag is annotat
 This text becomes `latest.json`'s `notes` field, and from there the app's
 `Update.body` (`src/shell/updateCheck.ts`) — rendered directly to end users in
 `UpdateDialog.vue` and `SettingsView.vue`. See "Tagging a security release" below for
-the one thing to add to this text when the release is security-urgent.
+the one thing to add to this text when the release is security-urgent, and "Writing
+release notes in more than one language" below for how to cover every UI locale in
+that same single string.
+
+## Writing release notes in more than one language
+
+Tauri's `latest.json` has only one `notes` field — no per-locale variant, whether
+served as a static file (what this project uses, via GitHub Releases) or from a
+dynamic update server. Rather than take on a server just for this, this project packs
+every supported UI locale (currently `en`, `fr` — `src/locales/`) into that one string,
+as `[xx]`-headed blocks, each locale code alone on its own line:
+
+```bash
+git tag -a v0.1.4 -m "[en]
+Fixes a crash when opening large files.
+
+[fr]
+Corrige un plantage lors de l'ouverture de fichiers volumineux."
+```
+
+`getLocalizedNotes()` (`src/shell/updateCheck.ts`) picks the block matching the app's
+current UI locale for display, falling back to `en` and then to whichever block came
+first if the current locale has no block of its own. A header must sit alone on its
+line — `See [en] docs` mid-sentence is not mistaken for a header — so ordinary prose
+mentioning a bracketed two-letter code stays safe.
+
+**A release notes string with no `[xx]` headers at all is shown as-is, unfiltered by
+locale.** This is deliberate backward compatibility, not a bug: every tag cut before
+this convention existed (`v0.1.1`–`v0.1.4` among them) has no locale blocks, and those
+must keep rendering exactly as they always have rather than silently disappear because
+`getLocalizedNotes()` found nothing to pick from. It also means adding this convention
+is optional per release, not mandatory — an English-only note is still perfectly
+valid, it just won't be translated for French users.
+
+When a release is both security-urgent and multilingual, `[security]` comes first as
+its own line, ahead of any `[xx]` block — `getUpdateSeverity()` only inspects the very
+start of the raw string, before locale-block parsing ever runs, so the two markers
+don't interact:
+
+```bash
+git tag -a v0.1.4 -m "[security]
+[en]
+Fixes CVE-2026-0001.
+
+[fr]
+Corrige la CVE-2026-0001."
+```
 
 ## The tool: `nettop`, scoped to Umbra's own process
 
@@ -230,6 +276,11 @@ falsely escalate a routine release).
 **If it's omitted by mistake, the release is treated as routine** — there's no automatic
 fallback detection to catch a missed tag. Getting this right is on the person cutting
 the release, the same trust model as the rest of this manual checklist.
+
+If the release also carries `[xx]` locale blocks (see "Writing release notes in more
+than one language" above), `[security]` still goes first, alone on its own line, ahead
+of every `[en]`/`[fr]` block — the two markers are parsed independently and don't
+interact.
 
 ## Recording the result
 

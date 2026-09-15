@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { formatUpdateDate, installUpdate, stripSeverityMarker } from "./updateCheck";
+import { formatUpdateDate, getLocalizedNotes, installUpdate } from "./updateCheck";
 import { closeDialog, dialogOpen, pendingUpdate } from "./updateSignal";
 import { useSettingsStore } from "../stores/settings";
 import AppButton from "../components/AppButton.vue";
@@ -157,7 +157,7 @@ onUnmounted(() => {
         v-if="pendingUpdate.body"
         class="release-notes"
       >
-        {{ stripSeverityMarker(pendingUpdate.body) }}
+        {{ getLocalizedNotes(pendingUpdate.body, settings) }}
       </p>
       <p
         v-if="installError"
