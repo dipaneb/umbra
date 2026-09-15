@@ -146,6 +146,25 @@ export const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
   "pdf-cannot-delete-all-pages",
 ]);
 
+// Story 8.9 AC31: every `image-*` code, audited per Story 8.6's own criterion — a fixed,
+// value-free sentence we wrote ourselves — the way this file's other tool sections already are.
+// None qualify, so none join the set above; this is the "audit, do not assume translatable by
+// default" outcome the story's own Dev Notes predicted (gap #6), not an oversight:
+//
+// - `image-unsupported-format`, `image-encode-failed` — wrap the `image` crate's/an encoder's
+//   own error text, the same shape `pdf-corrupt` is excluded for.
+// - `image-dimensions-too-large`  — embeds the decoded width/height and pixel count in prose.
+// - `image-invalid-quality`       — embeds the offending quality value in prose.
+// - `image-invalid-target-format` — embeds the unrecognized format string in prose.
+// - `image-invalid-resize-dimension`, `image-invalid-background-color` — each embeds the raw
+//   text the user typed into the resize/color field, the same "runtime value baked into the
+//   sentence" shape this file's own top comment already flags as unsafe to re-translate around
+//   without first moving the value into `context` (the fix `pdf-invalid-range` got at AC14) —
+//   not done here, since neither code is a repeat-hit error worth that restructuring yet.
+// - `image-input-too-large`, `image-internal` — the same two shapes every other tool's
+//   `*-input-too-large`/`*-internal` pair is excluded for (a byte count in prose; a
+//   `spawn_blocking` join failure's own runtime text).
+
 // Story 8.7 AC26: the `ocr-*` codes deliberately NOT in the set above, each with its reason.
 // "Not yet done" is not one of them — every exclusion here is a property of the code itself:
 //
@@ -162,8 +181,8 @@ export const TRANSLATABLE_CODES: ReadonlySet<string> = new Set([
 //   splitting the code four ways or misreporting three of the four. It is also unreachable by
 //   users in any case — it fires only if our own shell sends a malformed IPC request.
 //
-// The `bucket-image-*` codes are out of scope here, not excluded: they belong to the Images
-// tool, which Story 8.9 redesigns.
+// The `image-*` codes (renamed from `bucket-image-*` by Story 8.9) are audited below, in that
+// story's own comment block.
 //
 // Story 8.8 AC38: the `pdf-*` codes deliberately NOT in the set above, each with its reason.
 //

@@ -1,45 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, type Pinia } from "pinia";
+import { useRegistryStore } from "../../stores/registry";
 import ImageView from "./ImageView.vue";
 
-// Story 8.7 slice 2 (AC9): the 8 `it()` blocks below are the `describe("Image section")`
-// block of the former BucketView.spec.ts. Six moved byte-identical. TWO DID NOT, and the
-// deviation is recorded rather than absorbed: both error tests additionally asserted that
-// the Image error left the *OCR section's* textarea untouched, by seeding
-// `registry.dropResult` and reading `.result`. After the split there is no OCR section in
-// this view to disturb — the isolation those two lines guarded is now structural rather
-// than tested, the same way AC29 retires the two textarea tests. Their Image-side
-// assertions are unchanged; only the cross-section clause and the now-inaccurate "without
-// disturbing OCR/PDF state" title fragment were removed.
+// Story 8.9: the redesigned Images tool (AC8-AC34) — a multi-file queue replacing the
+// single-file flow the old `describe("Image section")` suite (Story 6.2/8.7) exercised. This
+// suite is a full rewrite, not a migration of those 8 tests: the command names, IPC shape, and
+// UI structure are all new (rename, batch queue, resize, AVIF, background color, compare).
 
-const { invokeMock, openMock, saveMock } = vi.hoisted(() => ({
+const { invokeMock, openMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   openMock: vi.fn(),
-  saveMock: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
+  convertFileSrc: (path: string) => `asset://localhost/${path}`,
 }));
 
-// Mirrors Base64View.spec.ts's own established save()-mocking shape exactly (same package, same
-// call pattern already proven in this codebase) — `open` mocked the same way for the PDF
-// section's file pickers.
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...args: unknown[]) => openMock(...args),
-  save: (...args: unknown[]) => saveMock(...args),
 }));
 
 let wrapper: VueWrapper | undefined;
 let pinia: Pinia;
 
-// The Image section's live estimate is debounced (src/shell/debounce.ts). Fake timers mean a
-// test's pending debounce timeout simply never fires unless explicitly advanced — real timers
-// would instead leave it dangling into whichever test runs next, letting it steal a queued
-// invoke mock response. Same rationale as JsonView.spec.ts's own live tree-parse fake-timer setup.
 beforeEach(() => {
-  vi.useFakeTimers();
+  pinia = createPinia();
 });
 
 afterEach(() => {
@@ -47,14 +35,15 @@ afterEach(() => {
   wrapper = undefined;
   invokeMock.mockReset();
   openMock.mockReset();
-  saveMock.mockReset();
-  vi.useRealTimers();
 });
 
 function mountView() {
-  pinia = createPinia();
   wrapper = mount(ImageView, { global: { plugins: [pinia] } });
   return wrapper;
+}
+
+function store() {
+  return useRegistryStore(pinia);
 }
 
 function clickButton(w: VueWrapper, text: string) {
@@ -63,215 +52,546 @@ function clickButton(w: VueWrapper, text: string) {
   return button.trigger("click");
 }
 
+function ingestOutcome(path: string, width = 100, height = 50) {
+  return { path, width, height, error: null };
+}
+
 describe("ImageView", () => {
-  // Story 6.2: Image section. Deliberately disjoint from the OCR/PDF sections' own state (see
-  // ImageView.vue's own AD-16 comment for this section) — mocks the same `open`/`save`/`invoke`
-  // already mocked above.
-  describe("Image section", () => {
-    it("shows the quality slider only for a JPEG target, not PNG/WebP (AC2)", async () => {
-      openMock.mockResolvedValueOnce("/tmp/photo.png");
+  describe("empty state and arrival (AC5/AC16)", () => {
+    it("shows the drop target and no queue when nothing has been added", () => {
+      mountView();
+      expect(wrapper!.find(".drop-target").exists()).toBe(true);
+      expect(wrapper!.find(".queue-panel").exists()).toBe(false);
+    });
+
+    it("adds picked files to the queue via the picker, through the same ingest command a drop uses", async () => {
+      openMock.mockResolvedValueOnce(["/tmp/a.png", "/tmp/b.png"]);
+      invokeMock.mockResolvedValueOnce([ingestOutcome("/tmp/a.png"), ingestOutcome("/tmp/b.png")]);
       mountView();
 
-      // Default target format is JPEG, so the slider is already visible before any file is
-      // picked — visibility is gated on target format alone, per this task's own wording.
-      expect(wrapper!.find("#image-quality").exists()).toBe(true);
-
-      await clickButton(wrapper!, "Choose image…");
+      await clickButton(wrapper!, "Choose images…");
       await flushPromises();
+
+      expect(invokeMock).toHaveBeenCalledWith("image_ingest_dropped", {
+        paths: ["/tmp/a.png", "/tmp/b.png"],
+      });
+      expect(wrapper!.text()).toContain("2 files");
+      expect(wrapper!.text()).toContain("a.png");
+      expect(wrapper!.text()).toContain("b.png");
+    });
+
+    it("adds a dropped batch via registry.dropResult, without a separate ingest call", async () => {
+      mountView();
+
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/dropped.png")],
+      };
+      await flushPromises();
+
+      expect(invokeMock).not.toHaveBeenCalled();
+      expect(wrapper!.text()).toContain("1 file");
+      expect(wrapper!.text()).toContain("dropped.png");
+    });
+
+    it("ignores a drop result belonging to another tool", async () => {
+      mountView();
+
+      store().dropResult = { toolId: "pdf", value: [ingestOutcome("/tmp/x.png")] };
+      await flushPromises();
+
+      expect(wrapper!.find(".drop-target").exists()).toBe(true);
+    });
+
+    it("shows a per-file error row for a dropped file that failed ingest, alongside good ones (AC15/AC17)", async () => {
+      mountView();
+
+      store().dropResult = {
+        toolId: "image",
+        value: [
+          ingestOutcome("/tmp/good.png"),
+          {
+            path: "/tmp/bad.gif",
+            width: null,
+            height: null,
+            error: { code: "image-unsupported-format", message: "bad format", position: null, context: null },
+          },
+        ],
+      };
+      await flushPromises();
+
+      const rows = wrapper!.findAll(".queue-row");
+      expect(rows).toHaveLength(2);
+      expect(rows[1].text()).toContain("bad format");
+      expect(rows[1].find(".chip.status-error").exists()).toBe(true);
+      // The good file is unaffected and still convertible — pending rows render no status
+      // chip at all (render review 2026-09-15), so its absence here is itself the assertion.
+      expect(rows[0].find(".chip").exists()).toBe(false);
+    });
+
+    it("does not duplicate a file that is already queued", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
+
+      expect(wrapper!.findAll(".queue-row")).toHaveLength(1);
+    });
+
+    // Render review feedback (2026-09-15): a generic icon on every row, even for a file the
+    // command layer has already granted asset access to at ingest, read as broken rather than
+    // merely plain — a real thumbnail is what actually confirms "yes, this is my photo."
+    it("shows a real thumbnail for a pending file, not just a generic icon", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
+
+      const thumb = wrapper!.find(".thumb-image");
+      expect(thumb.exists()).toBe(true);
+      expect(thumb.attributes("src")).toBe("asset://localhost//tmp/a.png");
+    });
+
+    it("falls back to the generic icon if the thumbnail fails to load", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
+
+      await wrapper!.find(".thumb-image").trigger("error");
+
+      expect(wrapper!.find(".thumb-image").exists()).toBe(false);
+      expect(wrapper!.find(".thumb svg").exists()).toBe(true);
+    });
+  });
+
+  describe("batch settings (AC20/AC23/AC25/AC26)", () => {
+    it("shows the quality control for JPEG and AVIF, not PNG/WebP", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
+
+      expect(wrapper!.find("#image-quality").exists()).toBe(true); // default is jpeg
+
+      await wrapper!.find("#image-target-format").setValue("avif");
       expect(wrapper!.find("#image-quality").exists()).toBe(true);
 
       await wrapper!.find("#image-target-format").setValue("png");
-      await flushPromises();
       expect(wrapper!.find("#image-quality").exists()).toBe(false);
 
       await wrapper!.find("#image-target-format").setValue("webp");
-      await flushPromises();
       expect(wrapper!.find("#image-quality").exists()).toBe(false);
-
-      await wrapper!.find("#image-target-format").setValue("jpeg");
-      await flushPromises();
-      expect(wrapper!.find("#image-quality").exists()).toBe(true);
     });
 
-    it("debounces a quality change into a single estimate call and displays the result (AC2)", async () => {
-      openMock.mockResolvedValueOnce("/tmp/photo.png");
-      invokeMock.mockResolvedValue(12345);
+    it("shows the background color control only for JPEG (AC26, extended to AVIF's own alpha support)", async () => {
       mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
 
-      await clickButton(wrapper!, "Choose image…");
+      expect(wrapper!.find("#image-background").exists()).toBe(true); // default is jpeg
+
+      for (const format of ["png", "webp", "avif"]) {
+        await wrapper!.find("#image-target-format").setValue(format);
+        expect(wrapper!.find("#image-background").exists()).toBe(false);
+      }
+    });
+
+    it("recomputes the height field from the first queued file's aspect ratio while locked (AC20)", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png", 200, 100)] };
       await flushPromises();
-      await vi.advanceTimersByTimeAsync(200);
+
+      const width = wrapper!.find<HTMLInputElement>('[aria-label="Width"]');
+      await width.setValue("100");
+      await width.trigger("input");
+
+      const height = wrapper!.find<HTMLInputElement>('[aria-label="Height"]');
+      expect(height.element.value).toBe("50");
+    });
+
+    it("stops recomputing the paired field once the lock is toggled off", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png", 200, 100)] };
       await flushPromises();
-      invokeMock.mockClear();
+
+      await wrapper!.find(".link-toggle").trigger("click"); // unlock
+
+      const width = wrapper!.find<HTMLInputElement>('[aria-label="Width"]');
+      await width.setValue("999");
+      await width.trigger("input");
+
+      const height = wrapper!.find<HTMLInputElement>('[aria-label="Height"]');
+      expect(height.element.value).toBe("");
+    });
+
+    // Render review feedback (2026-09-15): after a mouse drag, the arrow keys stopped moving
+    // the slider — the fix is to force real DOM focus onto it on pointerdown, since WebKit does
+    // not reliably grant that on its own for a dragged range input.
+    it("focuses the quality slider on pointerdown, so the arrow keys work right after a drag", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
 
       const slider = wrapper!.find<HTMLInputElement>("#image-quality");
-      await slider.setValue("10");
-      await slider.setValue("20");
-      await slider.setValue("30");
-      // Only the last of three rapid slider ticks should reach invoke — the debounce collapses
-      // invocation volume, not just result ordering (distinct from the AD-16 runner's job).
-      expect(invokeMock).not.toHaveBeenCalled();
+      const focusSpy = vi.spyOn(slider.element, "focus");
+      await slider.trigger("pointerdown");
 
-      await vi.advanceTimersByTimeAsync(200);
+      expect(focusSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe("Convert all (AC18/AC19/AC27/AC28/AC29)", () => {
+    // Developer preference (2026-09-15): the batch verb only makes sense once there's a batch —
+    // a single queued file gets the singular "Convert", not "Convert all".
+    it("labels the button 'Convert' for a single file and 'Convert all' once there are several", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
       await flushPromises();
+      expect(wrapper!.findAll("button").some((b) => b.text() === "Convert")).toBe(true);
+      expect(wrapper!.findAll("button").some((b) => b.text() === "Convert all")).toBe(false);
 
-      expect(invokeMock).toHaveBeenCalledTimes(1);
-      expect(invokeMock).toHaveBeenCalledWith("bucket_estimate_image_size", {
-        path: "/tmp/photo.png",
-        targetFormat: "jpeg",
-        quality: 30,
-      });
-      expect(wrapper!.text()).toContain("Estimated size: 12.1 KB");
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/b.png")] };
+      await flushPromises();
+      expect(wrapper!.findAll("button").some((b) => b.text() === "Convert all")).toBe(true);
+      expect(wrapper!.findAll("button").some((b) => b.text() === "Convert")).toBe(false);
     });
 
-    it("clicking Convert calls save() then bucket_convert_image with the current path/format/quality/outputPath (AC1)", async () => {
-      openMock.mockResolvedValueOnce("/tmp/photo.png");
-      saveMock.mockResolvedValueOnce("/tmp/converted.jpg");
-      invokeMock.mockResolvedValue(undefined);
+    it("asks once for a destination folder, then converts every pending file into it", async () => {
       mountView();
-
-      await clickButton(wrapper!, "Choose image…");
-      await flushPromises();
-      await vi.advanceTimersByTimeAsync(200);
-      await flushPromises();
-
-      await clickButton(wrapper!, "Convert");
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/a.png"), ingestOutcome("/tmp/b.png")],
+      };
       await flushPromises();
 
-      expect(saveMock).toHaveBeenCalledWith({
-        filters: [{ name: "Image", extensions: ["jpg"] }],
-        defaultPath: "photo.jpg",
+      openMock.mockResolvedValueOnce("/tmp/out");
+      invokeMock.mockResolvedValue({
+        outputPath: "/tmp/out/a.jpg",
+        originalBytes: 1000,
+        convertedBytes: 400,
       });
-      expect(invokeMock).toHaveBeenCalledWith("bucket_convert_image", {
-        path: "/tmp/photo.png",
+
+      await clickButton(wrapper!, "Convert all");
+      await flushPromises();
+
+      expect(openMock).toHaveBeenCalledTimes(1);
+      expect(openMock).toHaveBeenCalledWith({ directory: true });
+      expect(invokeMock).toHaveBeenCalledWith("image_convert", {
+        path: "/tmp/a.png",
         targetFormat: "jpeg",
         quality: 80,
-        outputPath: "/tmp/converted.jpg",
+        outputDir: "/tmp/out",
+        resize: undefined,
+        background: "#ffffff",
       });
+      expect(invokeMock).toHaveBeenCalledWith("image_convert", {
+        path: "/tmp/b.png",
+        targetFormat: "jpeg",
+        quality: 80,
+        outputDir: "/tmp/out",
+        resize: undefined,
+        background: "#ffffff",
+      });
+
+      const rows = wrapper!.findAll(".queue-row");
+      expect(rows[0].find(".chip.status-done").exists()).toBe(true);
+      expect(rows[0].text()).toContain("Done");
     });
 
-    // Regression test: the save dialog's suggested filename must match the *selected* target
-    // format's extension, not always default to the first extension in a shared filter list
-    // (a real bug this story shipped with — every Convert click suggested "Untitled.png"
-    // regardless of the chosen target format, even though the written bytes were always
-    // correctly encoded per the selected format).
-    it("suggests a save filename matching the selected target format, not always PNG (AC1)", async () => {
-      openMock.mockResolvedValueOnce("/tmp/vacation.png");
-      saveMock.mockResolvedValue("/tmp/vacation.webp");
-      invokeMock.mockResolvedValue(undefined);
+    it("sends a resize object only when both width and height are filled in", async () => {
       mountView();
-
-      await clickButton(wrapper!, "Choose image…");
-      await flushPromises();
-      await vi.advanceTimersByTimeAsync(200);
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
       await flushPromises();
 
-      await wrapper!.find("#image-target-format").setValue("webp");
-      await flushPromises();
-      await vi.advanceTimersByTimeAsync(200);
-      await flushPromises();
-      saveMock.mockClear();
+      await wrapper!.find('[aria-label="Width"]').setValue("300");
+      await wrapper!.find('[aria-label="Height"]').setValue("150");
+      await wrapper!.find(".link-toggle").trigger("click"); // unlock, so both stay as typed
+
+      openMock.mockResolvedValueOnce("/tmp/out");
+      invokeMock.mockResolvedValue({
+        outputPath: "/tmp/out/a.jpg",
+        originalBytes: 1000,
+        convertedBytes: 400,
+      });
 
       await clickButton(wrapper!, "Convert");
       await flushPromises();
 
-      expect(saveMock).toHaveBeenCalledWith({
-        filters: [{ name: "Image", extensions: ["webp"] }],
-        defaultPath: "vacation.webp",
-      });
+      expect(invokeMock).toHaveBeenCalledWith(
+        "image_convert",
+        expect.objectContaining({
+          resize: { width: "300", height: "150", allowUpscale: true },
+        }),
+      );
     });
 
-    it("disables Convert until a file is chosen (AC1)", () => {
+    it("shows a per-item error and leaves the other items unaffected when one file fails (AC17)", async () => {
       mountView();
-      const convertButton = wrapper!.findAll("button").find((b) => b.text() === "Convert");
-      expect(convertButton?.attributes("disabled")).toBeDefined();
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/good.png"), ingestOutcome("/tmp/bad.png")],
+      };
+      await flushPromises();
+
+      openMock.mockResolvedValueOnce("/tmp/out");
+      invokeMock.mockImplementation((command: string, args: { path: string }) => {
+        if (command !== "image_convert") return Promise.resolve(undefined);
+        if (args.path === "/tmp/bad.png") {
+          return Promise.reject({
+            code: "image-encode-failed",
+            message: "encoder rejected the input",
+            position: null,
+            context: null,
+          });
+        }
+        return Promise.resolve({ outputPath: "/tmp/out/good.jpg", originalBytes: 1000, convertedBytes: 400 });
+      });
+
+      await clickButton(wrapper!, "Convert all");
+      await flushPromises();
+
+      const rows = wrapper!.findAll(".queue-row");
+      expect(rows[0].find(".chip.status-done").exists()).toBe(true);
+      expect(rows[1].find(".chip.status-error").exists()).toBe(true);
+      expect(rows[1].text()).toContain("encoder rejected the input");
     });
 
-    it("renders an estimate error via the Image view's own alert", async () => {
-      openMock.mockResolvedValueOnce("/tmp/photo.png");
+    it("announces a batch summary once every item has settled (AC29)", async () => {
+      mountView();
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/a.png"), ingestOutcome("/tmp/b.png")],
+      };
+      await flushPromises();
+
+      openMock.mockResolvedValueOnce("/tmp/out");
+      invokeMock.mockImplementation((command: string, args: { path: string }) => {
+        if (command !== "image_convert") return Promise.resolve(undefined);
+        if (args.path === "/tmp/b.png") {
+          return Promise.reject({ code: "image-encode-failed", message: "nope", position: null, context: null });
+        }
+        return Promise.resolve({ outputPath: "/tmp/out/a.jpg", originalBytes: 1000, convertedBytes: 400 });
+      });
+
+      await clickButton(wrapper!, "Convert all");
+      await flushPromises();
+
+      const status = wrapper!.find("[role='status'][aria-live='polite']");
+      expect(status.text()).toBe("1 of 2 converted");
+    });
+
+    it("retries a single failed item on its own, without re-running the others (AC33)", async () => {
+      mountView();
+      store().dropResult = {
+        toolId: "image",
+        value: [{ path: "/tmp/bad.png", width: 10, height: 10, error: null }],
+      };
+      await flushPromises();
+
+      openMock.mockResolvedValue("/tmp/out");
       invokeMock.mockRejectedValueOnce({
-        code: "bucket-image-unsupported-format",
-        message: "could not decode image: unknown format",
+        code: "image-encode-failed",
+        message: "nope",
         position: null,
         context: null,
       });
-      mountView();
-      await clickButton(wrapper!, "Choose image…");
-      await flushPromises();
-      await vi.advanceTimersByTimeAsync(200);
-      await flushPromises();
-
-      const alerts = wrapper!.findAll("[role='alert']");
-      expect(alerts.some((a) => a.text().includes("could not decode image"))).toBe(true);
-    });
-
-    it("renders a convert error via the Image view's own alert", async () => {
-      openMock.mockResolvedValueOnce("/tmp/photo.png");
-      saveMock.mockResolvedValueOnce("/tmp/converted.jpg");
-      invokeMock
-        .mockResolvedValueOnce(12345) // debounced estimate call after picking the file
-        .mockRejectedValueOnce({
-          code: "bucket-image-encode-failed",
-          message: "encoder rejected the input",
-          position: null,
-          context: null,
-        });
-      mountView();
-      await clickButton(wrapper!, "Choose image…");
-      await flushPromises();
-      await vi.advanceTimersByTimeAsync(200);
-      await flushPromises();
-
       await clickButton(wrapper!, "Convert");
       await flushPromises();
+      expect(wrapper!.find(".chip.status-error").exists()).toBe(true);
 
-      const alerts = wrapper!.findAll("[role='alert']");
-      expect(alerts.some((a) => a.text().includes("encoder rejected the input"))).toBe(true);
+      invokeMock.mockResolvedValueOnce({
+        outputPath: "/tmp/out/bad.jpg",
+        originalBytes: 1000,
+        convertedBytes: 500,
+      });
+      await clickButton(wrapper!, "Retry");
+      await flushPromises();
+
+      expect(wrapper!.find(".chip.status-done").exists()).toBe(true);
     });
 
-    // Regression test for the AD-16 two-runner scoping this section's design is built around:
-    // the live estimate and the discrete Convert action each get their own local
-    // createLatestWinsRunner(), specifically so a still-in-flight call on one never supersedes
-    // or is disturbed by a call on the other. Clicking Convert while an estimate is still
-    // pending must succeed on its own runner, and the estimate must still land normally once it
-    // resolves afterward — proving the two runners are genuinely independent, not sharing state.
-    it("keeps Convert independent of a still-in-flight estimate call (AD-16 two-runner scoping)", async () => {
-      openMock.mockResolvedValueOnce("/tmp/photo.png");
-      saveMock.mockResolvedValueOnce("/tmp/converted.jpg");
-
-      let resolveEstimate: (value: number) => void = () => {};
-      const pendingEstimate = new Promise<number>((resolve) => {
-        resolveEstimate = resolve;
-      });
-      invokeMock.mockImplementation((command: string) => {
-        if (command === "bucket_estimate_image_size") return pendingEstimate;
-        if (command === "bucket_convert_image") return Promise.resolve(undefined);
-        return Promise.resolve(undefined);
-      });
-
+    // Render review feedback (2026-09-15): Retry was reopening the native folder picker with no
+    // explanation — surprising, since "Retry" reads as "try that again," not "pick a location,
+    // then try that again." AC18's "asked once for a destination folder" is read as once per
+    // queue session now, not once per click: the first successful pick is remembered and reused
+    // silently for every later conversion or retry.
+    it("remembers the destination folder after the first pick and never asks again this session", async () => {
       mountView();
-      await clickButton(wrapper!, "Choose image…");
-      await flushPromises();
-      // Fires the debounced estimate call; its invoke() intentionally stays pending.
-      await vi.advanceTimersByTimeAsync(200);
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/a.png"), ingestOutcome("/tmp/b.png")],
+      };
       await flushPromises();
 
+      openMock.mockResolvedValueOnce("/tmp/out");
+      invokeMock.mockRejectedValueOnce({
+        code: "image-encode-failed",
+        message: "nope",
+        position: null,
+        context: null,
+      });
+      invokeMock.mockResolvedValueOnce({ outputPath: "/tmp/out/b.jpg", originalBytes: 1000, convertedBytes: 400 });
+
+      await clickButton(wrapper!, "Convert all");
+      await flushPromises();
+      expect(openMock).toHaveBeenCalledTimes(1);
+
+      invokeMock.mockResolvedValueOnce({ outputPath: "/tmp/out/a.jpg", originalBytes: 1000, convertedBytes: 400 });
+      await clickButton(wrapper!, "Retry");
+      await flushPromises();
+
+      // Still one — Retry reused the remembered folder instead of asking again.
+      expect(openMock).toHaveBeenCalledTimes(1);
+      expect(invokeMock).toHaveBeenLastCalledWith(
+        "image_convert",
+        expect.objectContaining({ path: "/tmp/a.png", outputDir: "/tmp/out" }),
+      );
+    });
+
+    it("removes an item from the queue and never sends it to Convert all again", async () => {
+      mountView();
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/a.png"), ingestOutcome("/tmp/b.png")],
+      };
+      await flushPromises();
+
+      await wrapper!.find('button[aria-label="Remove"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper!.findAll(".queue-row")).toHaveLength(1);
+      expect(wrapper!.text()).not.toContain("a.png");
+    });
+  });
+
+  describe("Compare (AC27/AC27a)", () => {
+    async function convertOneItem() {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
+      await flushPromises();
+      openMock.mockResolvedValueOnce("/tmp/out");
+      invokeMock.mockResolvedValueOnce({
+        outputPath: "/tmp/out/a.jpg",
+        originalBytes: 1000,
+        convertedBytes: 400,
+      });
       await clickButton(wrapper!, "Convert");
       await flushPromises();
+    }
 
-      expect(invokeMock).toHaveBeenCalledWith("bucket_convert_image", {
-        path: "/tmp/photo.png",
-        targetFormat: "jpeg",
-        quality: 80,
-        outputPath: "/tmp/converted.jpg",
-      });
-      expect(wrapper!.findAll("[role='alert']")).toHaveLength(0);
+    it("shows both byte counts and the percentage saved directly on the row, with no compare view open (AC27a)", async () => {
+      await convertOneItem();
+      const row = wrapper!.find(".queue-row");
+      expect(row.text()).toContain("1.0 KB");
+      expect(row.text()).toContain("0.4 KB");
+      expect(row.text()).toContain("60%");
+      expect(wrapper!.find(".compare-overlay").exists()).toBe(false);
+    });
 
-      resolveEstimate(54321);
+    it("opens the compare overlay showing both images, and closes it again", async () => {
+      await convertOneItem();
+      await clickButton(wrapper!, "Compare");
+
+      expect(wrapper!.find(".compare-overlay").exists()).toBe(true);
+      expect(wrapper!.find(".compare-image").attributes("src")).toBe("asset://localhost//tmp/a.png");
+
+      await clickButton(wrapper!, "Close");
+      expect(wrapper!.find(".compare-overlay").exists()).toBe(false);
+    });
+
+    it("moves the divider with the keyboard, not only by dragging (AC27a)", async () => {
+      await convertOneItem();
+      await clickButton(wrapper!, "Compare");
+
+      const handle = wrapper!.find("[role='slider']");
+      expect(handle.attributes("aria-valuenow")).toBe("50");
+
+      await handle.trigger("keydown", { key: "ArrowRight" });
+      expect(handle.attributes("aria-valuenow")).toBe("52");
+
+      await handle.trigger("keydown", { key: "End" });
+      expect(handle.attributes("aria-valuenow")).toBe("100");
+    });
+
+    // Render review feedback (2026-09-15): moving the cursor off the handle mid-drag was letting
+    // the browser's own click-drag text/element selection light up the frame — `preventDefault`
+    // on pointerdown is what stops that gesture from ever starting.
+    it("prevents the browser's default drag behavior when the divider handle is pressed", async () => {
+      await convertOneItem();
+      await clickButton(wrapper!, "Compare");
+
+      const handle = wrapper!.find("[role='slider']").element as HTMLElement;
+      // jsdom has no `setPointerCapture` at all; stubbed locally so the handler can run to
+      // completion — real WebView/browser environments always have it.
+      handle.setPointerCapture = vi.fn();
+      const event = new Event("pointerdown", { cancelable: true });
+      handle.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+    });
+  });
+
+  describe("in-flight feedback (AC28)", () => {
+    it("shows an announced in-flight indicator on a converting row, not just disabled controls", async () => {
+      mountView();
+      store().dropResult = { toolId: "image", value: [ingestOutcome("/tmp/a.png")] };
       await flushPromises();
 
-      expect(wrapper!.text()).toContain("Estimated size: 53.0 KB");
-      expect(wrapper!.findAll("[role='alert']")).toHaveLength(0);
+      openMock.mockResolvedValueOnce("/tmp/out");
+      let resolveConvert: (value: unknown) => void = () => {};
+      invokeMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveConvert = resolve;
+          }),
+      );
+
+      const convertPromise = clickButton(wrapper!, "Convert");
+      await flushPromises();
+
+      const spinner = wrapper!.find(".spinner[role='status']");
+      expect(spinner.exists()).toBe(true);
+      expect(spinner.attributes("aria-label")).toBe("Converting…");
+
+      resolveConvert({ outputPath: "/tmp/out/a.jpg", originalBytes: 100, convertedBytes: 50 });
+      await convertPromise;
+      await flushPromises();
+    });
+  });
+
+  describe("AD-16 per-item runner scoping (AC19)", () => {
+    it("keeps two items' conversions independent — a slower first item does not lose to a faster second one, or vice versa", async () => {
+      mountView();
+      store().dropResult = {
+        toolId: "image",
+        value: [ingestOutcome("/tmp/slow.png"), ingestOutcome("/tmp/fast.png")],
+      };
+      await flushPromises();
+
+      openMock.mockResolvedValueOnce("/tmp/out");
+      let resolveSlow: (value: unknown) => void = () => {};
+      invokeMock.mockImplementation((command: string, args: { path: string }) => {
+        if (command !== "image_convert") return Promise.resolve(undefined);
+        if (args.path === "/tmp/slow.png") {
+          return new Promise((resolve) => {
+            resolveSlow = resolve;
+          });
+        }
+        return Promise.resolve({ outputPath: "/tmp/out/fast.jpg", originalBytes: 100, convertedBytes: 50 });
+      });
+
+      const convertPromise = clickButton(wrapper!, "Convert all");
+      await flushPromises();
+
+      // The fast item is already done while the slow one is still converting.
+      const rows = wrapper!.findAll(".queue-row");
+      expect(rows[0].find(".chip.status-converting").exists()).toBe(true);
+      expect(rows[1].find(".chip.status-done").exists()).toBe(true);
+
+      resolveSlow({ outputPath: "/tmp/out/slow.jpg", originalBytes: 200, convertedBytes: 100 });
+      await convertPromise;
+      await flushPromises();
+
+      expect(wrapper!.findAll(".chip.status-done")).toHaveLength(2);
     });
   });
 });
