@@ -15,7 +15,7 @@ and actually followed, not by a bot blocking a merge.
 
 `src-tauri/tauri.conf.json`'s `"version"` field must be bumped to match the tag you're
 about to push, **before** you push it. `.github/workflows/release.yml`'s own
-"verify tag matches tauri.conf.json's version" step (lines 57–71) already fails the
+"verify tag matches tauri.conf.json's version" step (lines 94–108) already fails the
 release job fast if you forget — it compares the pushed tag against
 `tauri.conf.json`'s version and exits with an error before any build/sign/notarize work
 starts. So a forgotten bump can't silently ship a version-mismatched build; it just
