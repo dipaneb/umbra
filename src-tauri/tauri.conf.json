@@ -41,6 +41,9 @@
     "createUpdaterArtifacts": true,
     "macOS": {
       "minimumSystemVersion": "13.0"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "embedBootstrapper" }
     }
   },
   "plugins": {

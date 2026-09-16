@@ -5,10 +5,12 @@
 mod clipboard_watch;
 pub mod commands;
 mod fs_helper;
-// AC44: the render backends live here, and `render/mod.rs` holds the only `cfg(target_os)`
-// switch in this crate's runtime source. (`build.rs` has carried one since Story 4.1 for the
-// Windows resource embed — a build script, not shipped code.) Nothing else branches on OS.
+// AC44: the render backends live here. `render/mod.rs` and `startup_error.rs` (the fatal
+// startup-error dialog — see its own doc comment) are the only `cfg(target_os)` switches in
+// this crate's runtime source. (`build.rs` has carried one since Story 4.1 for the Windows
+// resource embed — a build script, not shipped code.) Nothing else branches on OS.
 mod render;
+mod startup_error;
 
 use commands::base64::{
     base64_decode, base64_decode_to_file, base64_encode, base64_ingest_file, base64_parse_data_uri,
@@ -28,6 +30,7 @@ use commands::pdf::{
     pdf_save_copy,
 };
 use commands::uuid::{uuid_export, uuid_generate};
+use tauri::Manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -37,7 +40,7 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -49,6 +52,28 @@ pub fn run() {
         // in Rust, not JS, so it doesn't touch `main.ts` at all.
         .setup(|app| {
             clipboard_watch::start(app.handle().clone());
+
+            // The main window is created with `visible: false` (tauri.conf.json) and the only
+            // thing that ever shows it is `main.ts`'s `getCurrentWindow().show()`, once the
+            // frontend has mounted — there is no other fallback. If that never happens (e.g. a
+            // hung `invoke` in `settings.init()`'s restore path), the window stays invisible
+            // forever with no indication anything is wrong: exactly the "hourglass, then
+            // nothing" failure this watchdog exists to rule out. Ten seconds is generous enough
+            // to clear a cold WebView2 start on slow/old hardware without being a real user-
+            // visible delay when nothing is actually wrong (the frontend has almost always
+            // already called `show()` well before this fires).
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                let Some(window) = handle.get_webview_window("main") else {
+                    return;
+                };
+                if window.is_visible().unwrap_or(true) {
+                    return;
+                }
+                let _ = window.show();
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -90,7 +115,17 @@ pub fn run() {
             image_convert,
             image_estimate_size,
             image_ingest_dropped
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        ]);
+
+    // Not `.expect(...)`: on a release Windows build there is no console
+    // (`windows_subsystem = "windows"` in `main.rs`), so a panic message here is silently
+    // discarded and the user sees nothing at all — the same "hourglass, then nothing" failure
+    // as an invisible window, just one step earlier. `startup_error::fatal` is what actually
+    // gets a message in front of the user; see its doc comment for why `Err` here specifically
+    // means window/webview creation itself failed (e.g. WebView2 missing), before `.setup()`
+    // — and therefore the clipboard watcher and show-watchdog above — ever ran.
+    if let Err(error) = builder.run(tauri::generate_context!()) {
+        startup_error::fatal(&error);
+        std::process::exit(1);
+    }
 }

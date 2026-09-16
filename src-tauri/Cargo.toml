@@ -91,11 +91,16 @@ image = "0.25"
 [target.'cfg(target_os = "windows")'.dependencies]
 # `Windows.Data.Pdf`, present since Windows 8.1. `Foundation` carries the WinRT async plumbing
 # (`IAsyncOperation`) that `RenderToStreamAsync` returns; `Storage_Streams` carries the
-# in-memory stream both the load and the render side require.
+# in-memory stream both the load and the render side require. `Win32_UI_WindowsAndMessaging`
+# is `startup_error.rs`'s `MessageBoxW` call: the fatal-startup-error path has no `AppHandle`
+# yet (it runs when `.run()` itself returns `Err`, before `tauri_plugin_dialog` is reachable),
+# so it can't use the dialog plugin already registered in `lib.rs` and falls back to the raw
+# Win32 API instead — no new crate, just one more feature on the `windows` crate already here.
 windows = { version = "0.61", features = [
     "Data_Pdf",
     "Foundation",
     "Storage_Streams",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 image = "0.25"
 
