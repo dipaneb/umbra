@@ -42,8 +42,10 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  release-macos:
     runs-on: macos-latest
+    outputs:
+      notes: ${{ steps.notes.outputs.notes }}
     env:
       # Same rationale as ci.yml: ort-sys (pulled in by oar-ocr) downloads its ONNX Runtime
       # binary at build time into an OS-specific cache dir that Swatinem/rust-cache doesn't
@@ -176,3 +178,119 @@ jobs:
           # v0.1.0-style tag looking like the first public release.
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: --target aarch64-apple-darwin
+
+  # NFR3: Windows is a stated P3 best-effort goal, shipped unsigned for now (no Windows code
+  # signing secret exists yet — see docs/release-secrets.md if/when that changes). Unsigned means
+  # the installer trips Windows SmartScreen on first download for users who don't already trust
+  # this publisher; that's a deliberate, documented trade, not an oversight. Depends on
+  # release-macos purely to reuse its already-extracted, already tag/version-validated release
+  # notes (`needs.release-macos.outputs.notes`) rather than re-deriving them here -- not because
+  # the Windows build needs anything else from the macOS one.
+  release-windows:
+    needs: release-macos
+    runs-on: windows-latest
+    env:
+      # Same rationale as release-macos's own ORT_CACHE_DIR and ci.yml's: ort-sys downloads its
+      # ONNX Runtime binary at build time into an OS-specific cache dir Swatinem/rust-cache
+      # doesn't cover.
+      ORT_CACHE_DIR: ${{ github.workspace }}/.ort-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@3a8b2ad3ea1212417907ff0e1b3d0c4e121bef40 # 1.94.0
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+
+      - name: cache ort-sys ONNX Runtime binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.ORT_CACHE_DIR }}
+          key: ${{ runner.os }}-ort-cache-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-ort-cache-
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Umbra ${{ github.ref_name }}'
+          releaseBody: ${{ needs.release-macos.outputs.notes }}
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          args: --target x86_64-pc-windows-msvc
+
+  # NFR3, same shape as release-windows: Linux is the other half of the P3 best-effort goal, also
+  # shipped unsigned. Unlike Windows there's no SmartScreen-equivalent block for an unsigned
+  # .deb/.rpm/AppImage -- Linux's code-signing story (Sign/linux.mdx: a GPG key on the AppImage)
+  # is opt-in provenance, not a gate the OS enforces before the file will even run, so "unsigned"
+  # here doesn't carry the same first-run-warning cost it does on Windows. Same dependency on
+  # release-macos, same reason: reuse its release notes rather than re-deriving them.
+  release-linux:
+    needs: release-macos
+    runs-on: ubuntu-latest
+    env:
+      ORT_CACHE_DIR: ${{ github.workspace }}/.ort-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same package list ci.yml's Linux job installs to compile/test -- tauri-action's own
+      # bundler brings whatever it needs to actually assemble the .deb/.rpm/AppImage on top of
+      # these, no separate dpkg/rpmbuild/appimagetool install required.
+      - name: install Tauri Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - uses: dtolnay/rust-toolchain@3a8b2ad3ea1212417907ff0e1b3d0c4e121bef40 # 1.94.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+
+      - name: cache ort-sys ONNX Runtime binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.ORT_CACHE_DIR }}
+          key: ${{ runner.os }}-ort-cache-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-ort-cache-
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Umbra ${{ github.ref_name }}'
+          releaseBody: ${{ needs.release-macos.outputs.notes }}
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          args: --target x86_64-unknown-linux-gnu
