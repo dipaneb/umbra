@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Rebuild Roadmap"
 status: draft
 created: 2026-08-18
-updated: 2026-08-18
+updated: 2026-09-18
 ---
 
 # Umbra — Landing Page Rebuild Roadmap
@@ -102,7 +102,7 @@ session will still stop and ask on every item in the second list above.
 
 ## Phase 0 — Read-in
 
-- [ ] **Step 0.1 — Ground the session.** Read `DESIGN.md`, `EXPERIENCE.md`, `prd.md` (§1–2 for
+- [x] **Step 0.1 — Ground the session.** Read `DESIGN.md`, `EXPERIENCE.md`, `prd.md` (§1–2 for
       positioning, FR33/FR34, INV-1/INV-2, §6 success metrics), Story 5.4 (what exists and its
       seven deferred items), and `umbra-web`'s current `src/`. **Why first:** every later step
       cites these; re-deriving them per session wastes the run and invites drift.
@@ -115,7 +115,7 @@ session will still stop and ask on every item in the second list above.
 **Goal:** decide what the site argues, to whom, and — critically — which factual claims it is
 allowed to make. Nothing visual, nothing written as final copy.
 
-- [ ] **Step 1.1 — Positioning & audience brief.** Transcribe the PRD's positioning ("the
+- [x] **Step 1.1 — Positioning & audience brief.** Transcribe the PRD's positioning ("the
       privacy-first toolbox where even the AI is private"; explicitly *not* out-featuring
       DevToys/DevUtils) into a page-level brief: the one-sentence claim, the visitor's job-to-be-done,
       what the page is implicitly arguing against, and the single conversion action.
@@ -125,7 +125,7 @@ allowed to make. Nothing visual, nothing written as final copy.
       list exists. `bmad-product-brief` is the heavier alternative if the PR/FAQ shape feels wrong.
       **Output:** `landing-strategy.md` §1.
 
-- [ ] **Step 1.2 — Reference scan.** 📚 Look hard at 6–10 comparable sites — direct
+- [x] **Step 1.2 — Reference scan.** 📚 Look hard at 6–10 comparable sites — direct
       (devutils.app, DevToys, DevTools-X) and aspirational-adjacent in the same visual register
       (Raycast, Linear, Warp, Zed). Extract *conventions*, not designs: where the screenshot sits,
       how a download is presented, how much copy is above the fold, how privacy-positioned tools
@@ -135,7 +135,7 @@ allowed to make. Nothing visual, nothing written as final copy.
       structural range. `bmad-market-research` if you want it run as a structured comparison rather
       than a browse. Timebox to one session. **Output:** `landing-strategy.md` §2.
 
-- [ ] **Step 1.3 — Objection map.** List every reason a visitor bounces, then decide where each is
+- [x] **Step 1.3 — Objection map.** List every reason a visitor bounces, then decide where each is
       answered. Umbra's are concrete and unusually strong material: *is it safe to run an unsigned-
       looking binary from a stranger* (answer: Developer ID signed + Apple notarized), *public repo
       but All Rights Reserved — what may I actually do*, *why should I believe the privacy claim*
@@ -144,8 +144,13 @@ allowed to make. Nothing visual, nothing written as final copy.
       into structure, and it feeds the home page's section order directly.
       **Tool:** a plain working session; `bmad-review-adversarial-general` if you want the
       objections generated against you rather than by you. **Output:** `landing-strategy.md` §3.
+      **Correction found while executing:** the "no Windows build" example objection above was
+      stale — Windows/Linux packaging shipped 2026-09-16 (#156), but **unsigned**, which is a
+      sharper, still-live objection (SmartScreen warnings) that replaces it. See `landing-strategy.md`
+      §3 for the full corrected map, the Windows/Linux-minimum-OS-version gap it surfaced for Step
+      1.5, and what's still flagged for developer sign-off.
 
-- [ ] **Step 1.4 — Success definition & event plan.** Name what "it worked" means and — before any
+- [x] **Step 1.4 — Success definition & event plan.** Name what "it worked" means and — before any
       code — which events measure it. **Read this constraint carefully:** you chose cookieless
       PostHog, which means no cross-page-load identity. A "landed on home → clicked download on
       /download" funnel is *not* measurable under that choice. Design around it: put a download-click
@@ -155,8 +160,17 @@ allowed to make. Nothing visual, nothing written as final copy.
       badly; and this is where the cookieless trade-off gets priced honestly instead of discovered
       later. **Tool:** working session + Context7 for PostHog's current `persistence` options and
       `capture` API. **Output:** `landing-strategy.md` §4.
+      **Correction found while executing:** Context7 surfaced a real `posthog-js` feature this step's
+      own wording didn't know about, `cookieless_mode`, distinct from a `persistence` value — and
+      clarified that `sessionStorage` (unlike `memory`) actually survives within one visit, so the two
+      options Step 6.8 was framed as choosing between aren't as interchangeable as "no cross-page-load
+      identity" implied. Also surfaced: adding the new `download_clicked` event makes the site's
+      current footer claim ("page-view analytics only") false the moment it ships — Step 6.8's own
+      task list already plans to update that disclosure; this step is why. See `landing-strategy.md`
+      §4 for the full event table, the corrected persistence framing, and what stays permanently
+      unmeasurable under any cookieless option.
 
-- [ ] **Step 1.5 — The claim ledger.** 🔸 A table of every factual assertion the site is permitted
+- [x] **Step 1.5 — The claim ledger.** 🔸 A table of every factual assertion the site is permitted
       to make, each with its source of truth and who owns updating it: the privacy promise (source:
       `Umbra`'s README `## Privacy` + Story 5.3's executed checklist), the tool list (source:
       `src/stores/registry.ts`), platform support (source: NFR3 + what actually builds), the licence
@@ -166,8 +180,21 @@ allowed to make. Nothing visual, nothing written as final copy.
       consequences, and Story 5.4's own Dev Notes flagged exactly this hazard. Every later copy step
       is checked against this ledger. **Tool:** working session reading the named sources live —
       not from memory, not from this roadmap's summaries. **Output:** `landing-strategy.md` §5.
+      **Correction found while executing:** a live `gh api repos/dipaneb/umbra/releases/latest` call
+      shows the current *stable* release (`v0.4.0`) ships **macOS-only assets** — Windows/Linux
+      packaging (PR #156) exists only in `v0.5.0-alpha.1`, which GitHub's API correctly excludes from
+      `/releases/latest` as a pre-release. §3's own objection-map answers assumed Windows/Linux were
+      already reachable from the site; at ledger-writing time they weren't. **Developer decided
+      (2026-09-18):** build the site now regardless — the download page (Step 6.3) reads live
+      per-platform availability from `/releases/latest` rather than waiting for a stable tag with all
+      three platforms; each platform starts working the moment its assets land in a stable release,
+      no further site change needed. Also corrected: only **one** AI feature ships today (OCR) —
+      `prd.md`'s own §1 Overview line naming "natural-language cron" as AI-flavored is stale against
+      Story 8.6, which retired NL→cron's parser entirely; developer confirmed this is expected
+      (more AI features are planned) and doesn't change §1's "even the AI" wording. See
+      `landing-strategy.md` §5 for the full 13-row ledger.
 
-- [ ] **Step 1.6 — AI-answer target list.** 📚 Write down the handful of questions you want an LLM
+- [x] **Step 1.6 — AI-answer target list.** 📚 Write down the handful of questions you want an LLM
       to name Umbra in answer to — "privacy-first alternative to DevToys", "offline JSON formatter
       for macOS", "developer tools that don't upload my data", "local OCR without a cloud API". This
       is the GEO equivalent of keyword research, and it's a different exercise: you're targeting the
@@ -528,7 +555,15 @@ content rather than lorem ipsum.
 - [ ] **Step 7.2 — GitHub download counts.** 🔸 The GitHub Releases API exposes per-asset download
       counts. PostHog can never see this — the download is a click to another domain followed by a
       file fetch — so this is the *actual* "did anyone use it" number behind the PRD's "Used"
-      metric. Check it manually or with a small script.
+      metric. Check it manually or with a small script, or — better — bridge it into PostHog itself
+      via a small scheduled job using PostHog's server-side capture API, so the number renders
+      alongside `$pageview`/`download_clicked` in one dashboard instead of living apart in a script's
+      output; PostHog accepts events from outside the browser SDK for exactly this kind of case.
+      **Two things worth watching for when this gets built** (re-verify the specifics at execution
+      time — the exact APIs involved may well have moved on by then): GitHub's download count is a
+      running total, not a delta, so summing it naively into a trend will overcount; and the app's own
+      background update-check quietly inflates whichever release asset it touches, which isn't a
+      human download and shouldn't be counted as one.
 
 - [ ] **Step 7.3 — Search Console + Bing Webmaster.** Free, and the only way to see whether indexing
       broke after the domain move. Submit the sitemap. **Why after 6.1:** it's per-property, so
@@ -650,8 +685,8 @@ Recorded so future sessions read these as decided, not overlooked.
 
 ## Quick-reference checklist
 
-- [ ] 1.1 Positioning & audience brief · 1.2 Reference scan · 1.3 Objection map · 1.4 Success
-      definition & event plan · 1.5 **Claim ledger** · 1.6 AI-answer target list
+- [x] 1.1 Positioning & audience brief · [x] 1.2 Reference scan · [x] 1.3 Objection map · [x] 1.4
+      Success definition & event plan · [x] 1.5 **Claim ledger** · [x] 1.6 AI-answer target list
 - [ ] 2.1 Page inventory · 2.2 **Recruiter page shape** · 2.3 Home narrative spine · 2.4 Other page
       outlines · 2.5 Content model
 - [ ] 3.1 Web voice spec · 3.2 Home copy · 3.3 **Proof copy** · 3.4 Remaining copy · 3.5 Microcopy &
