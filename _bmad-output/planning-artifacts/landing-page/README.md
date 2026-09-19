@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Rebuild Roadmap"
 status: draft
 created: 2026-08-18
-updated: 2026-09-18
+updated: 2026-09-19 (Step 2.5 done — Phase 2 complete)
 ---
 
 # Umbra — Landing Page Rebuild Roadmap
@@ -215,14 +215,14 @@ allowed to make. Nothing visual, nothing written as final copy.
 **Goal:** what pages exist, what each is for, and what order the home page makes its argument in.
 Still no finished prose.
 
-- [ ] **Step 2.1 — Page inventory.** Decide the page list from Phase 1's outputs rather than from
+- [x] **Step 2.1 — Page inventory.** Decide the page list from Phase 1's outputs rather than from
       what exists. Candidates on the table: home, download, FAQ, a recruiter/project page (Step 2.2),
       privacy policy, legal notice, a changelog/releases page. Each page must justify itself against
       the audience priority; kill anything that can be a section instead of a page.
       **Why here:** copy can't be written until you know how many pages there are, and the legal
       pages (Phase 4) need slots. **Tool:** working session. **Output:** `landing-ia.md` §1.
 
-- [ ] **Step 2.2 — Shape the recruiter-facing page.** 🔸 Left deliberately open. The forks: an
+- [x] **Step 2.2 — Shape the recruiter-facing page.** 🔸 Left deliberately open. The forks: an
       *engineering write-up* (Rust/Tauri bridge, local ONNX inference, the signed-and-notarized
       release pipeline — maps to the PRD's "Learned" metric, aimed at a technical interviewer); a
       *project story* (the planning corpus, the decisions and their trade-offs, the accepted-not-
@@ -231,24 +231,55 @@ Still no finished prose.
       serving the secondary audience, so it deserves a dedicated session rather than a footnote in
       2.1. **Tool:** `bmad-brainstorming` or `bmad-forge-idea` (from `Umbra`) to pressure-test the
       framing before committing copy to it. **Output:** `landing-ia.md` §2.
+      **Correction found while executing:** neither fork survived as originally framed. Resolved via
+      a `bmad-forge-idea` session (working record, not committed to this repo) to a third
+      shape — mission line + plain outcome statements + footer attribution, deliberately excluding
+      both the WCAG/cron-parser trade-off examples this entry suggests and a jargon-heavy "proof
+      dossier" direction that was drafted and killed for overselling ordinary tooling and failing a
+      non-technical reader. See `landing-ia.md` §2 for the full decision trail.
 
-- [ ] **Step 2.3 — Home-page narrative spine.** 📚 Section-by-section order with a one-line purpose
+- [x] **Step 2.3 — Home-page narrative spine.** 📚 Section-by-section order with a one-line purpose
       for each — the *argument*, in words, before any prose or layout. This is the actual craft of
       landing-page design, more than visuals are. **Why here:** it consumes 1.1's claim, 1.3's
       objections, and 1.2's conventions, and it's what Phase 3 writes into and Phase 5 designs
       around. **Tool:** working session; `bmad-editorial-review-structure` to critique the spine
       once drafted. **Output:** `landing-ia.md` §3.
+      **Correction found while executing:** this step's own workflow section changes this step's
+      asset requirement — a **video**, not the GIF this bullet's Step 5.3 entry below still names,
+      since compressed video is the more Lighthouse-friendly format for the same content, not a
+      trade-off against it. See `landing-ia.md` §3 for the full spine, the About-page nav-placement
+      decision, and the workflow-section rationale.
 
-- [ ] **Step 2.4 — Outlines for every other page.** Same treatment, lighter: purpose, sections,
+- [x] **Step 2.4 — Outlines for every other page.** Same treatment, lighter: purpose, sections,
       what each must and must not claim (per the ledger). **Tool:** working session.
       **Output:** `landing-ia.md` §4.
+      **Note:** two forks this step owned outright — the comparison page's one-page-vs-per-competitor
+      shape, and whether Download needs a secondary CLI/build-from-source path — were decided with
+      reasoning rather than left open, but flagged for developer sign-off in `landing-ia.md` §4 rather
+      than locked silently. See that file for the full 16-page outline and the sign-off flags.
 
-- [ ] **Step 2.5 — Content model.** Decide what becomes structured data versus hardcoded markup.
+- [x] **Step 2.5 — Content model.** Decide what becomes structured data versus hardcoded markup.
       The tool list is the live case: it's currently hardcoded in `index.astro` and **will** drift
       when Epic 8 reworks the tools. Options: an Astro content collection, a shared JSON, or a
       documented manual sync. **Why here:** it shapes the build, and it's the mechanical half of the
       claim ledger. **Tool:** working session + Context7 for Astro 7's content-collections API.
       **Output:** `landing-ia.md` §5.
+      **Correction found while executing:** the roadmap's own three options weren't mutually
+      exclusive — different pages needed different answers. Decided: a build-time content collection
+      for the 9 tool pages + home's feature-tour grid (single source instead of today's confirmed-live
+      duplication bug in `index.astro`); a second collection for the 4 comparison pages, with a
+      **mandatory** dated-citation field closing the competitor-fact gap Step 2.4 flagged; a hybrid
+      live-loader-plus-hand-curated collection for the changelog (a loader can fetch version/date
+      mechanically but must not auto-summarize Added/Changed/Fixed from raw release bodies); a plain
+      data file (no collection) for the FAQ; and — the step's hardest finding — `registry.ts` is Vue
+      code in a *separate repo*, so keeping the tools collection in sync with it is necessarily a
+      **documented manual sync**, not an automated one, no matter which option was picked. Also
+      surfaced and decided (developer, 2026-09-19, after a pedagogical walkthrough of both options):
+      the download page's per-platform live check (ledger row 7) uses a client-side GitHub API fetch,
+      not Astro's now-stable Live Content Collections (confirmed via Context7) — the latter would have
+      required adding an on-demand-rendering adapter for one page, and the fact being displayed isn't
+      one this site needs crawlable. See `landing-ia.md` §5 for the full reasoning and the recommended
+      Vercel-deploy-hook fix for cross-repo staleness.
 
 ---
 
@@ -382,8 +413,12 @@ content rather than lorem ipsum.
       that contradicts the site's own branding. Either (a) ship with the Step 4.3 Claude Design
       mocks, labelled honestly as mockups, and swap in real captures once Epic 7 lands, or (b) hold
       the imagery slot until Epic 7 ships. Decide it here, explicitly, rather than discovering it at
-      launch. Also decide whether a short demo GIF of the 5-minute flow (⌘K → JSON → JWT → cron →
-      Bucket) is worth producing — it is the PRD's own demo spine and would carry the page.
+      launch. **Corrected by Step 2.3 (`landing-ia.md` §3):** a demo of the 5-minute flow (⌘K → JSON
+      → JWT → cron → Bucket) is not just worth producing, it's decided — home's spine now reserves a
+      section for it — and it ships as a **video, not a GIF** (compressed video is smaller and more
+      Lighthouse-friendly than an equivalent GIF for the same motion, so this is a format correction,
+      not a scope change). Step 6.10 inherits the lazy-load/poster-frame/no-autoplay requirement that
+      keeps it out of the performance budget.
       **Tool:** macOS `⌘⇧5` or Shottr/CleanShot for capture; keep framing restrained, per brand.
       **Output:** image assets + `landing-design.md` §3.
 
@@ -687,8 +722,8 @@ Recorded so future sessions read these as decided, not overlooked.
 
 - [x] 1.1 Positioning & audience brief · [x] 1.2 Reference scan · [x] 1.3 Objection map · [x] 1.4
       Success definition & event plan · [x] 1.5 **Claim ledger** · [x] 1.6 AI-answer target list
-- [ ] 2.1 Page inventory · 2.2 **Recruiter page shape** · 2.3 Home narrative spine · 2.4 Other page
-      outlines · 2.5 Content model
+- [x] 2.1 Page inventory · [x] 2.2 **Recruiter page shape** · [x] 2.3 Home narrative spine · [x] 2.4
+      Other page outlines · [x] 2.5 Content model
 - [ ] 3.1 Web voice spec · 3.2 Home copy · 3.3 **Proof copy** · 3.4 Remaining copy · 3.5 Microcopy &
       social-proof honesty · 3.6 Ledger gate · 3.7 Extractability pass
 - [ ] 4.1 Privacy policy · 4.2 Legal notice · 4.3 **Binary licence** · 4.4 Asset licences ·

@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Strategy"
 status: draft
 created: 2026-09-17
-updated: 2026-09-18
+updated: 2026-09-19 (Step 2.4 cross-reference added to §3)
 ---
 
 # Umbra — Landing Page Strategy
@@ -421,8 +421,8 @@ etc. as a placeholder for "wherever the page inventory lands the FAQ," not a loc
 
 | Objection | Answer | Source | Where it lives |
 |---|---|---|---|
-| "How is this different from a free web-based JSON formatter?" | The wedge itself: nothing pasted ever leaves the machine — no paste-and-hope with an unknown web service. | §1 one-sentence claim | Hero/positioning generally, not a single answer point |
-| "How is this different from DevToys / DevUtils / DevTools-X?" | Not named or compared in persuasive copy (§2c's developer preference) — but answered directly and by name in the FAQ, and via Step 3.7's planned comparison table (Umbra vs. web tools vs. other desktop suites). | §2c; roadmap Step 3.7 | FAQ; comparison table (3.7) — **not** hero/home narrative copy |
+| "How is this different from a free web-based JSON formatter?" | The wedge itself: nothing pasted ever leaves the machine — no paste-and-hope with an unknown web service. | §1 one-sentence claim | Hero/positioning generally for the *broad* version of this question — **the narrow, per-tool version ("json online formatter," "jwt decoder online") got a precise home at Step 2.4**: a mandatory micro-FAQ entry on each `/tools/*` page, plus a catch-all FAQ topic (`landing-ia.md` §4). Recorded here because this row is where the gap was first noticed and correctly left open, not resolved. |
+| "How is this different from DevToys / DevUtils / DevTools-X?" | Not named or compared in persuasive copy (§2c's developer preference) — but answered directly and by name in the FAQ, and via Step 3.7's planned comparison table (Umbra vs. web tools vs. other desktop suites). | §2c; roadmap Step 3.7 | FAQ; **four dedicated comparison pages** (`/compare/devtoys`, `/compare/devutils`, `/compare/devtools-x`, `/compare/cyberchef` — CyberChef added per §7's baseline finding), decided at Step 2.4 (`landing-ia.md` §4) — **not** hero/home narrative copy |
 
 ### §3b — Developer decisions on the unsigned-build disclosure (same session)
 
@@ -662,6 +662,34 @@ just for macOS.
 - **Which mechanism** keeps rows 4 and 10 in sync with their live sources at build time (a content
   collection, a build-time fetch, a manual-sync discipline) is Step 2.5's job, not this one — this
   ledger names the source of truth, Step 2.5 decides how the site reads it.
+
+### Correction found 2026-09-19, during Step 2.3: row 1's checklist discipline has lapsed
+
+Step 2.3 (home-page narrative spine) drafted a "Verify it yourself" section pointing at "the most
+recent nettop result." Before shipping that as wireframe copy, the underlying claim was checked live
+against actual merged PRs rather than assumed from `docs/release-checklist.md`'s own description of
+the procedure (which states the *policy*, not whether it's been *followed*) — this is the same
+distinction row 7 already drew between "the pipeline is capable of producing X" and "X actually
+shipped."
+
+**What's true:** `docs/release-checklist.md` is real, detailed, and was genuinely followed for
+`v0.1.2` (PR #44, the story that introduced it) and `v0.2.0` (PR #111) — both PRs' bodies contain a
+real nettop result, matching this ledger row's existing citation.
+
+**What's not true, checked live via `gh pr list --search "nettop in:body"`:** neither `v0.4.0`
+(PR #155, the current stable release per row 7) nor `v0.5.0-alpha.1` (PR #156, Windows/Linux
+packaging, 2026-09-16) contains a nettop result — the discipline lapsed after `v0.2.0` and has not
+been picked back up for the two most recent releases, including the one the download page currently
+points visitors at.
+
+**Consequence for the site:** a "last verified: [date]" line on the home page's proof section cannot
+honestly name a current release yet — doing so would be exactly the kind of overclaim this ledger
+exists to prevent, the same failure mode as the "every release ships a published trace" wording an
+earlier draft of the home spine used before this check caught it. **Action item, not yet assigned to
+a step:** re-run the checklist against the current release and record the result in that release's
+PR (or a dedicated one) before Step 3.3 (proof copy) or Step 8.1 (pre-launch checklist) can treat this
+claim as ship-ready. Until then, the home page's verification link is a placeholder
+(`landing-ia.md` §3's revised Section 2), not live copy.
 
 ### Feeds directly into
 
