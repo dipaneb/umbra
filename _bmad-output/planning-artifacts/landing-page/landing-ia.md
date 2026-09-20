@@ -517,14 +517,16 @@ warned against for AI-crawler policy ("allowing crawlers on the site says nothin
 Sections: **Publisher identity** · **Hosting provider** (Vercel) · **Contact** · **Intellectual-property
 notice** (source-available status, cross-referencing both `/eula` and the repo `LICENSE`).
 
-**Must not claim:** that a home address is required — France's reduced non-commercial-site
-requirements plausibly allow withholding one (`README.md`'s own Step 4.2 framing), but confirming that
-is Step 4.2's legal research, not decided here.
-
-**Privacy-rule flag, not a content decision:** per this repo's own `CLAUDE.md`, no real name or
-address may land in any file this session could commit. "Publisher identity" above is a placeholder
-label — Step 4.2/3.4 decides whether that's a pseudonym, a handle, or something else, with the
-developer's explicit input, not invented at outline stage.
+**Resolved at Step 4.2, more fully than this entry anticipated:** not just a home address —
+`landing-legal.md` §2 found the current governing provision (LCEN Article 1-1, II, replacing the
+repealed Article 6-III this entry's "requirements" phrasing was implicitly citing) lets a
+non-professional publisher, which Umbra-web qualifies as, withhold their **entire identity**,
+disclosing only the hosting provider (Vercel). Developer decided (2026-09-20): host-only, fully
+anonymous — no name or handle. "Publisher identity" above ships with no placeholder to fill; see
+`landing-legal.md` §2 for the full page and reasoning. The `CLAUDE.md` privacy-rule flag this entry
+raised turned out moot for this section specifically (no personal detail is written to this page at
+all) — it still applies to this page's **Contact** section, which is a separate, still-open GDPR
+requirement, not an LCEN one.
 
 ### EULA (`/eula`)
 

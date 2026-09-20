@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Rebuild Roadmap"
 status: draft
 created: 2026-08-18
-updated: 2026-09-20 (Step 3.8 done — capability-differentiation pass)
+updated: 2026-09-20 (Step 4.4 done — third-party asset licences)
 ---
 
 # Umbra — Landing Page Rebuild Roadmap
@@ -568,20 +568,52 @@ code does.
 > Not legal advice. These steps produce your own informed decisions, with sources named. Treat
 > anything you're unsure about as a question for someone qualified, not for an AI.
 
-- [ ] **Step 4.1 — Privacy policy.** A real page, not a footer sentence. You run PostHog from
+- [x] **Step 4.1 — Privacy policy.** A real page, not a footer sentence. You run PostHog from
       France on an EU-region project, so GDPR applies to *the site* regardless of the app collecting
       nothing. Strategic angle as much as legal: a product whose entire pitch is privacy, without a
       privacy policy, is an own goal a sharp visitor notices. Made much shorter by two decisions
       already taken — cookieless, and no email capture. **Tool:** working session; CNIL's own
       guidance as the primary source for the French context. **Output:** `landing-legal.md` §1.
+      **Done 2026-09-20.** Drafted the full EN/FR page copy, grounded live against CNIL's published
+      cookie/audience-measurement guidance (fetched this session, not templated) and PostHog's own
+      GDPR-compliance docs (Context7) for the one fact `Layout.astro`'s public code can't answer —
+      whether IP capture is on for this project. Concluded, against CNIL's exemption criteria, that
+      no cookie-consent banner is needed and the legal basis is legitimate interest, not consent —
+      an own assessment against published criteria, stated as such, not a claimed CNIL certification
+      (PostHog isn't on CNIL's named-tool exemption list). **Two items deliberately left open, not
+      guessed:** the IP-capture toggle is a PostHog dashboard setting only Step 6.8's login-gated
+      audit can confirm; "Data controller & contact" ships as a placeholder per the developer's own
+      decision this session, since `CLAUDE.md`'s privacy rule blocks writing a real name/personal
+      email into a committed file, and Step 4.2's legal notice needs the same answer — deciding it
+      once, before launch, resolves both pages. See `landing-legal.md` §1 for the full draft,
+      sourcing, and every flagged item.
 
-- [ ] **Step 4.2 — Legal notice (mentions légales).** France requires a site publisher to identify
+- [x] **Step 4.2 — Legal notice (mentions légales).** France requires a site publisher to identify
       themselves. For a non-commercial personal site the requirements are reduced — notably you can
       generally withhold a home address where the host is identified — but reduced is not none.
       **Why here:** it's a page in the inventory and it needs writing. **Tool:** working session,
       CNIL/service-public guidance. **Output:** `landing-legal.md` §2.
+      **Done 2026-09-20, with a correction to this entry's own legal basis.** The article this
+      framing and most secondary sources cite, LCEN Article 6-III, was repealed by the SREN law
+      (2024-05-23) and replaced by **Article 1-1** — verified live against Légifrance, not assumed
+      from memory or from CNIL/service-public (neither names the current article clearly). The
+      actual exemption is broader than "withhold a home address": a **non-professional** publisher
+      (Article 1-1, II) may keep their entire identity off the public page and disclose only their
+      hosting provider's name and address, provided they've given their real identity to the host
+      directly. Determined Umbra-web qualifies (free product, no monetisation, one individual,
+      About page is a personal portfolio not a commercial offering) — own good-faith assessment,
+      not a certified legal conclusion. **Developer decided (2026-09-20):** ship host-only, fully
+      anonymous — no name or handle, not even the already-public GitHub `dipaneb`. This also
+      corrects `landing-legal.md` §1's assumption that Step 4.2 needed the same open decision as the
+      privacy policy's "Data controller & contact" field — it doesn't; LCEN's non-professional
+      exemption has no GDPR equivalent, so only the GDPR-side contact placeholder is still open,
+      shared by both pages. Vercel's hosting address (440 N Barranca Avenue #4133, Covina, CA 91723)
+      sourced live from Vercel's own published privacy policy, not a third-party registry (which
+      returned conflicting addresses). One pre-launch action item carried to Step 8.1: confirming
+      the Vercel account actually holds the operator's real identity, the exemption's precondition.
+      See `landing-legal.md` §2 for the full EN/FR draft and reasoning.
 
-- [ ] **Step 4.3 — End-user licence for the binary.** 🔸 Separate from the repo's All Rights
+- [x] **Step 4.3 — End-user licence for the binary.** 🔸 Separate from the repo's All Rights
       Reserved. Right now the repo grants no rights and the site says "download this" — technically
       contradictory, and nobody has flagged it in any existing document. A short statement (personal
       use permitted, no redistribution, no reverse engineering, provided as-is with no warranty)
@@ -589,15 +621,33 @@ code does.
       Because you took All Rights Reserved rather than an OSS licence, you also got none of the
       warranty-disclaimer boilerplate an OSS licence would have handed you for free.
       **Tool:** working session. **Output:** `landing-legal.md` §3.
+      **Done 2026-09-20.** No new placement decision needed — Step 2.1 (`landing-ia.md` §1) already
+      researched two real comparables (CleanShot X's full EULA, Titanium Software/OnyX's short
+      seven-clause one) and locked a dedicated `/eula` page, short form; this step filled that
+      already-decided structure with actual terms, checked against the repo's `LICENSE` (read live)
+      and ledger row 9. Seven clauses: License grant, No redistribution, No reverse engineering or
+      modification, "As-is"/no warranty, Limitation of liability, Termination, Contact. Deliberately
+      left out a governing-law clause — not one of this step's four named points or the outline's
+      seven clauses, so flagged as an optional pre-launch addition rather than added unilaterally.
+      Shares the same open "Contact" placeholder as Steps 4.1/4.2 rather than opening a fourth one.
+      See `landing-legal.md` §3 for the full EN/FR draft and reasoning.
 
-- [ ] **Step 4.4 — Third-party asset licence record.** Geist Sans/Mono (OFL 1.1, already verified
+- [x] **Step 4.4 — Third-party asset licence record.** Geist Sans/Mono (OFL 1.1, already verified
       in `DESIGN.md`), Phosphor icons, any imagery. Just needs recording as checked.
       **Tool:** working session. **Output:** `landing-legal.md` §4.
-
-- [ ] **Step 4.5 — Optional: trademark re-check.** "Umbra" already caused one collision — the
-      original working title was retired for exactly this reason — and the site is the public,
-      commercial-looking surface. A short EUIPO/INPI search. Low cost, non-zero value, entirely
-      skippable. **Output:** `landing-legal.md` §5.
+      **Done 2026-09-20.** Re-verified Geist Sans/Mono's OFL 1.1 licence live against the installed
+      `@fontsource/geist-sans`/`geist-mono` `5.3.0` packages `Umbra` already depends on (package.json
+      `license` field + bundled `LICENSE` file), rather than trusting `DESIGN.md`'s own summary alone.
+      Checked Phosphor Icons the same way — `@phosphor-icons/vue` `2.2.1`, MIT, verified from the
+      installed package — and connected it to `landing-ia.md` §5's tool-page `icon` frontmatter field,
+      which implies reusing the app's own Phosphor set for visual consistency, a link the roadmap
+      hadn't made explicit. Both are clear to adopt; neither is wired into `umbra-web` yet, since
+      Phase 5/6 haven't run — recorded ahead of the build so that work doesn't re-derive the licence
+      question. Imagery: `umbra-web`'s only two current image files are `create-astro`'s own
+      MIT-licensed placeholder favicon art (already flagged for replacement at Step 5.6); no other
+      imagery exists yet, and everything Phase 5 will add (screenshots, OG card, logo) is the
+      developer's own original material, not third-party stock — audited and recorded as "nothing to
+      clear," not silently skipped. See `landing-legal.md` §4 for the full record and reasoning.
 
 ---
 
@@ -961,8 +1011,7 @@ Recorded so future sessions read these as decided, not overlooked.
       Capability-differentiation pass** *(6 verified gaps found — PDF's strongest, since no competitor
       ships PDF page editing; 2 tools correctly got no new claim; caught 2 impostor-site search results
       before they were written up)*
-- [ ] 4.1 Privacy policy · 4.2 Legal notice · 4.3 **Binary licence** · 4.4 Asset licences ·
-      4.5 Trademark re-check *(optional)*
+- [x] 4.1 Privacy policy · [x] 4.2 Legal notice · [x] 4.3 **Binary licence** · [x] 4.4 Asset licences
 - [ ] 5.1 Web tokens · 5.2 Layout & responsive · 5.3 **Product imagery (Epic 7 fork)** ·
       5.4 **OG image** · 5.5 **Logo intake (dev-supplied SVGs) & placement** · 5.6 Favicon & icon
       production ·
