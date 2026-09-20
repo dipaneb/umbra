@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Rebuild Roadmap"
 status: draft
 created: 2026-08-18
-updated: 2026-09-19 (Step 2.5 done — Phase 2 complete)
+updated: 2026-09-20 (Step 3.8 done — capability-differentiation pass)
 ---
 
 # Umbra — Landing Page Rebuild Roadmap
@@ -95,7 +95,7 @@ session will still stop and ask on every item in the second list above.
 | Monetisation | None in this rebuild — free product, no pricing/donation surface |
 | Email capture | None. "Notify me" intent routes to GitHub Watch/Releases |
 | Analytics | PostHog, cookieless |
-| Language | English ships; i18n structure in place for a later French locale |
+| Language | **Revised 2026-09-19 (Step 3.2):** French ships alongside English at launch, not deferred. Both locales get full copy in Phase 3; Step 6.5's routing config was already going to support this, it's now load-bearing rather than inert on day one. |
 | Effort | Moderate, a few weeks, no hard date |
 
 ---
@@ -287,47 +287,195 @@ Still no finished prose.
 
 **Goal:** every word on the site, written deliberately, checked against the ledger.
 
-- [ ] **Step 3.1 — Web voice spec.** 📚 `EXPERIENCE.md` locks an *in-app* voice — precision
+- [x] **Step 3.1 — Web voice spec.** 📚 `EXPERIENCE.md` locks an *in-app* voice — precision
       instrument, no exclamation marks, no cheerleading, "an instrument reporting state." Marketing
       copy needs that same register doing a different job: the app reports, the site persuades. That
       translation has never been written down; the current site's tone was improvised.
       **Why here:** it's the rubric every following step is graded against. **Tool:** working
       session deriving from `EXPERIENCE.md`'s Voice and Tone table, extended with web-specific
       Do/Don't pairs. **Output:** `landing-copy.md` §1.
+      **Correction found while executing:** the in-app voice's "no exclamation marks, no cheerleading"
+      rule extends *uniformly* to persuasive web copy — including the hero — as a tone floor; what
+      changes for the web is technique (specificity, benefit-framing), not the tone ceiling. Two forks
+      the roadmap hadn't anticipated were decided the same session: (1) hero/home copy is licensed to
+      use full persuasive craft inside that restrained tone, not stripped to documentation-plain
+      prose; (2) first-person warmth (DevToys/meetsponsors-style) is licensed as a **bounded
+      exception** for the solo-developer-transparency line only (About/footer), nowhere else on the
+      site. See `landing-copy.md` §1 for the full extended Do/Don't table, including the new
+      disclosure-under-pressure register the SmartScreen modal required (state mechanism and reason,
+      never a reassuring adjective).
 
-- [ ] **Step 3.2 — Home copy.** 📚 Hero headline, subhead, every section, the CTA. Learn the
+- [x] **Step 3.2 — Home copy.** 📚 Hero headline, subhead, every section, the CTA. Learn the
       techniques explicitly as you go — specificity over adjectives, benefit over feature, naming
       the enemy, one idea per section. Write 3–5 headline candidates and choose deliberately; the
       current "Developer tools that don't phone home" is genuinely good and worth beating rather
       than discarding. **Why here:** needs the spine (2.3) and the voice spec (3.1).
       **Tool:** working session, then `bmad-editorial-review-prose` as a second pass.
       **Output:** `landing-copy.md` §2.
+      **Done 2026-09-19, with corrections that reached outside this step's own file:** the hero
+      headline direction ended up different per language (French took the literal wedge, English the
+      terser three-beat), decided against a design-canvas mockup rather than a character-count table,
+      since a visual "funnel" layout constraint the developer wanted was the real test. Bigger than
+      the copy itself — this step reopened a locked decision: **French now ships at launch**, not
+      deferred (corrected in this file's decisions table and Step 6.5, above). Also caught and fixed
+      live: "one keystroke away" (hero and the Workflow section heading) overclaimed ⌘K as a
+      systemwide shortcut when it's in-app only (`landing-ia.md` §3, corrected there); Section 5 (Why
+      Umbra)'s original three claims got replaced after developer pushback with real, sourced ones
+      (`NFR2` cold-launch budget, `NFR5` accessibility baseline) and expanded to four. A new page,
+      `/tools`, was added mid-session to fix a real gap (the 4 comparison pages had no path onto the
+      site) — see `landing-ia.md` §1/§3. **Not run:** the `bmad-editorial-review-prose` second pass
+      this step names as its tool — the developer's own iterative review this session covered similar
+      ground line-by-line, but that skill hasn't actually been invoked; flag if you want it run before
+      treating this step as fully closed.
 
-- [ ] **Step 3.3 — Proof copy.** 🔸 The section that *demonstrates* the privacy claim instead of
+- [x] **Step 3.3 — Proof copy.** 🔸 The section that *demonstrates* the privacy claim instead of
       asserting it. You have rare ammunition most privacy-claiming apps don't: a written, executed,
       per-release network-monitor checklist; Apple notarization; a publicly readable repo; a
       consent-gated updater. **Why its own step:** it's the differentiator, and it's the easiest
       place to accidentally overclaim — so it gets written against the ledger deliberately rather
       than in the flow of 3.2. **Tool:** working session, ledger open alongside.
       **Output:** `landing-copy.md` §3.
+      **Drafted 2026-09-19; accepted the same day "with reservations" (developer's own phrase) rather
+      than through the in-the-room iteration every other Phase 3 step got** — recorded honestly as a
+      qualified acceptance, not full sign-off; no specific objection was named, so there's nothing yet
+      to act on if a future session revisits it. Two real findings while drafting, not just copy
+      polish: the spine's own self-check command (`nettop -p $(pgrep -x umbra)`) silently fails to
+      show the update-check call unless the visitor quits and relaunches Umbra *while* it's running —
+      fixed in the copy, traced live against `src/App.vue`/`updateSignal.ts` (the update check is
+      launch-only, no manual re-check trigger exists anywhere in the app); and the Rust/native-app line
+      this section shares with "Why Umbra" (flagged open in Step 3.2) is resolved as two different
+      framings of the same fact (architecture here, speed there), not a repeat or a cut. Also surfaced:
+      the "native, no client-server architecture" claim isn't a ledger row yet, joining §2's
+      already-flagged NFR2/NFR5 gap as something Step 3.6 needs before it can gate this page. See
+      `landing-copy.md` §3 for the full draft and reasoning.
 
-- [ ] **Step 3.4 — Remaining page copy.** Download, FAQ (structured from 1.3's objection map), the
+- [x] **Step 3.4 — Remaining page copy.** Download, FAQ (structured from 1.3's objection map), the
       recruiter page, changelog framing. **Tool:** working session.
       **Output:** `landing-copy.md` §4.
+      **Done 2026-09-19, with a named scope deferral, not a silent gap:** wrote Download (including the
+      Windows unsigned-build modal copy), FAQ (7 Q&A pairs), About/recruiter (mission line + 4 outcome
+      statements + footer attribution), Changelog framing, and — closed opportunistically since it's
+      small — the `/tools` hub page this roadmap didn't have a page for until Step 3.2 added the nav
+      link. **Not written:** the 9 `/tools/*` tool pages and the 4 `/compare/*` comparison pages, even
+      though later cross-references in `landing-ia.md` §4 and `landing-copy.md` §2 assumed 3.4 would
+      cover them — this step's own README line above never named them, and the comparison pages
+      specifically need dated competitor research (a Step-1.2-shaped task), not copy against material
+      already on hand. Recommended as a follow-up Step 3.4b. See `landing-copy.md` §4 for the full
+      reasoning and every drafted page.
 
-- [ ] **Step 3.5 — Microcopy and social-proof honesty pass.** CTA labels, link text, fine print,
+- [x] **Step 3.4b — Tool and comparison page copy.** *(New, 2026-09-19 — the follow-up 3.4 itself
+      recommended, run the same session at the developer's request.)* The 9 `/tools/*` pages and the 4
+      `/compare/*` pages 3.4 deferred. **Tool:** working session, grounded live against
+      `src/locales/en.json`/`fr.json` and `src/stores/registry.ts` for the tool pages (not the marketing
+      register — these are functional claims); WebFetch/WebSearch against `devutils.com`, `devtoys.app`,
+      `github.com/fosslife/devtools-x`, and `gchq.github.io/CyberChef`/`github.com/gchq/CyberChef` for
+      the comparison pages, all checked live 2026-09-19 rather than recalled from Step 1.2's reference
+      scan (which checked landing-page conventions, not price/platform/tool-count/source/AI facts).
+      **Output:** `landing-copy.md` §4b. Every tool page's "what it does" paragraph traces to a real,
+      verified feature (JSON's repair/diff/JSONPath/TypeScript-transform tabs, Hash's live-confirmed
+      weak-algorithm flagging, JWT's decode-not-verify scope, Cron's guided-grid redesign per Story 8.6,
+      OCR's bundled-model claim per ledger row 3) rather than generic tool-category copy. Every
+      comparison page's competitor facts are dated and sourced, closing the citation-discipline gap
+      `landing-ia.md` §4 flagged; Umbra's own facts trace to ledger rows 1/3/4/5/6/9/12 as usual.
+      **Not resolved:** the comparison-page hub-vs-footer placement question (`landing-ia.md` §4, still
+      open) and a re-verification owner for the competitor tool-count figures, which will go stale the
+      same way Umbra's own claims would without ledger ownership.
+
+- [x] **Step 3.5 — Microcopy and social-proof honesty pass.** CTA labels, link text, fine print,
       the empty-ish states. Includes the specific problem of presenting a product with **no social
       proof yet** — no stars, no testimonials, no download count worth showing — without either
       faking it or looking abandoned. **Tool:** working session.
       **Output:** `landing-copy.md` §5.
+      **Done 2026-09-19, and it surfaced three real gaps rather than only polishing existing copy:**
+      (1) `notify_me_clicked` has been a defined PostHog event since Step 1.4 with no page ever giving
+      it something to click — now placed on the Download page (paired with the platform-unavailable
+      line) and in the footer, both as a "Watch on GitHub" link, GitHub's own mechanism name rather
+      than a euphemism; (2) **no language switcher existed anywhere**, even though Step 3.2 already
+      reversed the roadmap's locked decision to ship French at launch — without one, French pages would
+      exist but be practically unreachable from English ones; added to nav (far right, after Download)
+      and the footer, labelled with the destination language ("Français" / "English"), not an
+      abbreviation; (3) the Proof section's "read it yourself" line had no actual link to the repo —
+      fixed, and the same repo URL now also backs the new Watch-on-GitHub links. Also closed: a
+      finalized footer (analytics disclosure promoted from a voice-spec example to real copy, a
+      licence note, a copyright line), loading/failure/no-JS microcopy for the download page's live
+      per-platform check, and a small new 404 page the page inventory had never named. The
+      social-proof audit itself found **nothing to fix** — no fabricated stat, star, or testimonial
+      had crept into any of §1–§4b's drafted copy — and a real (non-fabricated) GitHub star count was
+      considered and deliberately rejected, since a small true number can read worse than no number at
+      launch. See `landing-copy.md` §5 for full reasoning; `landing-ia.md` §3/§4 carry the placement
+      corrections (nav, footer, Download page, a new 404 addendum).
 
-- [ ] **Step 3.6 — Ledger gate.** Read every line of copy against Step 1.5's ledger. Anything not
+- [x] **Step 3.6 — Ledger gate.** Read every line of copy against Step 1.5's ledger. Anything not
       traceable to a source either gets a source or gets cut. **Why last in the phase:** it's a gate,
       not a draft pass. **Tool:** working session; `bmad-review-edge-case-hunter` for an adversarial
       read of the privacy and licence wording specifically. **Output:** ledger sign-off recorded in
       `landing-copy.md` §6.
+      **Done 2026-09-20, signed off with two pre-launch action items, not a clean pass.** Added three
+      ledger rows (`landing-strategy.md` §5, rows 14–16: cold-launch performance, accessibility
+      baseline, no-client-server architecture) that `landing-copy.md` §2/§3 had already flagged as
+      un-sourced while drafting. Found and corrected live: About's "no browser engine" claim (false for
+      a Tauri app, which renders via the OS's own webview — the true, defensible claim is no *bundled*
+      browser runtime, unlike Electron), and two instances of an "as-of-every-release" cadence claim
+      (About, FAQ) that `landing-strategy.md` §5 had already found, live, doesn't currently hold — the
+      nettop-checklist discipline lapsed after `v0.2.0` and neither of the two most recent releases
+      carries a published result. **Two related findings deliberately left as copy, not rewritten:**
+      the Proof section's self-check prediction hasn't actually been re-verified against three of the
+      nine current tools (OCR/PDF/Images, added after the only published check) — carried to Step 8.1
+      as a pre-launch action item rather than softened, since the underlying claim follows validly from
+      the architecture (row 16), not from a test that needs to exist for the sentence to be honest; and
+      a categorical no-network-calls sentence that sits several lines above its own disclosed exception,
+      an extraction risk for an LLM lifting a self-contained answer — handed to Step 3.7 as its first
+      item rather than pre-empted here. The footer's analytics-disclosure sentence (ledger row 13) is
+      confirmed still gated on Step 6.8's not-yet-run PostHog dashboard audit, unchanged from that row's
+      own existing flag. See `landing-copy.md` §6 for the full row-by-row traceability table and every
+      finding's reasoning.
 
-- [ ] **Step 3.7 — Extractability pass (GEO).** 📚 Re-edit the finished copy so a machine can lift a
+- [x] **Step 3.6b — SEO pass.** 🔸 **Added 2026-09-19 — the roadmap originally had a GEO pass (3.7)
+      with no distinct SEO equivalent, on the unstated assumption the two techniques are close enough
+      to merge.** The developer correctly pushed back: SEO and GEO optimize for different consumers of
+      the same copy — a traditional crawler ranking a page for a typed keyword phrase, versus an
+      assistant lifting a self-contained answer for a conversational question — and the two can
+      actively conflict (a heading rewritten for AI-extraction phrasing can be a worse-targeted heading
+      for search ranking, and vice versa). Concretely, this pass covers: **title tags and meta
+      descriptions** per page (distinct from the on-page H1/headline copy Phase 3 already wrote);
+      **header hierarchy** (H1/H2/H3) checked for crawlability, not just visual/voice structure;
+      **natural search-query phrasing** worked into body copy where it doesn't fight the voice spec —
+      a different register from Step 1.6's conversational AI-query phrasing, even though both are
+      "what does a stranger type/ask to find this"; **internal linking** for crawl equity — which pages
+      get linked from where, not just "does a link exist" (the FAQ/tool-page/comparison-page links
+      Step 3.4 already added are a starting point, not a finished link graph); **image alt text**
+      conventions for the product screenshots Phase 5 will add; and **canonical URLs across the EN/FR
+      locale pair**, so Step 6.5's i18n routing doesn't create a duplicate-content problem search
+      engines penalize. **Why before the GEO pass, not after or merged with it:** SEO's targets (title
+      tags, keyword phrasing, link structure) are the more stable, established discipline; GEO is
+      newer, faster-moving, and — per this roadmap's own Rule 8 — a field to "treat with suspicion."
+      Establishing the stable layer first gives the GEO pass something concrete to check itself against,
+      rather than two simultaneous rewrites with no ordering to arbitrate a conflict.
+      **Tool:** working session; Context7 if `@astrojs/sitemap`'s or Astro's canonical-URL handling
+      needs re-verifying against Step 6.5's routing decision. **Output:** `landing-copy.md` §7.
+      **Feeds into Step 6.6** (structured data) — the per-page title/description this step sets is the
+      same metadata `SoftwareApplication`/`FAQPage` JSON-LD partly derives from.
+      **Renumbers the file section after it:** Step 3.7 (GEO)'s output below shifts from
+      `landing-copy.md` §7 to §8, since this step claims §7 — the roadmap's insert-as-3.6b convention
+      keeps step *numbers* stable for files that already cite "Step 3.7," but the target file's own
+      section count still has to shift to make room.
+      **Done 2026-09-20.** Verified live via Context7 (`/withastro/docs`) that Astro has no built-in
+      canonical-URL or per-page `hreflang` generation — both need hand-written `<head>` tags in
+      `Layout.astro` — and that `@astrojs/sitemap`'s own `i18n` option only produces `hreflang` inside
+      `sitemap.xml`, a complementary mechanism, not a substitute; also caught that Astro's own docs
+      example uses `fr-CA`, the wrong locale tag for Umbra's (non-Québécois) French. Wrote title tags
+      and meta descriptions for all 23 routes, checked against the claim ledger the same way Step 3.6
+      checked on-page copy. Assigned explicit H1/H2 levels to every already-drafted heading (none had
+      one before this step) and found two real crawlability risks in how the copy implies the UI gets
+      built: the Download page's OS tabs and the FAQ's answers could both end up rendered only when a
+      visitor interacts with them, hiding two-thirds of Download's content and all of FAQ's answers
+      from a crawler — flagged for Step 6.3 to render both fully into the DOM regardless of visual
+      collapse state. Found one real internal-linking gap (the four comparison pages are reachable from
+      only one FAQ mention) and offered a fix for developer confirmation rather than locking it, since
+      it touches Step 2.4's still-open hub-vs-footer question. See `landing-copy.md` §7 for the full
+      title/meta table, header-hierarchy assignment, and every finding's reasoning.
+
+- [x] **Step 3.7 — Extractability pass (GEO).** 📚 Re-edit the finished copy so a machine can lift a
       correct, self-contained answer out of it. Concretely: question-shaped headings matching Step
       1.6's target questions; the direct answer in the first sentence under each heading, before the
       elaboration; facts stated in full rather than by pronoun ("Umbra runs entirely offline" beats
@@ -335,11 +483,79 @@ Still no finished prose.
       tables are unusually citable; and visible dates on anything time-sensitive, since recency
       correlates strongly with citation. **Why here and not inside 3.2:** writing for a human and
       structuring for extraction pull in different directions, and doing both at once produces copy
-      that reads like an FAQ bot. Write it well first, then make it liftable. **Guard rail:** this
-      pass must not weaken 3.6's sign-off — a claim made more quotable is a claim more likely to be
+      that reads like an FAQ bot. Write it well first, then make it liftable.
+      **New guard rail, added alongside 3.6b:** this pass must not silently undo 3.6b's SEO work — a
+      GEO-motivated heading or phrasing rewrite that would break a title tag's keyword target or orphan
+      an internal link 3.6b placed gets flagged and decided explicitly, not overwritten by default. Where
+      the two genuinely conflict (rare — mostly they reinforce each other, since both reward specific,
+      well-structured, factual copy), name the conflict and let the developer pick, per this roadmap's
+      own autonomy table. **Guard rail (original):** this pass must not weaken 3.6's sign-off — a claim
+      made more quotable is a claim more likely to be
       repeated verbatim by an LLM, which *raises* the cost of overstating it. Re-run the ledger check
       after this pass. **Tool:** working session; `bmad-editorial-review-structure` for the heading
-      pass. **Output:** `landing-copy.md` §7.
+      pass. **Output:** `landing-copy.md` §8 (shifted from §7 by 3.6b's insertion above).
+      **Done 2026-09-20.** Fixed the one item Step 3.6 had already flagged as this step's first job: the
+      Proof section's categorical "no server for your data to go to" claim now states its one disclosed
+      exception (the update check) in the same breath, both languages — previously the exception sat
+      several lines below, a real extraction risk. Found and fixed three FAQ answers that opened with an
+      unresolved pronoun ("it's...") that loses its subject when an answer gets lifted without its
+      question. Found and closed a real coverage gap: none of the FAQ's seven pairs directly answered
+      "how do I check this app isn't phoning home," even though the home page's Proof section argues
+      exactly that at length — added as FAQ #8. Drafted the Umbra-vs-web-tools-vs-other-desktop-suites
+      comparison table this step's own description names, not yet written anywhere (the four existing
+      comparison pages are each one named competitor); placement stays open per `landing-ia.md` §4's
+      existing flag. Named, rather than silently resolved, the one real conflict between GEO's
+      question-heading technique and the site's own structural-rebuttal preference (`landing-strategy.md`
+      §2c) — it would apply to Home's Proof section specifically; resolved by leaving Home unchanged,
+      since the literal question-shaped version of that exact query now has a home in the new FAQ #8
+      instead. Flagged, not applied: a "free, no account" gap on the 9 individual tool pages (real, but
+      touches nine already-signed-off pages, so left for developer sign-off rather than added
+      unilaterally). **Not run:** `bmad-editorial-review-structure`, this step's own named tool — the
+      manual heading-by-heading audit against `landing-strategy.md` §7's query list covered similar
+      ground; flag if you want the skill itself run before treating this step as fully closed. See
+      `landing-copy.md` §8 for the full query-mapping table, the comparison table in both languages, and
+      every finding's reasoning.
+
+- [x] **Step 3.8 — Capability-differentiation pass (long-tail SEO/GEO).** 📚 For each of the 9 tools,
+      identify what it can do that a free competitor genuinely can't — not the privacy/verification
+      pitch every tool page already carries, but a specific, functional capability (a conversion format,
+      a level of detail in the output, a workflow another tool doesn't offer) checked live against the
+      same competitor set Step 3.4b already researched. Where a real one exists, give it its own heading
+      or micro-FAQ entry on that tool's page, phrased as the exact, narrow query someone with that need
+      would type ("convert an API response to a Pydantic model," not "json formatter"). **Why this is a
+      different pass from Step 3.6b's natural-search-phrasing work:** that pass inserts high-volume
+      synonyms into claims already being made; this one targets queries with almost no competition,
+      because the claim being answered doesn't exist anywhere else yet — a small site can rank or get
+      cited for a query nobody else is contesting far more easily than for "json formatter" on its own.
+      **Guard rail, same discipline as every other claim on this site:** a capability only gets written
+      up once it's actually verified — checked live against `src/locales/en.json`/`registry.ts` the way
+      Step 3.4b checked every functional claim, never inferred from the tech stack ("it's Rust, so it
+      must handle large files better"). If nothing real turns up for a given tool, that tool's page stays
+      as drafted rather than getting a manufactured differentiator. **Why here and not later:** this
+      needs the tool pages' real copy to audit against (Step 3.4b) and should land before Step 6.3 builds
+      those pages, so the finding changes the copy once rather than after the fact.
+      **Tool:** working session, live research against `devutils.com`, `devtoys.app`,
+      `github.com/fosslife/devtools-x`, and CyberChef, one tool at a time, the same sources and
+      verification discipline Step 3.4b already used. **Output:** `landing-copy.md` §9.
+      **Done 2026-09-20.** Found and verified six real, checked capability gaps (JSON's repair-with-
+      preview, Base64's single-tool auto-detection of decoded content, Hash's verify-against-a-known-
+      digest with a paste-offer, JWT's unsigned-token flag, PDF's full page manipulation — the
+      strongest of the six, since none of DevUtils/DevToys/CyberChef ship a PDF tool at all and
+      DevTools-X's is a viewer only — and Images' AVIF/WebP conversion against DevUtils/DevToys
+      specifically). Added a seventh, OCR's selectable-text-on-image overlay plus in-image search,
+      framed differently since none of the four competitors ship OCR at all, so there's no "competitor
+      lacks X" gap to check it against — added anyway as a real, narrower workflow claim distinct from
+      the site's general AI-privacy pitch. **Two tools got no new claim, correctly, not by oversight:**
+      UUID (DevToys already shipped v7 support in 2024; no other gap could be confirmed) and Cron
+      (see below). **Real methodological catch this session:** search results for the Cron and Images
+      research surfaced two impostor sites — `devutility.tools` (not `devutils.com`) and `devtoys.pro`
+      ("DevToys Web Pro," an unrelated paid web product, not `devtoys.app`) — each confidently
+      attributed to the wrong real competitor by a search summary. Caught before anything was written
+      up; the same failure mode `landing-strategy.md` §2's Warp correction and §2c's "public repo ≠
+      open source" correction already caught in this project. Cron ended up with no differentiator
+      once the impostor-sourced claims were discarded — its page stays exactly as §4b drafted it. See
+      `landing-copy.md` §9 for the full per-tool table, every new micro-FAQ pair (EN/FR), and the
+      unresolved re-verification-ownership gap this step's new competitor facts share with §4b's.
 
 ---
 
@@ -502,21 +718,29 @@ content rather than lorem ipsum.
 
 - [ ] **Step 6.4 — Content model.** Implement 2.5's decision so the tool list has one source.
 
-- [ ] **Step 6.5 — i18n structure.** 🔸 **Structure only — zero French copy gets written in this
-      roadmap.** Configure Astro's native `i18n` config (`astro.config.mjs`): `locales: ["en", "fr"]`,
-      `defaultLocale: "en"`, and pick a routing strategy now rather than let it default — the real
-      decision is `routing.prefixDefaultLocale`: `false` keeps English at `/` with no `/en/` prefix
-      (French would live at `/fr/`) and is the more common choice for a site with one dominant
-      language; `true` prefixes everything (`/en/`, `/fr/`) and reads as more neutral between
-      locales but changes every current URL. Given 6.1 is already moving the domain, `false` avoids
-      stacking a second URL change on top of that one. Also set `@astrojs/sitemap`'s own `i18n`
-      option (it's a separate config block from Astro's `i18n`, easy to configure one and miss the
-      other) — once set, it generates `hreflang` alternate-link entries per page automatically,
-      which is the mechanism search engines use to serve the right locale; with only `en` shipped
-      it's inert but structurally correct, so adding `fr` later is a content change, not a
-      config change. **Why now and not later:** retrofitting routing after launch changes every
-      URL, which is exactly the SEO cost you avoided by fixing the domain first — doing both URL
-      shifts in the same pre-launch pass instead of two separate ones later.
+- [ ] **Step 6.5 — i18n structure and French content.** 🔸 **Revised 2026-09-19 during Step 3.2 —
+      this entry originally read "structure only, zero French copy gets written in this roadmap."**
+      That's now wrong: the developer decided at Step 3.2 that French ships alongside English at
+      launch, not deferred (see the corrected "Language" row in the decisions table above). Everything
+      below about the Astro config is unchanged and was already written to support this outcome; what
+      changes is that `fr` is no longer an inert, unused locale entry — every page Phase 3 writes from
+      here needs a French pass, not just English. Configure Astro's native `i18n` config
+      (`astro.config.mjs`): `locales: ["en", "fr"]`, `defaultLocale: "en"`, and pick a routing strategy
+      now rather than let it default — the real decision is `routing.prefixDefaultLocale`: `false` keeps
+      English at `/` with no `/en/` prefix (French would live at `/fr/`) and is the more common choice
+      for a site with one dominant language; `true` prefixes everything (`/en/`, `/fr/`) and reads as
+      more neutral between locales but changes every current URL. Given 6.1 is already moving the
+      domain, `false` avoids stacking a second URL change on top of that one. Also set
+      `@astrojs/sitemap`'s own `i18n` option (it's a separate config block from Astro's `i18n`, easy to
+      configure one and miss the other) — once set, it generates `hreflang` alternate-link entries per
+      page automatically, which is the mechanism search engines use to serve the right locale — now load-
+      bearing from day one rather than structurally-correct-but-inert. **Why now and not later:**
+      retrofitting routing after launch changes every URL, which is exactly the SEO cost you avoided by
+      fixing the domain first — doing both URL shifts in the same pre-launch pass instead of two separate
+      ones later. **New consequence of the revision:** Phase 4's legal pages (privacy policy, mentions
+      légales) were always going to be French-law-driven in substance (CNIL/GDPR, Step 4.1/4.2) — worth
+      a fresh look at whether they should be *authored* in French now too, rather than English copy about
+      French law. Not decided here; flagged for whoever runs Phase 4.
       **Tool:** Context7-verified against Astro's current `i18n` reference and `@astrojs/sitemap`'s
       `i18n` option before implementing — both are real, current APIs as of this roadmap's writing,
       but re-check given Astro's fast release cadence (`umbra-web` is on Astro 7.x).
@@ -724,8 +948,19 @@ Recorded so future sessions read these as decided, not overlooked.
       Success definition & event plan · [x] 1.5 **Claim ledger** · [x] 1.6 AI-answer target list
 - [x] 2.1 Page inventory · [x] 2.2 **Recruiter page shape** · [x] 2.3 Home narrative spine · [x] 2.4
       Other page outlines · [x] 2.5 Content model
-- [ ] 3.1 Web voice spec · 3.2 Home copy · 3.3 **Proof copy** · 3.4 Remaining copy · 3.5 Microcopy &
-      social-proof honesty · 3.6 Ledger gate · 3.7 Extractability pass
+- [x] 3.1 Web voice spec · [x] 3.2 Home copy · [x] 3.3 **Proof copy** *(accepted with reservations)* ·
+      [x] 3.4 Remaining copy *(Download/FAQ/About/Changelog/Tools hub)* · [x] **3.4b Tool & comparison
+      page copy** *(new 2026-09-19 — 9 tool pages + 4 dated comparison pages)* · [x] 3.5 Microcopy &
+      social-proof honesty *(3 real gaps closed: Notify-me placement, language switcher, Proof's
+      unlinked repo reference)* · [x] **3.6 Ledger gate** *(3 overclaims fixed live; 2 findings carried
+      to 8.1/3.7 as action items)* · [x] **3.6b SEO pass** *(all 23 routes titled/described; 2
+      crawlability risks flagged for 6.3; 1 internal-linking gap offered for sign-off)* · [x] **3.7
+      GEO/extractability pass** *(Proof section's exception now same-breath as its claim; FAQ #8 closes
+      the verification-question gap; new Umbra-vs-web-tools-vs-desktop-suites table drafted, placement
+      open; one real GEO/structural-rebuttal conflict named and left as-is)* · [x] **3.8
+      Capability-differentiation pass** *(6 verified gaps found — PDF's strongest, since no competitor
+      ships PDF page editing; 2 tools correctly got no new claim; caught 2 impostor-site search results
+      before they were written up)*
 - [ ] 4.1 Privacy policy · 4.2 Legal notice · 4.3 **Binary licence** · 4.4 Asset licences ·
       4.5 Trademark re-check *(optional)*
 - [ ] 5.1 Web tokens · 5.2 Layout & responsive · 5.3 **Product imagery (Epic 7 fork)** ·
@@ -743,6 +978,10 @@ Recorded so future sessions read these as decided, not overlooked.
 - [ ] 10.1 Maintenance triggers · 10.2 Changelog upkeep · 10.3 Post-Epic-7 imagery swap ·
       10.4 Keyword research
 
-**The GEO thread, if you want to run it as one pass:** 1.6 → 3.7 → 6.13/6.14 → 7.5 → 9.4. Ordered by
+**The GEO thread, if you want to run it as one pass:** 1.6 → 3.7 → 3.8 → 6.13/6.14 → 7.5 → 9.4. Ordered by
 leverage, that's 9.4 and 9.2 first, 3.7 second, and 6.13/6.14 last — the opposite of the order most
-GEO guides push, because they sell on-site work.
+GEO guides push, because they sell on-site work. **The SEO thread is a separate, shorter one, added
+2026-09-19 alongside 3.6b:** 3.6b → 6.6 (structured data derives from 3.6b's metadata) → 7.3 (Search
+Console/Bing) → 10.4 (keyword research, deliberately last per that step's own honest framing). The two
+threads share one step (3.7 now explicitly checks itself against 3.6b, per that step's new guard rail)
+but are otherwise independent — don't collapse them back into one pass when executing.
