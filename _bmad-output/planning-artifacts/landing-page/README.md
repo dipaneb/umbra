@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Rebuild Roadmap"
 status: draft
 created: 2026-08-18
-updated: 2026-09-20 (Step 4.4 done — third-party asset licences)
+updated: 2026-09-26 (Step 5.7 — complete: dark mode; Phase 5 fully closed)
 ---
 
 # Umbra — Landing Page Rebuild Roadmap
@@ -656,7 +656,7 @@ code does.
 **Goal:** decide how it looks and produce the images. After copy, because layout should serve real
 content rather than lorem ipsum.
 
-- [ ] **Step 5.1 — Derive web tokens from `DESIGN.md`.** 🔸 Not a copy-paste. The app's ramp is
+- [x] **Step 5.1 — Derive web tokens from `DESIGN.md`.** 🔸 Not a copy-paste. The app's ramp is
       14px body / 28px display — far too small for a web hero — and `EXPERIENCE.md` explicitly
       states the app has "no responsive-breakpoint question to resolve," so the web has **no type
       scale, no breakpoint set, and no fluid spacing to inherit.** Produce a web scale that is
@@ -664,15 +664,63 @@ content rather than lorem ipsum.
       "orange is a budget of one" rule, different sizes. **Why here:** everything visual consumes it.
       **Tool:** working session against `DESIGN.md`; the `design` skill or Claude Design for quick
       side-by-side scale comparisons. **Output:** `landing-design.md` §1.
+      **Done 2026-09-21, and "same families" didn't survive as originally framed.** A fluid type
+      scale (`clamp()`, `rem`-based) and a 3-value breakpoint set were derived as the roadmap
+      expected — but the developer reopened the "same families" instruction itself, correctly
+      pointing out the app's dense-UI typography and a landing page's persuasion job don't actually
+      need the same personality. Four rounds of live-licence-verified typeface candidates followed
+      (Space Grotesk/Bricolage Grotesque → Unbounded/Syne/Chakra Petch/Big Shoulders → a named
+      French foundry, Velvetyne, checked and rejected, plus Fontshare's licence re-cleared and Clash
+      Display added → **Hubot Sans** decided), landing on GitHub's own restrained technical/mechanical
+      display face for `hero`/`h1`/`h2` only — Geist Sans/Mono keep every other role. Also caught and
+      fixed live: every size in the original derivation was already computed in `rem`, but presented
+      to the developer in `px` in an early draft — a real WCAG 1.4.4 (resize-text) gap the developer
+      flagged from memory and turned out to be correct about; fixed, and a guardrail against
+      `Layout.astro` ever overriding `<html>`'s font-size was added for Step 6.2. See
+      `landing-design.md` §1 for the full derivation, the four-round typeface trail, and the fluid
+      formula; `landing-legal.md` §4 carries the new Hubot Sans licence addendum. **Two proposals
+      (the body-size bump, the 3-value breakpoint set) went unaddressed while the typeface fork
+      played out — flagged explicitly rather than assumed agreed, and confirmed by the developer the
+      same day.** Nothing from this step's own scope is still open.
 
-- [ ] **Step 5.2 — Layout & responsive design.** Home page first, then the rest. Roughly half your
+- [x] **Step 5.2 — Layout & responsive design.** Home page first, then the rest. Roughly half your
       visits will be phones — including a recruiter opening your link on a train.
       **Why here:** consumes 5.1's tokens and 2.3's spine. **Tool:** the `design` skill (a
       multi-artboard canvas: desktop and mobile side by side) or Claude Design, seeded with
       `DESIGN.md` — the same tool and the same seeding pattern that worked for Steps 3.1 and 4.3 of
       the app roadmap. **Output:** mockups + `landing-design.md` §2.
+      **Signed off 2026-09-22, with three named opens carried forward rather than a clean pass** — the
+      same "accepted with reservations" pattern Step 3.3 used, not silent completion:
+      (1) the alternating section background (white bands behind Workflow/Why-Umbra) was this step's
+      own addition and was never explicitly confirmed; (2) the mobile nav's expanded/open hamburger
+      state still isn't drawn, only its collapsed trigger; (3) Hash's tablet tile lost its "tall"
+      treatment in the 3-column reflow (still orange, still gets the ghost glyph, just sized like its
+      row instead of spanning two) and that trade-off hasn't had an explicit yes. None of the three
+      block Step 5.3 — revisit them whenever, or fold a fix into a later pass.
+      **Draft built 2026-09-21.** A three-artboard canvas (desktop
+      1440px, tablet 768px, mobile 390px) plus a set of comparison artboards for the feature-tour
+      section specifically: [Umbra — Home Layout](https://claude.ai/artifact/7jvUELBG9GkfQ6kvRE4tn1).
+      **Feature-tour arrangement resolved 2026-09-22** after four rounds (marquee and a
+      vertical-scroll panel rejected; two bento passes rejected — one for only changing decoration on
+      a still-rigid grid, one for being too plain once decoration was stripped) — the desktop answer is
+      a real asymmetric bento (modeled on two reference grids the developer supplied) combined with a
+      search bar that filters/highlights the matching tile, not a static input; mobile keeps its
+      already-separate horizontal-scroll-with-search strip. **Three more decisions confirmed the same
+      session:** the nav's Download button hides while the hero is in view (the hero already has its
+      own); the Proof section's device–✕–server diagram goes horizontal on mobile too, not stacked; and
+      the `nettop` terminal self-check is cut entirely on mobile (unusable and irrelevant there, not
+      just long). **All of the above merged into the three full-page artboards the same day** — the
+      bento+search behavior, the nav visibility toggle, and the mobile Proof changes are real, working
+      interactions in the canvas (an `IntersectionObserver` and a live search filter), not just
+      described. `Mobile.dc.html`'s total height dropped from 5850px to 4300px as a direct result.
+      **Corrected same day:** tablet initially kept its own separate 2-column grid instead of the
+      resolved bento — flagged as an oversight, not a decision, and fixed by reflowing the same bento +
+      live search to 3 columns for the 768px width. **Also restyled the same day:** the search box
+      itself (magnifying-glass icon, elevated shadow, floating-surface radius) so it reads as a search
+      bar rather than a plain bordered rectangle. See `landing-design.md` §2 for the full reasoning and
+      breakpoint table.
 
-- [ ] **Step 5.3 — Product imagery.** 🔸 **The site currently has zero images. A visitor cannot
+- [x] **Step 5.3 — Product imagery.** 🔸 **The site currently has zero images. A visitor cannot
       see what Umbra looks like without installing it.** For a desktop app with no in-browser trial,
       this is usually the single largest conversion factor. **The Epic 7 fork, decided at this step:**
       the shipped shell still predates the design system, so real captures today would show a UI
@@ -685,15 +733,62 @@ content rather than lorem ipsum.
       Lighthouse-friendly than an equivalent GIF for the same motion, so this is a format correction,
       not a scope change). Step 6.10 inherits the lazy-load/poster-frame/no-autoplay requirement that
       keeps it out of the performance budget.
-      **Tool:** macOS `⌘⇧5` or Shottr/CleanShot for capture; keep framing restrained, per brand.
+      **Tool:** macOS `⌘⇧5` or Shottr/CleanShot for the stills; keep framing restrained, per brand.
       **Output:** image assets + `landing-design.md` §3.
+      **Epic-7 fork resolved 2026-09-24, live-verified rather than assumed from this entry's own
+      wording:** Epic 7 (all 8 stories, `#78`–`#86`) and Epic 8 (all 9 stories, through `#154`) are
+      both fully merged to `main`, ahead of the current tip (`#156`) — checked directly against
+      `sprint-status.yaml` and `git log`, not trusted from `sprint-status.yaml`'s own stale `in-progress`
+      epic flags (every individual story under both reads `done`). The "shipped shell still predates the
+      design system" premise this fork was framed around no longer holds — there's no version of Umbra
+      left to wait for. **Decided: real screenshots and video now**, dissolving the mockups-vs-hold
+      choice rather than picking a side of it. Video tool corrected to the developer's own choice —
+      Screen Studio or OpenScreen, not a plain screen recording. **This entry's own demo-flow wording
+      ("⌘K → JSON → JWT → cron → Bucket") is superseded, not just corrected:** the developer proposed a
+      scenario-driven flow instead — a Slack screenshot of a broken API log → OCR → the JSON tool's
+      repair feature fixes the truncated log → the JWT token inside it decodes cleanly, revealing the
+      actual permission bug. **A first version of this plan had the order backwards** (decode a broken
+      JWT, then repair it) and doesn't work: `jwt.rs`'s `decode()` hard-errors on invalid-JSON payloads
+      and exposes no raw text to copy out, confirmed by reading the source — caught and corrected the
+      same session, along with live-verifying the corrected flow (a throwaway `cargo test` against the
+      actual `repair()` function, reverted after) rather than shipping an unverified shot list.
+      **Explicit developer call: the already-signed-off Workflow copy in `landing-ia.md`
+      §3/`landing-copy.md` stays unchanged** — the video and the words next to it knowingly describe
+      different things (no cron shown; OCR, clipboard-chaining, JSON repair, and JWT decode shown but
+      unnamed in the copy), recorded as an accepted gap. **Done 2026-09-26.** Hero art turned out to
+      already be this same Workflow video (the Step 5.2 mockup's own "Product preview" box under the
+      headline is `landing-ia.md` §3 row 1's visual requirement — this step's own earlier tracking of
+      hero as a separate open decision was the error, corrected in `landing-design.md` §3). The
+      Workflow video is recorded, re-encoded (H.264 MP4 fallback + a real AV1 encode beating an
+      online converter's VP9 output on both size and VMAF score — not just remuxed), captioned
+      per-locale, and staged in `umbra-web/public/videos/`; its accessible text alternative is
+      written (EN/FR). All 18 tool-page screenshots (9 tools × light/dark) are captured with real
+      output per tool, converted to lossless WebP (3.7MB → 1.0MB, objectively verified against AVIF
+      and lossy WebP before picking lossless — see `landing-design.md` §3), and staged in
+      `umbra-web/public/images/tools/`. Only remaining flag: these are still full Retina-resolution
+      captures; downscaling to the actual `/tools/*` display size is a further, smaller win Step 6.3
+      can take once that page layout exists. See `landing-design.md` §3 for the full record and every
+      correction made along the way.
 
-- [ ] **Step 5.4 — Social share card (OG image).** 🔸 Cheap, high payoff, currently missing: every
+- [x] **Step 5.4 — Social share card (OG image).** 🔸 Cheap, high payoff, currently missing: every
       share of this link — Slack, LinkedIn, Discord, a message to a recruiter — renders as a bare
       grey box today. One well-made 1200×630 image fixes it everywhere. **Tool:** designed as an
       artboard alongside 5.2, exported as PNG. **Output:** asset + `landing-design.md` §4.
+      **Done 2026-09-26.** Dark card (wordmark + the exact signed-off hero headline, one line in the
+      signature orange + a real Step-5.3 screenshot bleeding off the edge), built on a Design-canvas
+      Artifact with the actual Hubot Sans/Geist Sans webfonts uploaded as assets (not a Google-Fonts
+      stand-in the way Step 5.2's canvas needed), exported at exact 1200×630px via a real headless
+      Chrome render rather than an approximate screenshot-tool viewport. No new copy was authored —
+      the headline is reused verbatim so the asset inherits Step 3.6's existing ledger sign-off
+      rather than needing its own. Deliberately excludes a logo mark (Step 5.5 hasn't run), a
+      domain/URL (Step 6.1 hasn't run, and `CLAUDE.md`'s privacy rule bears directly on writing a
+      personal-domain candidate into a committed file early), and a French variant (one universal
+      card, matching the Step 1.2 reference set). Also closes a gap `landing-copy.md` Part 5 had
+      already flagged: wrote the card's `og:image:alt` text, separate from any on-page alt. Asset
+      staged (not committed — a separate authorization) at `umbra-web/public/og-image.png`. See
+      `landing-design.md` §4 for the full reasoning and the canvas link.
 
-- [ ] **Step 5.5 — Logo intake & placement inventory.** 🔴 **Input required from the developer, not
+- [x] **Step 5.5 — Logo intake & placement inventory.** 🔴 **Input required from the developer, not
       produced by the session.** The developer is designing the mark themselves — see `DESIGN.md`'s
       Mark section for the locked brief it should satisfy (monogram U, ink-letter-plus-shadow
       concept, "adopted-for-now, not locked with the same permanence" as the rest of the system).
@@ -718,8 +813,25 @@ content rather than lorem ipsum.
       **Tool:** working session; the `design` skill only for the placement mock, seeded with the
       developer's own SVGs, not for generating the mark. **Output:** the two supplied SVGs, placed
       into `umbra-web`'s asset tree, + placement decisions in `landing-design.md` §5.
+      **Done 2026-09-26.** Developer supplied `Logo 1.svg`/`Logo 2.svg`; light/dark assignment derived
+      from the ink-letter color against `DESIGN.md`'s `text-primary`/`text-primary-dark` tokens (not
+      guessed) and confirmed by the developer. One real deviation flagged rather than silently
+      normalized: the shadow shape uses an identical two-stop gradient in both files instead of each
+      mode's own flat `accent-signature` value — developer decided to keep it as originally drawn,
+      recorded honestly as "a gradient built from the accent-signature values," the same kind of named
+      exception `DESIGN.md` already grants the Base64 icon. A real small-size legibility problem was
+      found and verified live (headless-Chrome renders at 16/24/32/48px, pixel-zoomed): the shadow's
+      hard offset edge blurs into a smudge at 16×16 favicon size, though the U itself stays legible.
+      Developer decided to accept that trade-off rather than add a simplified fallback variant — no
+      extra small-size asset for Step 5.6 to produce. Placement decided: nav gets a mark+wordmark
+      lockup (Raycast/Linear/Warp/Zed convention, per Step 1.2), footer gets a small mark next to the
+      copyright line, favicon uses the full mark at every size. Confirmed umbra-web has no
+      loading/empty state that would carry a mark. GitHub org avatar/social icon flagged for Step 9.2,
+      not decided now. Assets staged (not committed) at `umbra-web/public/logo-light.svg` /
+      `logo-dark.svg`. See `landing-design.md` §5 for the full reasoning and the Step 10.1
+      maintenance-list items a future mark redo would touch.
 
-- [ ] **Step 5.6 — Favicon & icon asset production.** Derive the technical file set from 5.5's two
+- [x] **Step 5.6 — Favicon & icon asset production.** Derive the technical file set from 5.5's two
       supplied SVGs (light + dark): `favicon.ico` (multi-resolution), `favicon.svg`
       (already present but still Astro's default art), a 180×180 `apple-touch-icon.png` for iOS
       home-screen saves, and — since 5.2 already established roughly half of visits are mobile — a
@@ -734,13 +846,72 @@ content rather than lorem ipsum.
       **Tool:** a favicon generator (realfavicongenerator.io or equivalent) fed the 5.5 SVGs, to
       cover the size matrix without hand-exporting each one.
       **Output:** assets in `umbra-web/public/`, wired in Phase 6.
+      **Done 2026-09-26, tool substituted for a verifiable reason, not convenience.** Uploading the
+      mark to a third-party favicon generator would have meant trusting its rasterizer to reproduce
+      the mark's two SVG filters (drop-shadow, inner-shadow) faithfully, with no way to check its work
+      — so generated the full size matrix locally instead, from `logo-light.svg`, via headless Chrome
+      screenshots at each exact target dimension (16/32/48px for the ICO, 180px for the touch icon,
+      192/512px for the manifest) — the same renderer this project already trusted for Step 5.5's own
+      legibility check, so the 16px result is pixel-identical to what that step already showed the
+      developer. **Real gotcha caught and fixed:** `apple-touch-icon.png` needed the transparent
+      background stripped — iOS renders transparency in home-screen icons as solid black, which would
+      have put a black square behind the mark; composited onto opaque white instead (confirmed via
+      `sips -g hasAlpha`: false), matching this step's own note that the light file "reads better
+      against iOS's white default background." **`favicon.ico` is now a genuine multi-resolution ICO
+      container** (verified via `file`: "MS Windows icon resource - 3 icons") — the file it replaces
+      was actually a single 32×32 PNG wearing an `.ico` extension, not a real multi-size icon.
+      **`favicon.svg` is now the real mark, not Astro's scaffold art** — rebuilt as both SVGs' content
+      combined in one file, `.u-light`/`.u-dark` groups toggled by `@media (prefers-color-scheme:
+      dark)` (the same swap-by-`display`, not swap-by-`fill`, pattern the placement inventory called
+      for, since these are multi-layer gradient artworks, not recolorable single paths). Verified both
+      branches render correctly — this machine's own dark-mode OS setting made the *unmodified* file's
+      default render exercise the dark branch, so the light branch was separately force-rendered to
+      confirm it too, catching the kind of "looked right by accident" mistake a single screenshot would
+      have missed. `site.webmanifest` added (name/description from `Layout.astro`'s own defaults,
+      `theme_color`/`background_color` from `DESIGN.md`'s `accent-signature`/`bg-surface` tokens, not
+      invented) with `icon-192.png`/`icon-512.png`, both kept transparent per PWA convention (only the
+      Apple slot needed flattening). **Confirmed out of scope, per this step's own boundary with 5.5/
+      6.2:** no `Layout.astro` changes — the existing `<link rel="icon" type="image/svg+xml"
+      href="/favicon.svg" />` already points at the right filename and needs no edit, and the
+      `apple-touch-icon`/manifest `<link>` tags plus nav/footer mark wiring stay Step 6.2's job as the
+      roadmap already specified. Assets staged (not committed) at `umbra-web/public/`: `favicon.ico`,
+      `favicon.svg` (replaced), `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`,
+      `site.webmanifest`.
 
-- [ ] **Step 5.7 — Dark mode.** Near-free: `DESIGN.md` already ships a full, contrast-verified dark
+- [x] **Step 5.7 — Dark mode.** Near-free: `DESIGN.md` already ships a full, contrast-verified dark
       palette, so this is `prefers-color-scheme` plus token swaps, not a new design pass. Confirm the
       5.5/5.6 mark assets also have a dark-mode-legible variant (the mark's ink-letter layer is
       `text-primary`, which itself swaps light/dark per `DESIGN.md` — verify the swap holds at
       favicon size too, since OS chrome doesn't always respect `prefers-color-scheme` for favicons).
       **Output:** `landing-design.md` §6.
+      **Done 2026-09-26, confirming the "near-free" framing rather than assuming it.** §1 introduced
+      zero new colors, so every token in §2's mockup traces to an already-verified `DESIGN.md`
+      light/dark pair — no new contrast math needed, including the two named AA trade-offs (white on
+      orange/red fills), which carry forward unrelitigated since neither appears in this mockup. One
+      real finding the roadmap didn't anticipate: the feature-tour bento grid's solid "black" tile has
+      to be built from the semantic `accent-default`/`accent-default-dark` role, not a literal black,
+      or it vanishes against the dark-mode page background instead of inverting to near-white — flagged
+      concretely for Step 6.2. Favicon legibility re-verified two ways: live in a real Chrome tab
+      against this machine's actual (Dark) system state, confirming `favicon.svg`'s embedded media
+      query fires correctly outside the headless-render harness Step 5.6 used; and via dated live
+      research (not recalled from training data) into current browser support, which surfaced a real,
+      previously-unknown gap — **Safari does not evaluate `prefers-color-scheme` in the favicon-
+      rendering path specifically** (it does apply it correctly to the same SVG used as ordinary page
+      content, so nav/footer are unaffected) — accepted as a known trade-off, the same posture as
+      Step 5.5's 16px shadow-smudge finding, and flagged for developer confirmation rather than fixed
+      with added complexity. **Not done, on purpose:** physically toggling this machine's system
+      Appearance to watch the tab icon change live — changing a system-level setting is outside what
+      these tools may do here (and computer-use was also occupied by another session); handed to the
+      developer as a 10-second pre-launch check instead of faked. Also corrected a stale assumption in
+      Step 5.5's own "feeds into" note: Step 5.6 already solved the light/dark mark-swap problem better
+      (one combined SVG with internal groups) than the "two separate files" plan §5 had recorded before
+      5.6 ran — Step 6.2 is pointed at reusing that same tested file for the nav/footer marks instead.
+      Named, not silently resolved: why the site uses plain `prefers-color-scheme` CSS while the app
+      itself deliberately avoids that exact mechanism in favor of `[data-theme]` + a manual override —
+      the app's mechanism exists to serve a Settings toggle the site has no equivalent surface for, so
+      this is a considered difference, not a missed inheritance. See `landing-design.md` §6 for the
+      full token-swap table, the browser-support matrix and its sources, and every finding's reasoning.
+      **Phase 5 is now fully closed** — Steps 5.1 through 5.7 all done, nothing left open in this phase.
 
 ---
 
@@ -1012,8 +1183,12 @@ Recorded so future sessions read these as decided, not overlooked.
       ships PDF page editing; 2 tools correctly got no new claim; caught 2 impostor-site search results
       before they were written up)*
 - [x] 4.1 Privacy policy · [x] 4.2 Legal notice · [x] 4.3 **Binary licence** · [x] 4.4 Asset licences
-- [ ] 5.1 Web tokens · 5.2 Layout & responsive · 5.3 **Product imagery (Epic 7 fork)** ·
-      5.4 **OG image** · 5.5 **Logo intake (dev-supplied SVGs) & placement** · 5.6 Favicon & icon
+- [x] 5.1 **Web tokens** · [x] 5.2 **Layout & responsive** *(bento + live search on desktop/tablet,
+      horizontal-scroll strip on mobile, nav hides on hero; 3 opens carried forward — alternating
+      section background, mobile nav's expanded state, Hash's tablet sizing)* · [x] 5.3 **Product imagery
+      (Epic 7 fork)** ·
+      [x] 5.4 **OG image** · [x] 5.5 **Logo intake (dev-supplied SVGs) & placement** *(nav lockup,
+      footer mark, full mark kept at every favicon size incl. 16×16)* · 5.6 Favicon & icon
       production ·
       5.7 Dark mode
 - [ ] 6.1 Domain migration · 6.2 Layout impl · 6.3 Pages · 6.4 Content model · 6.5 i18n structure ·

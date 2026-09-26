@@ -633,6 +633,26 @@ whoever runs Step 5.1/6.x doesn't have to re-derive the licence question — pul
 `@fontsource/geist-sans`/`geist-mono` (the same packages the app already uses, so the same verified
 terms apply) satisfies it without a new check.
 
+### Hubot Sans — checked, clear (addendum, Step 5.1, 2026-09-21)
+
+Not part of this step's original scope — added because Step 5.1 (web type scale), run after this
+step, reopened "same families as the app" as a real decision and landed on a new third typeface for
+the display roles (`hero`/`h1`/`h2` only; body/label/caption/code stay Geist as recorded above).
+Recorded here rather than left as a silent gap in an already-checked step, the same discipline
+`landing-design.md` §1 names for why this addendum exists at all.
+
+- GitHub's own display companion to its Mona Sans UI face (`github/hubot-sans`), designed
+  specifically as a restrained technical/mechanical voice for headers in developer-tool branding.
+- Licence verified live against the repository's own `LICENSE` file: SIL Open Font License 1.1 —
+  identical terms to Geist above (free commercial use, no royalty, no in-app attribution requirement,
+  licence text travels with the font files).
+- Distribution checked live via `npm view`, not assumed from the naming resemblance to Geist's own
+  packages: both `@fontsource-variable/hubot-sans` and `@fontsource/hubot-sans` exist on the public
+  npm registry at `5.3.0`, `"license": "OFL-1.1"` — the identical `@fontsource` route Geist already
+  uses, so Step 6.2 self-hosts it the same way, no new delivery mechanism needed.
+- **Not yet applicable in `umbra-web` today**, same status as Geist/Phosphor above: Phase 6 hasn't
+  run, so nothing ships yet — recording this now means Step 6.2 inherits a closed licence question.
+
 ### Phosphor Icons — checked, clear
 
 `DESIGN.md`'s Card section (amended for Story 7.1) documents the app's icon system as
@@ -707,7 +727,8 @@ code, not about the fonts/icons `umbra-web` itself depends on.
 
 - **Step 5.1** (web type scale) and **Step 6.x** (build) — adopt `@fontsource/geist-sans`/
   `geist-mono` `5.3.0` with the licence question already closed; no re-check needed unless the
-  version pin changes.
+  version pin changes. Step 5.1 itself added Hubot Sans for the display roles (`hero`/`h1`/`h2`) —
+  see the addendum above, closed the same session it was decided.
 - **Step 5.2** (layout) and **Step 6.3** (tool pages) — whichever Phosphor delivery method is chosen
   for the feature-tour grid and the 9 tool-page icons inherits this section's MIT clearance.
 - **Step 5.5/5.6** (logo, favicon) — replaces the two Astro-default placeholder files this section
