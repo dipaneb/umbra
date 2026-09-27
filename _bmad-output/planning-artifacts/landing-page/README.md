@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Rebuild Roadmap"
 status: draft
 created: 2026-08-18
-updated: 2026-09-26 (Step 5.7 — complete: dark mode; Phase 5 fully closed)
+updated: 2026-09-27 (Step 6.8 — complete: PostHog switched to cookieless_mode: "always", a real pre-existing cookie-persistence bug fixed, project dashboard audited via the newly-connected PostHog MCP, Web Vitals/heatmaps kept and disclosed rather than disabled)
 ---
 
 # Umbra — Landing Page Rebuild Roadmap
@@ -919,27 +919,208 @@ content rather than lorem ipsum.
 
 **Goal:** implement it. All sessions run in `umbra-web`. Verify every API against Context7.
 
-- [ ] **Step 6.1 — Domain migration.** Add the subdomain in Vercel, update `astro.config.mjs`'s
+- [x] **Step 6.1 — Domain migration.** Add the subdomain in Vercel, update `astro.config.mjs`'s
       `site`, confirm canonical URLs / sitemap / `robots.txt.ts` all regenerate against it, and add
       a redirect from `umbra-web-beta.vercel.app` — it's live, indexed, and Story 5.4 records the
       link being handed out. Note that search engines treat a subdomain as a separate property from
       the parent domain; irrelevant at this scale, but you inherit nothing from it.
       **Why first in the phase:** canonical tags, OG image URLs, and structured data all bake
       absolute URLs. Doing this after them means redoing them.
+      **Done 2026-09-26.** The Vercel-dashboard/DNS half — the part this roadmap's own autonomy
+      table flags as physically impossible for a session to do — turned out to already be live:
+      `umbra.dipane.fr` (the developer's own domain, subdomain chosen to avoid a second domain
+      purchase) resolves to Vercel via a `vercel-dns` CNAME and serves the identical deployment
+      (matching `etag`) as `umbra-web-beta.vercel.app`, over valid HTTPS, confirmed live with `dig`
+      and `curl` this session rather than assumed. Did the code half: `astro.config.mjs`'s `site`
+      now reads `https://umbra.dipane.fr`; added `vercel.json` with a host-conditioned permanent
+      redirect (`umbra-web-beta.vercel.app/*` → `umbra.dipane.fr/*`), syntax verified live via
+      Context7 (`/vercel/vercel`) rather than from memory, since `has`/host-matching redirects
+      aren't something to guess at. Ran a full `astro build` and confirmed canonical `<link>`,
+      `og:url`, `sitemap-index.xml`/`sitemap-0.xml`, and `robots.txt`'s `Sitemap:` line all
+      regenerated against the new domain with no other hardcoded beta-URL references left in `src`.
+      Astro's native `i18n` config and `@astrojs/sitemap`'s separate `i18n`/`hreflang` option are
+      Step 6.5's job, not this one — left untouched here.
 
-- [ ] **Step 6.2 — Layout and token implementation.** Rewrite `Layout.astro`'s global CSS from the
+- [x] **Step 6.2 — Layout and token implementation.** Rewrite `Layout.astro`'s global CSS from the
       Phase 5.1 tokens, and wire in Step 5.6's favicon/icon assets (`<link rel="icon">`,
       `apple-touch-icon`, manifest reference) — replacing Astro's scaffold defaults, still live in
       `public/favicon.ico`/`.svg` today. Self-host Geist rather than hotlinking (`@fontsource`-style),
       and note the perf trade-off — fonts are the most common way an Astro static site stops being
       fast.
+      **Done 2026-09-26, with the self-hosting mechanism corrected from this entry's own assumption.**
+      Context7-verified (`/withastro/docs`) that Astro 7 ships a **stable, built-in Fonts API**
+      (`fonts` config + `fontProviders.fontsource()` + `<Font>`, stable since v6.0.0, not an
+      `experimental` flag) — a better fit than hand-importing `@fontsource` npm packages the way this
+      entry's own wording assumed: Astro downloads and self-hosts the files itself, only for the
+      weights actually used (Geist Sans 400/500/600, Geist Mono 400, Hubot Sans 700 — 5 files total,
+      confirmed in the build log), and auto-generates a metric-matched local-font fallback
+      (`size-adjust`/`ascent-override`) to limit layout shift, which a manual `@fontsource` import
+      doesn't do for free. Package versions/licences re-verified live via `npm view` (all three at
+      `5.3.0`, `OFL-1.1`) against landing-design.md §1's own record before wiring them in. **Real check
+      run before trusting the default subset:** landing-copy.md §3's French copy uses "cœur," so the
+      Fontsource "latin" subset's unicode-range was actually inspected (not assumed) for both faces —
+      Geist Sans ships one unrestricted subset (no `latin-ext` split), and Hubot Sans's "latin" range
+      explicitly includes `U+0152-0153` (œ/Œ) — confirming no `latin-ext` subset is needed for either.
+      Implemented the full `DESIGN.md` light/dark color set plus landing-design.md §1's type scale
+      (fluid `clamp()`), spacing extension, and radius scale as `prefers-color-scheme`-gated CSS custom
+      properties — the exact mechanism landing-design.md §6 confirmed is correct for this site (no
+      `[data-theme]` override layer needed, unlike the app). The `<html>` font-size guardrail holds (no
+      override existed; a comment now guards against adding one). Wired Step 5.6's
+      `apple-touch-icon`/manifest `<link>` tags (`favicon.svg`'s own link needed no change, as that
+      step already recorded); wired the nav+footer mark from the same combined `favicon.svg` per
+      landing-design.md §6's explicit recommendation, rather than the two-separate-files plan §5 had
+      originally sketched. **Also mechanically updated** the three pre-rebuild placeholder pages
+      (`index.astro`/`download.astro`/`faq.astro`) to reference the new token names instead of the old
+      ad-hoc blue-accent scaffold variables — CSS-only, no copy/IA changes, since these pages are still
+      the historical draft content Step 6.3 fully replaces. `astro build` is clean; visually sanity-
+      checked all three routes in a real Chrome tab (dev mode, this machine's actual dark system
+      state) — Hubot Sans hero/h1, Geist Sans body/h3, Geist Mono inline `.dmg` code, correct
+      dark-mode surface/border tones, both mark placements rendering — with no console errors. **Not
+      verified live, by the same posture Step 5.7 already took:** the light-mode palette wasn't
+      confirmed in an actual light-mode render (would require toggling this machine's system
+      Appearance); the color values were instead checked directly against `DESIGN.md`'s own hex codes
+      rather than only visually assumed. Page content, i18n routing, and the hardcoded `lang="en"`
+      stay untouched — Steps 6.3/6.5's jobs, not this one's.
 
-- [ ] **Step 6.3 — Pages.** Build the Phase 2 inventory with the Phase 3 copy. Astro's file-based
+- [x] **Step 6.3 — Pages.** Build the Phase 2 inventory with the Phase 3 copy. Astro's file-based
       routing, one file per route, shared layout.
+      **Done 2026-09-26.** Built all 23 English routes from `landing-ia.md`/`landing-copy.md`: Home
+      (full spine — Hero, 9-tool grid, Workflow video, Proof, Why Umbra, closing CTA), Download (OS
+      tabs, live per-platform check against `/releases/latest`, the Windows unsigned-build modal,
+      loading/failure/no-JS states), FAQ (8 Q&A pairs as native `<details>`, stable per-question
+      anchors), About, Privacy, Legal notice, EULA, Changelog, the `/tools` hub, all 9 `/tools/*`
+      pages (real screenshots from Phase 5's `public/images/tools/*`, mandatory + capability-gap
+      micro-FAQs per §4b/§9), all 4 `/compare/*` pages, and `/404`. Nav/footer updated per
+      `landing-copy.md` §5 (Tools/About links, full footer link set, Watch-on-GitHub, analytics
+      disclosure, licence note, copyright); `download_clicked`/`windows_unsigned_modal_*`/
+      `notify_me_clicked` wired via a delegated `data-analytics` handler in `Layout.astro`. **French
+      is not wired in** — Step 6.5 (i18n structure) hasn't run yet, so every page ships English-only,
+      per this roadmap's own step ordering; the language switcher `landing-copy.md` §5 specifies is
+      deliberately not added yet either, since it would point at French routes that don't exist.
+      Tool/comparison data stays hardcoded per page, matching the pre-existing `index.astro` pattern —
+      Step 6.4's content-collection refactor is what unifies it with `registry.ts`, per this roadmap's
+      own sequencing.
+      **Two decisions made where the roadmap had explicitly left the question open:** (1) the
+      `/tools` hub page carries the "wider comparison" table (Umbra vs. web tools vs. other desktop
+      suites) from `landing-copy.md` §8 — `landing-ia.md` §4 left its placement open (per-page section,
+      shared component, or hub page), and the tools hub was the closest existing fit; (2) the four
+      comparison pages get no dedicated hub — resolved via the footer's "Compare: DevToys · DevUtils ·
+      DevTools-X · CyberChef" line plus a same-page cross-link block on each comparison page linking to
+      the other three, exactly the fix `landing-copy.md` §7 Part 4 recommended for the under-linking
+      gap it found, without forcing the open architectural question either way.
+      **Real, unplanned finding, checked live with the developer rather than assumed:** the Workflow
+      section's video/poster assets (`public/videos/workflow-demo.*`) show a real Slack workspace, not
+      Umbra's own UI — flagged mid-session as a possible accidental-sensitive-content issue; the
+      developer confirmed it's intentional staged content (introducing the demo via a problem copied
+      from Slack) and that every detail shown is fake. Kept as-is, not reworked.
+      **Three real bugs found and fixed while verifying in a real browser, not just via `astro
+      build`:** (1) `astro.config.mjs`'s `trailingSlash: "always"` (set at Step 6.1) 404s on every
+      internal link without a trailing slash — every `href` sitewide (including the pre-existing nav,
+      which had the same latent bug before this step) now carries one; (2) the `.button` class's own
+      `display` declaration beat the browser's default `[hidden] { display: none }` in the cascade, so
+      JS-hidden Download buttons on the Download page stayed visually visible — fixed with a global
+      `[hidden] { display: none !important; }` rule; (3) `title` props were passed as the *full* SEO
+      title from `landing-copy.md` §7 (already ending "— Umbra") into a `Layout.astro` that also
+      appends "— Umbra" for non-Home pages, doubling the suffix on 17 of the 23 pages — fixed by
+      stripping the redundant suffix from each page's `title` prop, and by adding a `rawTitle` escape
+      hatch to `Layout.astro` for the two pages (Download, About) whose locked title reads "Umbra"
+      mid-string rather than as a suffix. Also caught and fixed, via an automated post-build text scan
+      rather than eyeballing: several inline links split across source lines (footer's "Compare" list
+      and "Watch on GitHub" line, three legal-page cross-references, the three Download-page
+      "not yet available" messages) silently lost their surrounding space — Astro/JSX deletes
+      whitespace that touches a tag boundary across a line break rather than collapsing it to one
+      space; fixed with explicit `{' '}` markers at each join point.
+      **Changelog's per-release entries were hand-curated this session, not left as a stub:** read
+      live via `gh api repos/dipaneb/umbra/releases`, categorized into Added/Changed/Fixed for the five
+      stable releases with real release notes (`v0.1.4`–`v0.4.0`); the three earliest tags
+      (`v0.1.1`–`v0.1.3`, placeholder "see the assets below" bodies) are omitted rather than padded.
+      Version/date are still read live at build time (Astro's build-time `fetch`, per Step 2.5's
+      hybrid model), with a static fallback baked in for an offline build.
+      **Not done, deliberately out of scope for this step:** French copy and the language switcher
+      (Step 6.5), the tool/comparison content-collection refactor (Step 6.4), structured data (Step
+      6.6), OG/Twitter image wiring (Step 6.7), and the `⟨developer name⟩`/legal-contact placeholders
+      that every prior phase already flagged as the developer's own call — all left as clearly marked
+      `TODO(developer)` comments in the source rather than guessed at.
+      **Correction, same day:** the first pass above was written from `landing-ia.md`/`landing-copy.md`
+      alone — it never consulted `landing-design.md` §2's actual Step 5.2 layout mockup (the
+      [Home Layout canvas](https://claude.ai/artifact/7jvUELBG9GkfQ6kvRE4tn1)), even though that section
+      explicitly names Step 6.3 as its consumer and marks its decisions "confirmed"/"resolved," not
+      exploratory. Caught when the developer asked why the build didn't match it. Rebuilt Home's
+      layout/interaction layer to match: the hero now carries the Workflow demo video directly under
+      the CTA (§3's 2026-09-26 correction — one produced asset, shown in both the hero tease and the
+      Workflow section proper); the "9 tools" section is the confirmed asymmetric bento grid (tight
+      12px gaps, a black/white role-swapping typographic tile built from `accent-default`/
+      `accent-default-on` rather than literal color so it inverts correctly in dark mode, one orange
+      Hash tile, oversized ghost-glyph backgrounds) with a real live-filtering search bar (dims/
+      grayscales non-matches, outlines matches in the signature accent, matched against
+      `data-tool-name` aliases including the mockup's own French terms); the nav's Download button now
+      fades out while `#hero` is in view via `IntersectionObserver` and reappears on scroll, matching
+      all three artboards; a real mobile hamburger (checkbox-driven, no JS required) replaced the
+      no-op nav that shipped first; tablet reflows the same bento to 3 columns with Hash losing its
+      "tall" span (still orange, still ghost-glyphed) per the mockup's own carried-forward call; mobile
+      swaps to the confirmed horizontal-scroll-with-search strip instead of the bento; Workflow and
+      Why-Umbra got the alternating `bg-surface` band treatment; and Proof's self-check terminal block
+      is now removed entirely below 768px (a phone can't run `nettop` or install the binary it checks),
+      matching the mockup's mobile-only cut. Verified in a real Chrome tab at all three breakpoints
+      (desktop 1440px, tablet 820px, mobile 390px, via separate tabs after `resize_window` — resizing
+      an already-open tab didn't reliably change its reported viewport in this environment, a tooling
+      quirk worth remembering, not a CSS bug). Two more real bugs caught in the process: tile names
+      inherited the global link color (orange) since each bento tile is an `<a>` — fixed with an
+      explicit `.tile-name { color: var(--text-primary) }` override, `inherit`ed back only on the
+      accent/default-role tiles; and the mobile horizontal-scroll strip intercepting vertical scroll
+      wheel events at its exact coordinates (a real scroll-container-focus quirk, not a bug — scrolling
+      from a point outside the strip works fine). Tablet/mobile-specific visual polish beyond what the
+      mockup specifies (exact icon set once Phosphor is wired at Step 6.4, mobile-strip search wiring
+      — built anyway here since it was a trivial extension of the same filter, not decided against) is
+      still open for a future pass.
 
-- [ ] **Step 6.4 — Content model.** Implement 2.5's decision so the tool list has one source.
+- [x] **Step 6.4 — Content model.** Implement 2.5's decision so the tool list has one source.
+      **Done 2026-09-27.** Implemented `landing-ia.md` §5 exactly as scoped: `src/content.config.ts`
+      defines three build-time collections via Astro 7's `glob()` loader (confirmed live via Context7
+      that `z` comes from `astro/zod`, not `astro:content`, and that `.json` entries need an explicit
+      `generateId` to strip the extension — matching the docs' own `authors` example). `tools`
+      (`src/content/tools/*.json`, one file per tool) replaces the 9 near-duplicate `/tools/*.astro`
+      pages with a single `[id].astro` + `getStaticPaths()`, and is now the one place `index.astro`'s
+      bento grid, its mobile-strip, and `/tools`'s hub cards all read name/description/search-terms
+      text from — closing the exact class of bug Step 2.5 flagged (a hardcoded `index.astro` array
+      independently drifting from a tool page's own copy). `aiClaim` ships as a schema field (`true`
+      only on `ocr`) per the guard-rail Step 2.5 named, though nothing renders off it yet — no UI
+      currently needs to. `comparisons` (`src/content/comparisons/*.json`) replaces the 4 static
+      `/compare/*.astro` pages the same way, with `dateChecked` **mandatory** in the Zod schema —
+      verified live by deliberately deleting the field from `devtoys.json` and re-running the build,
+      which failed with `dateChecked: Required` before the field was restored, confirming the guard
+      rail is real and not just documented. `changelog` (`src/content/changelog/*.json`) holds the
+      hand-curated Added/Changed/Fixed bullets; the live GitHub Releases fetch stayed a plain
+      build-time `fetch()` in `changelog.astro` itself rather than a formal custom loader module —
+      a deliberate, documented downscope, since only this one page ever consumes that data and a
+      loader's caching/store machinery would add real complexity for zero behavioral gain here.
+      **Real gap closed that the original page didn't have:** a live release newer than the newest
+      curated entry now renders a "release notes coming soon" placeholder instead of being silently
+      dropped — verified live against the real GitHub API, which at build time had exactly one such
+      case (`v0.5.0-alpha.1`), correctly excluded by the existing prerelease filter rather than
+      triggering the placeholder. FAQ stayed a plain data file (`src/data/faq.ts`), per §5's explicit
+      "does not need a collection" call — only the array moved, its two special-cased cross-link
+      entries untouched. Privacy/Legal/EULA/About: confirmed untouched, per §5's explicit scope
+      boundary. **One deliberate deviation from the roadmap's literal wording, reasoned through
+      rather than silently substituted:** §5 says "Markdown file... frontmatter... Markdown body
+      holding the page's actual prose," but several tool/comparison FAQ answers and competitor cells
+      contain embedded HTML anchors and literal double quotes (e.g. PDF's OCR cross-link, DevUtils'
+      quoted privacy claim) that are fragile to hand-author correctly as YAML frontmatter. Used
+      `.json` files instead — same one-file-per-entry shape, same `glob()` loader, same Zod
+      validation and single-source guarantee the roadmap's reasoning was actually after — with no
+      YAML-escaping risk, and no long-form prose body was needed since `directAnswer`/`body` are
+      each one sentence, not multi-paragraph articles. Copy itself was not touched or restructured —
+      every string was moved verbatim from its original `.astro` file, including each comparison
+      page's own already-embedded "checked 2026-09-19" prose mention (left as authored, not
+      interpolated from `dateChecked`, since restructuring locked copy wasn't this step's call to
+      make). Verified live in a real Chrome tab (home bento incl. the ⌘K live-filter search, tools
+      hub, a tool page's FAQ cross-link, a comparison page, changelog) after restarting the dev
+      server, which was required once for it to pick up the new `content.config.ts` — a first-run-only
+      quirk, not a bug. **Not done, flagged but not built here, cross-repo:** §5's recommended
+      one-line addition to `Umbra`'s own `registry.ts` comment, naming this collection as a second
+      place a new tool must be added — the developer's call, since it edits `Umbra`'s repo directly.
 
-- [ ] **Step 6.5 — i18n structure and French content.** 🔸 **Revised 2026-09-19 during Step 3.2 —
+- [x] **Step 6.5 — i18n structure and French content.** 🔸 **Revised 2026-09-19 during Step 3.2 —
       this entry originally read "structure only, zero French copy gets written in this roadmap."**
       That's now wrong: the developer decided at Step 3.2 that French ships alongside English at
       launch, not deferred (see the corrected "Language" row in the decisions table above). Everything
@@ -965,14 +1146,142 @@ content rather than lorem ipsum.
       **Tool:** Context7-verified against Astro's current `i18n` reference and `@astrojs/sitemap`'s
       `i18n` option before implementing — both are real, current APIs as of this roadmap's writing,
       but re-check given Astro's fast release cadence (`umbra-web` is on Astro 7.x).
+      **Done 2026-09-27.** Configured exactly as this entry specified, Context7-verified live against
+      `/withastro/docs` rather than assumed: `astro.config.mjs`'s `i18n` block
+      (`locales: ["en", "fr"]`, `defaultLocale: "en"`, `routing.prefixDefaultLocale: false`) and
+      `@astrojs/sitemap`'s separate `i18n` option (`{ defaultLocale: "en", locales: { en: "en-US",
+      fr: "fr-FR" } }`), applying `landing-copy.md` §7 Part 6's own `fr-FR`-not-`fr-CA` correction.
+      With `prefixDefaultLocale: false`, Astro's own docs confirm English page files stay unprefixed at
+      `src/pages/*.astro` and French ones live in `src/pages/fr/*.astro` — built 23 French routes this
+      way, one per existing English page, for **46 total static pages** (verified via `astro build`,
+      which reports exactly 46). Every page's `<head>` now carries a self-referencing `<link
+      rel="canonical">` (never cross-language, per `landing-copy.md` §7 Part 6's explicit warning) plus
+      `hreflang="en"`/`"fr"`/`"x-default"` alternates, computed generically from the `/fr` prefix rather
+      than a per-page lookup table — confirmed in the built HTML and in `@astrojs/sitemap`'s generated
+      `xhtml:link` entries.
+      **Content model extended to carry French, not left flat:** `src/content/tools/` and
+      `src/content/comparisons/` are now locale-scoped subfolders (`en/`, `fr/`) — the existing 9 tool
+      and 4 comparison JSON files were moved (`git mv`, history preserved) into `en/`, and a full French
+      counterpart was written for each of the 13, keeping the same schema (`content.config.ts`'s `glob`
+      pattern changed from `*.json` to `**/*.json`, entry ids now `en/json`/`fr/json` etc.) — the mandatory
+      `dateChecked` field Step 6.4 already enforces held for the new French comparison files too, no
+      schema relaxation. Every French tool/comparison string traces to the same session's own already-
+      drafted copy (`landing-copy.md` §4b/§9's bilingual tool and comparison pages, §7 Part 1's title/
+      description table) rather than being freshly translated ad hoc — this step assembled and wired
+      already-approved copy, it didn't re-author it. **One naming decision applied consistently:** OCR's
+      tool name is "Image en texte" in French (already used throughout `landing-copy.md`'s FR drafts,
+      nav, and FAQ), every other tool name stays untranslated (JSON, Base64, UUID, Hash, JWT, Cron, PDF,
+      Images) — proper nouns/format names, not translated per the site's own established convention.
+      **UI chrome centralized, not duplicated per page:** `src/i18n/ui.ts` (a `ui`/`languages` dictionary,
+      Astro's own documented i18n-recipe shape) and `src/i18n/utils.ts` (`getLangFromUrl`,
+      `useTranslations`, and a `localizePath`/`delocalizePath` pair simpler than Astro's own recipe's
+      route-translation table, since no Umbra route is slug-translated — every page exists at the same
+      path in both locales, only the `/fr` prefix differs) hold nav/footer/shared-CTA strings; each
+      page's own long-form copy (home, download, faq, about, privacy, legal, eula, changelog, tools hub)
+      lives inline in a new shared component (`src/components/{Home,Download,Faq,About,Privacy,Legal,
+      Eula,Changelog,ToolsHub,NotFound}.astro`) keyed by a `lang` prop, with thin `src/pages/*.astro` /
+      `src/pages/fr/*.astro` route files instantiating each with `lang="en"` / `lang="fr"` — the existing
+      English pages were refactored into this shape rather than left as one-off files with a parallel
+      French copy hand-maintained separately, so the two locales can't drift out of structural sync.
+      `ToolPage.astro`/`ComparePage.astro` (Step 6.4's shared tool/comparison templates) and
+      `tools/[id].astro`/`compare/[id].astro` (their `getStaticPaths()`) took a `lang` prop/locale filter
+      the same way.
+      **Language switcher built to `landing-copy.md` §5's exact spec, correctness-verified, not just
+      styled:** nav (far right, after Download) and footer, labelled with the destination language in
+      that language ("Français" on English pages, "English" on French ones, never a bare "EN"/"FR"), and
+      confirmed in the built output that it preserves the exact current page — `/tools/json/` ↔
+      `/fr/tools/json/`, not a bounce to home — the one correctness requirement that step's own copy
+      flagged as more than a wording decision.
+      **Every already-drafted bilingual page assembled and verified in the built HTML, not just wired in
+      principle:** Home (hero headline direction genuinely differs by language per Step 3.2, not a
+      translation mismatch; the bento grid's `data-tool-name` search terms read from each locale's own
+      collection so the live filter matches French synonyms too), Download (including the injected
+      client-side strings — loading/failure text, the `Version {v} · Publiée le {d}` template — via
+      Astro's `define:vars`, not hardcoded English left in the script), FAQ (all 8 pairs including the
+      Step 3.7-added #8, same `id` slugs in both locales since anchors aren't user-visible copy), About,
+      Changelog (frame translated — heading, lede, Added/Changed/Fixed category labels, the GitHub link;
+      the curated per-release bullets themselves stay English-sourced from GitHub, per this file's own
+      "framing only" scope for this page), Tools hub (including the `README.md`/Step 3.7-drafted
+      Umbra-vs-web-tools-vs-desktop-suites comparison table, both languages), and the three Phase-4 legal
+      pages — `landing-legal.md` §1/§2's own "Feeds into Step 6.5" notes say their FR drafts are "the
+      actual French copy for this route, not a placeholder needing later translation," used verbatim.
+      **Video assets were already staged per locale before this step ran** (`public/videos/
+      workflow-demo.fr.{mp4,webm,poster.jpg}`, alongside the `.en.` set) — Step 5.3's own captioning
+      note ("captioned per-locale (EN/FR)") turned out to already include full French-narrated/captioned
+      encodes, not just captions layered on the English video; this step only had to wire the French
+      page to the existing `fr` asset trio, not request new ones. Tool screenshots have no locale variant
+      (same English-UI captures reused on both locales' tool pages) — an accepted, pre-existing condition
+      from Step 5.3, not a gap this step introduced or was asked to close.
+      **Verified, not assumed:** `astro build` completes clean at exactly 46 pages (23 × 2 locales);
+      spot-checked rendered HTML for canonical/hreflang correctness on the home pair, nav/footer copy and
+      hrefs, the language switcher's path-preservation on a deep route, page `<title>` tags against §7
+      Part 1's table (home, download, about, 404, tools hub — all match exactly, including the
+      Home/other-page `Umbra — {value}` vs. `{value} — Umbra` convention), the FAQ's full 8-question list
+      in French, and the tools hub's wider-comparison table headers/rows in French.
+      **Not done, deliberately, and not this step's job:** structured data (Step 6.6), OG/Twitter meta
+      wiring (Step 6.7), the analytics rework (Step 6.8) — footer's analytics-disclosure sentence is
+      translated as already-approved copy, not re-derived; `llms.txt`/AI-crawler `robots.txt` policy
+      (Steps 6.13/6.14); and the Privacy/Legal/EULA "Contact" placeholder, still open exactly as Phase 4
+      left it (French mirrors the same placeholder, not a guessed value, per `CLAUDE.md`'s privacy rule).
+      **One trade-off flagged, not engineered around:** `vercel.json` still only handles the beta-domain
+      redirect from Step 6.1 — a French page has its own build-time `src/pages/fr/404.astro` for direct
+      navigation, but Vercel's static-hosting default will still serve the *root* `404.html` for any
+      genuinely unmatched path (there's no per-locale 404 rewrite rule); low-risk and common practice for
+      a site this size, but worth a developer decision later rather than silently engineered around here.
+      **Follow-up, same repo, a later session (2026-09-27):** the developer asked how the site picks a
+      language for a new visitor — the honest answer was "English by default, no automatic detection,"
+      since `Astro.preferredLocale`/`preferredLocaleList` (the native mechanism, Context7-verified against
+      `/withastro/docs`) only work on pages rendered on demand, and this site is fully static (no adapter).
+      Added, at the developer's request, a client-side root redirect: an inline script (as early as
+      possible in `<head>`, only rendered on the bare English home page) checks `navigator.languages[0]`
+      and redirects once to `/fr/` via `location.replace` if it's French — but only for a visitor who has
+      never used the language switcher; clicking the switcher (either direction) sets a `localStorage` flag
+      that permanently suppresses the auto-check, so an explicit choice is never overridden. **Explicitly
+      decided one-directional, not symmetric:** asked the developer whether an English-browser visitor
+      landing on `/fr/` should be bounced back to `/` the same way — declined, keeping `/fr/` a page that's
+      never auto-redirected away from, since reaching it (a shared link, a French search result, the
+      switcher) already carries some signal of intent that `/`, the site's one ambiguous default entry
+      point, doesn't have. Both changes live in `Layout.astro` and are already committed/pushed
+      (`9ae37e9`).
 
-- [ ] **Step 6.6 — Structured data (JSON-LD).** `SoftwareApplication` for the app, `FAQPage` for the
+- [x] **Step 6.6 — Structured data (JSON-LD).** `SoftwareApplication` for the app, `FAQPage` for the
       FAQ. Highest effort-to-payoff ratio in the whole SEO block — Google renders FAQ markup as
       expandable results. Deferred by Story 5.4's review; closing it here.
+      **Done 2026-09-27, with a correction to this entry's own premise, checked live before writing
+      any markup (Rule 8 applied to this step's own claim, not just to GEO research).** Google removed
+      `FAQPage` rich results for all non-government/health sites in 2023 and pulled the feature's docs
+      entirely in June 2025 — no expandable FAQ snippet is available in Google Search today, regardless
+      of markup quality. `SoftwareApplication` rich results also require `aggregateRating` or `review`,
+      which this site correctly won't fabricate (Step 3.5's "no fabricated stat, star, or testimonial"
+      finding governs here too). **Shipped both schemas anyway** — valid, free, and the same
+      machine-readable facts Step 1.6/3.7's GEO work already wants surfaced to LLMs and non-Google
+      crawlers — but recorded as a GEO/semantic-extraction play, not the Google-SERP-visual this entry's
+      original wording promised. `FAQPage` covers `/faq` (all 8 pairs, built from the exact same
+      `answerHtml` the page renders, not re-derived) and each of the 9 `/tools/*` pages' own micro-FAQ.
+      `SoftwareApplication` sits on Home: no hardcoded version (ledger row 10 — `downloadUrl` points at
+      the same never-versioned `/releases/latest` GitHub URL the Download page's own buttons use), no
+      fabricated rating, no `author` (Step 4.2's anonymity decision). See `landing-copy.md` §10 for the
+      full reasoning and every field's sourcing.
 
-- [ ] **Step 6.7 — OG and Twitter Card meta.** Wire 5.4's image. Also deferred by Story 5.4.
+- [x] **Step 6.7 — OG and Twitter Card meta.** Wire 5.4's image. Also deferred by Story 5.4.
+      **Done 2026-09-27.** Wired into `Layout.astro` so every page in both locales inherits it from
+      one place: `og:image`/`og:image:width`/`og:image:height`/`og:image:alt` plus
+      `twitter:card` (`summary_large_image`), `twitter:title`, `twitter:description`, `twitter:image`,
+      `twitter:image:alt`. The image URL and alt text are exactly `landing-design.md` §4's already-
+      produced asset and already-written alt string — no new copy or design decision needed, and no
+      per-page/per-locale variant, matching that section's own "one universal card" call. `og-image.png`
+      was already committed (Phase 5's imagery commit), so this step is markup-only. `twitter:site`/
+      `twitter:creator` deliberately omitted — no X/Twitter handle exists for this anonymous,
+      no-name-anywhere site (Step 4.2's decision), and inventing one would be a fabricated identity, not
+      a missing-value oversight. Verified by building and grepping the rendered `dist/**/index.html`
+      output on Home (EN/FR), a tool page, and Download — all resolve `og-image.png` to the absolute
+      production URL and HTML-escape the alt text's embedded quotes correctly.
+      **Flagged, not acted on:** `landing-design.md` §4 itself notes the card should be revisited once
+      the domain went live (Step 6.1, since done) to consider adding a URL to the composition, and again
+      once Step 5.5/5.6's real logo mark is wired in place of the placeholder wordmark text — both are
+      image-redesign decisions belonging to Phase 5, not this step's markup-wiring job.
 
-- [ ] **Step 6.8 — Analytics rework.** Three things: switch PostHog to cookieless — decide between
+- [x] **Step 6.8 — Analytics rework.** Three things: switch PostHog to cookieless — decide between
       `persistence: 'memory'` (cleanest, no terminal-equipment storage at all, but identity resets
       every page load) and `sessionStorage` (survives navigation within a visit, still no cookie,
       but still counts as storage on the user's device for ePrivacy purposes); implement Step 1.4's
@@ -981,6 +1290,54 @@ content rather than lorem ipsum.
       vitals, exception capture, rageclick detection) — so the footer's "page-view analytics only"
       claim isn't verified the way the app's privacy claim is. Ten minutes, closes a known gap
       between a published claim and reality. Update the footer disclosure to match whatever's true.
+      **Done 2026-09-27, with a real bug found and fixed, not just the planned three tasks.**
+      Discovered, live via Context7 (not from memory): with no explicit `persistence`/
+      `cookieless_mode` config, posthog-js's own default is `persistence: 'localStorage+cookie'` —
+      meaning the site was silently setting a real persistent cookie this whole time, directly
+      contradicting Privacy.astro's "No cookies" claim and the roadmap's own locked "cookieless"
+      decision. This step's own framing (`memory` vs `sessionStorage`) undersold a third,
+      purpose-built option Context7 surfaced: `cookieless_mode: "always"`, which sets no
+      cookie/storage at all and computes identity as a server-side hash instead. **Developer decided
+      (2026-09-27):** `cookieless_mode: "always"` over either `persistence` option — the strictest
+      available, paired with `person_profiles: 'never'` per PostHog's own guidance (`identify()`/
+      `alias()` are unused anywhere on this site regardless). Wired into `Layout.astro`.
+      **Second real finding:** `cookieless_mode` requires a matching project-level toggle
+      ("Cookieless server hash mode" under Settings → Web analytics) or PostHog silently discards
+      every event — confirmed off via the newly-connected PostHog MCP (`@posthog/wizard mcp add`,
+      registered this session after the interactive wizard failed in a non-TTY shell and the
+      developer completed it in a real terminal). Developer enabled it directly in the dashboard
+      (confirmed via `project-get`: `cookieless_server_hash_mode: 2`, "Stateful" — the dashboard's
+      own toggle offers no Stateless/Stateful choice, docs don't explain the split, so this was
+      accepted as PostHog's own default rather than guessed at). Step 1.4's download-click event
+      plan (`download_clicked` with `platform`, `windows_unsigned_modal_shown`/`_proceeded`,
+      `notify_me_clicked`) turned out to be **already fully implemented** in `Download.astro`,
+      `Home.astro`, `ToolPage.astro`, `ComparePage.astro`, and `Layout.astro`'s delegated
+      `data-analytics` click handler — nothing new to build there.
+      **Dashboard audit (via MCP, `project-get`):** `anonymize_ips: true` and `capture_dead_clicks:
+      false` (rageclick — off), both confirmed good; `autocapture_exceptions_opt_in: null` — not
+      enabled. Two real gaps matching Story 5.4's own flagged concern: `autocapture_web_vitals_opt_in:
+      true` and `heatmaps_opt_in: true` are both on at the project level, real data collection
+      `autocapture: false` in code never governed. **Developer decided (2026-09-27):** keep both
+      rather than disable them, and disclose them instead. `Privacy.astro`'s "Data collected" list
+      gained two new bullets (Core Web Vitals, aggregate click/scroll heatmap data) and its
+      "not collected" bullet was corrected (dropped the now-false "no autocapture of clicks" clause,
+      kept "no full-session recordings/replay," since heatmap capture is real but isn't a session
+      replay). The footer disclosure (`footer.analytics`) was deliberately **not** itemized the same
+      way — developer pushback that the drafted itemized version was "way too technical jargon" for
+      a footer — and instead simplified to a one-line claim plus a link to the Privacy page for the
+      detail, in both languages. Also resolved, as a side effect of the audit: Privacy.astro's
+      Step-4.1-flagged "unconfirmed... whether this site's PostHog project stores the IP address"
+      line is now a confirmed statement (`anonymize_ips: true`, plus the dashboard's own tooltip
+      confirming cookieless mode hashes the IP into the distinct ID and strips it before any further
+      processing) — narrower than Step 4.1's own framing, since that step only asked whether IP is
+      stored, not how cookieless mode changes the answer.
+      **Not done, deliberately flagged rather than silently skipped:** `landing-strategy.md` §5's
+      ledger row 13 (the analytics disclosure) still needs updating to match the new footer/Privacy
+      wording, from a future `Umbra`-repo session per this roadmap's own repo-split rule — not done
+      here since this was a `umbra-web` build session. `session_recording_opt_in: true` and
+      `capture_console_log_opt_in: true` are both nominally on at the project level; real behavior
+      matches the "no session recording" claim because `disable_session_recording: true` in the SDK
+      init overrides them, but left on as a minor hygiene item, not acted on unilaterally.
 
 - [ ] **Step 6.9 — Accessibility pass.** WCAG 2.1 AA, matching `EXPERIENCE.md`'s floor. The palette
       is already contrast-verified, so this is mostly structure, focus order, and labels.
@@ -1191,7 +1548,13 @@ Recorded so future sessions read these as decided, not overlooked.
       footer mark, full mark kept at every favicon size incl. 16×16)* · 5.6 Favicon & icon
       production ·
       5.7 Dark mode
-- [ ] 6.1 Domain migration · 6.2 Layout impl · 6.3 Pages · 6.4 Content model · 6.5 i18n structure ·
+- [x] 6.1 Domain migration · [x] **6.2 Layout impl** *(DESIGN.md colors + landing-design.md §1 type/
+      spacing/radius wired as `prefers-color-scheme`-gated tokens; Astro's stable Fonts API self-hosts
+      Geist Sans/Mono + Hubot Sans; favicon/apple-touch-icon/manifest + nav/footer mark wired)* ·
+      [x] **6.3 Pages** · [x] **6.4 Content model** · [x] **6.5 i18n structure** *(Astro native i18n,
+      `prefixDefaultLocale: false`; all 23 routes now ship EN+FR — 46 pages built; locale-scoped tool/
+      comparison content collections; shared `lang`-prop page components; canonical/hreflang wiring;
+      path-preserving language switcher)* ·
       6.6 JSON-LD · 6.7 OG meta · 6.8 **Analytics rework** · 6.9 Accessibility · 6.10 Perf budget ·
       6.11 Build gates · 6.12 CSP *(optional)* · 6.13 `llms.txt` · 6.14 AI-crawler policy
 - [ ] 7.1 Verify analytics · 7.2 **GitHub download counts** · 7.3 Search Console · 7.4 Review
