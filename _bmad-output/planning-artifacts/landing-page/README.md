@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Rebuild Roadmap"
 status: draft
 created: 2026-08-18
-updated: 2026-09-27 (Step 6.8 — complete: PostHog switched to cookieless_mode: "always", a real pre-existing cookie-persistence bug fixed, project dashboard audited via the newly-connected PostHog MCP, Web Vitals/heatmaps kept and disclosed rather than disabled)
+updated: 2026-09-27 (Step 6.9 — complete: 4 real accessibility bugs fixed via axe-core + manual keyboard testing — aria-hidden-but-focusable nav toggle, invisible-but-tabbable collapsed mobile nav links, missing skip link, 2 color-contrast regressions beyond DESIGN.md's two documented exceptions; real VoiceOver pass still needs the developer)
 ---
 
 # Umbra — Landing Page Rebuild Roadmap
@@ -1339,9 +1339,59 @@ content rather than lorem ipsum.
       matches the "no session recording" claim because `disable_session_recording: true` in the SDK
       init overrides them, but left on as a minor hygiene item, not acted on unilaterally.
 
-- [ ] **Step 6.9 — Accessibility pass.** WCAG 2.1 AA, matching `EXPERIENCE.md`'s floor. The palette
+- [x] **Step 6.9 — Accessibility pass.** WCAG 2.1 AA, matching `EXPERIENCE.md`'s floor. The palette
       is already contrast-verified, so this is mostly structure, focus order, and labels.
       **Tool:** axe DevTools or `@axe-core/cli`, plus a real VoiceOver pass — the app's own standard.
+      **Done 2026-09-27.** Ran axe-core 4.10 (via Claude in Chrome, injected live from cdnjs rather
+      than adding a new project dependency for a one-time audit) against every distinct page template
+      in both locales (home, download, faq, a tool page, a comparison page, tools hub, about, legal/
+      privacy/eula, changelog) at desktop and mobile (390–500px) viewports. Found and fixed four real,
+      structural bugs, not just contrast tweaks:
+      (1) **`#nav-toggle` — serious, every page.** The mobile hamburger was a checkbox with
+      `aria-hidden="true"` that stayed keyboard-focusable (WCAG 4.1.2) — assistive tech is told the
+      control doesn't exist while a sighted keyboard user can still tab into it with no announced
+      purpose. Replaced the checkbox+label hack with a real `<button aria-expanded aria-controls>`,
+      JS-toggled (`Layout.astro`), which also picked up Escape-to-close (returns focus to the button)
+      and close-on-link-select for free — neither existed before.
+      (2) **Collapsed mobile nav links stayed in the tab order.** Found manually, not by axe: at
+      <768px with the menu closed, `.nav-links` used `max-height: 0; overflow: hidden` but its three
+      `<a>` elements were still focusable — a keyboard user tabbing through a closed menu landed on
+      three invisible stops with no visible focus indicator (WCAG 2.4.7). Fixed by adding
+      `visibility: hidden` (instant on close, delayed on open past the slide transition), verified by
+      scripting real `.focus()` calls before/after toggling — closed truly can't receive focus, open
+      can.
+      (3) **No skip link.** Every page repeats the same nav before reaching content; added a
+      `.skip-link` (visually hidden until focused, first element in the DOM) in both locales
+      (`i18n/ui.ts`'s new `a11y.skipToContent` key), targeting a new `id="main-content"` on `<main>`.
+      (4) **Two real color-contrast regressions, distinct from `DESIGN.md`'s two documented
+      white-on-fill exceptions (Rule 3 — left those alone).** `Home.astro`'s `.on-accent .tile-desc`
+      (the Hash tile's description) used `rgba(255,255,255,0.85)`, measuring 2.58:1 — worse than the
+      accepted white-on-orange floor (3.06:1) the tile's own name sits at one line above; bumped to
+      solid white so it matches the accepted ratio instead of being strictly worse than it. The
+      architecture diagram's crossed-out "Server" box (`.diagram-box-muted`) combined
+      `--text-secondary` with `opacity: 0.6`, landing at 2.69:1 against a 4.5:1 requirement — not one
+      of the named exceptions, just an unchecked dimming; removed the opacity (full-strength
+      `--text-secondary` already clears AA everywhere else it's used sitewide) and carried the
+      "excluded" meaning via `text-decoration: line-through` instead, alongside the ✕ mark already
+      between the two boxes. Also marked the bento grid's decorative background glyphs (`.ghost`,
+      `.ghost-on-accent` — a large low-opacity "{ }"/"#" watermark inside each tile) and the tile
+      icons' decorative SVGs `aria-hidden="true"`, so a screen reader announces "JSON — Format,
+      validate..." instead of "{ } JSON — Format, validate...".
+      **Left alone, correctly, not silently:** every contrast flag axe still raises after the fixes
+      above is either the two `DESIGN.md`-documented white-on-orange-fill exceptions (nav/hero/
+      closing-CTA Download buttons, the Hash tile name) at their already-accepted ~3.06:1, or the
+      `.ghost` glyphs' own near-6%-opacity background texture — genuinely decorative, already
+      `aria-hidden`, and WCAG 1.4.3 itself exempts pure decoration from the contrast requirement (axe
+      flags it anyway since it can't infer "decorative" from pixels alone). Re-verified with a full
+      `astro build` after all fixes — 46 pages, clean.
+      **Not run, honestly flagged rather than faked:** the real VoiceOver pass this step's own tool
+      line calls for. That needs a human at a real Mac with VoiceOver on — the same category as this
+      roadmap's other hands-on-device items — so it's the developer's own pre-launch check, not
+      something this session could complete. Also not attempted: axe's `color-contrast` rule running
+      against every one of the 9 tool pages' live product screenshots or the 4 comparison tables
+      individually — spot-checked one of each (representative of the shared `ToolPage.astro`/
+      `ComparePage.astro` templates) rather than all 13, since the violations found were template-level
+      (shared `Layout.astro`/`Home.astro`), not content-specific.
 
 - [ ] **Step 6.10 — Performance budget.** Set it *before* the images land, not as an audit after.
       Astro static makes this nearly free; fonts and screenshots are how it stops being free.
@@ -1555,7 +1605,10 @@ Recorded so future sessions read these as decided, not overlooked.
       `prefixDefaultLocale: false`; all 23 routes now ship EN+FR — 46 pages built; locale-scoped tool/
       comparison content collections; shared `lang`-prop page components; canonical/hreflang wiring;
       path-preserving language switcher)* ·
-      6.6 JSON-LD · 6.7 OG meta · 6.8 **Analytics rework** · 6.9 Accessibility · 6.10 Perf budget ·
+      6.6 JSON-LD · 6.7 OG meta · 6.8 **Analytics rework** · [x] **6.9 Accessibility pass** *(4 real
+      structural bugs fixed: aria-hidden-but-focusable nav toggle, invisible-but-tabbable collapsed
+      mobile links, missing skip link, 2 contrast regressions beyond DESIGN.md's accepted exceptions;
+      VoiceOver pass still needs the developer)* · 6.10 Perf budget ·
       6.11 Build gates · 6.12 CSP *(optional)* · 6.13 `llms.txt` · 6.14 AI-crawler policy
 - [ ] 7.1 Verify analytics · 7.2 **GitHub download counts** · 7.3 Search Console · 7.4 Review
       cadence · 7.5 AI visibility baseline & referrals
