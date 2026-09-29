@@ -2,7 +2,27 @@
 title: "Umbra — Landing Page Rebuild Roadmap"
 status: draft
 created: 2026-08-18
-updated: 2026-09-27 (Step 6.9 — complete: 4 real accessibility bugs fixed via axe-core + manual keyboard testing — aria-hidden-but-focusable nav toggle, invisible-but-tabbable collapsed mobile nav links, missing skip link, 2 color-contrast regressions beyond DESIGN.md's two documented exceptions; real VoiceOver pass still needs the developer)
+updated: 2026-09-29 (Step 6.14 — complete: `robots.txt.ts` now allows 14 named AI-crawler
+groups — 7 training (GPTBot, ClaudeBot, Google-Extended, CCBot, Meta-ExternalAgent, Applebot-Extended,
+Amazonbot), 7 retrieval/answer (OAI-SearchBot, ChatGPT-User, OAI-AdsBot, Claude-SearchBot, Claude-User,
+PerplexityBot, Perplexity-User) — alongside the existing wildcard `Allow: /` block, with a comment in
+the emitted file itself recording the decision. Roster re-verified live against each vendor's own docs
+rather than this step's illustrative four-per-category list or third-party GEO roundups (Rule 8);
+turned up three bots newer than the roadmap's own examples (`OAI-AdsBot`, `Claude-User`,
+`Perplexity-User`) and confirmed `Google-Extended` is a robots.txt-only control token with no HTTP
+user-agent of its own.
+Previous entry, Step 6.13 — complete: `/llms.txt` and `/llms-full.txt` added as build-time Astro
+endpoints, generated from Step 2.5's content model (tools, comparisons, changelog collections + the
+FAQ data file) rather than hand-maintained; re-verified live that `llms-full.txt` isn't part of the
+formal spec (a Mintlify convention) before implementing it. Deliberately excludes the six hardcoded
+marketing pages' full prose from `llms-full.txt` to avoid a second source of truth — link + existing
+seoDescription only for those. Re-ran Step 6.11's `lychee` gate against the fresh build: 0 errors.
+Earlier entry, Step 6.12 — complete: security headers + CSP added via vercel.json, `default-src
+'none'` plus explicit allow-lists rather than `unsafe-inline`; required moving five inline scripts to
+external files under public/scripts/ so script-src needs no hashes; MDN-verified live that style-src
+doesn't block JS `.style.x =` mutations and that script-src exempts application/ld+json and
+application/json data blocks. Live response-header verification not possible this session — Bash and
+the Chrome browser tool don't share a localhost network namespace — flagged as a post-deploy check)
 ---
 
 # Umbra — Landing Page Rebuild Roadmap
@@ -1393,19 +1413,99 @@ content rather than lorem ipsum.
       `ComparePage.astro` templates) rather than all 13, since the violations found were template-level
       (shared `Layout.astro`/`Home.astro`), not content-specific.
 
-- [ ] **Step 6.10 — Performance budget.** Set it *before* the images land, not as an audit after.
+- [x] **Step 6.10 — Performance budget.** Set it *before* the images land, not as an audit after.
       Astro static makes this nearly free; fonts and screenshots are how it stops being free.
       **Tool:** Lighthouse.
+      **Done 2026-09-27** (checkbox corrected 2026-09-29 — the commit landed but this box was never
+      ticked). Added Lighthouse CI (`lhci`) via a `pnpm run perf:budget` script, running Lighthouse 3x
+      against 5 representative templates (home EN/FR, download, a tool page, a compare page) and
+      asserting resource-size/timing ceilings rather than just reporting them. Home's hero video poster
+      is the site's only non-text LCP element, so it gets its own looser 4000ms ceiling via
+      `assertMatrix`; every other template is text/SVG-only and gets a tighter 2800ms ceiling. Media
+      size is budgeted at 50KB to fail loudly if the hero video's `preload="none"` (no-autoplay
+      requirement) ever regresses to eager loading. Caught a real finding, not a hypothetical one: the
+      hero video had no `fetchpriority`, so its poster (home's actual LCP element) wasn't prioritized —
+      adding `fetchpriority="high"` dropped home's Lighthouse performance score from 0.83 to 0.94 and
+      LCP from 4.3s to 3.0s. All 15 budget runs pass at this baseline.
 
-- [ ] **Step 6.11 — Build gates.** A link checker (`lychee`) and a build check in CI, so a broken
+- [x] **Step 6.11 — Build gates.** A link checker (`lychee`) and a build check in CI, so a broken
       link fails the build. Story 5.4 explicitly deferred this as "no testing convention exists yet";
       adding it also matches `Umbra`'s own NFR6 posture, which is a defensible-practice signal for
       the secondary audience.
+      **Done 2026-09-28.** `.github/workflows/ci.yml` builds the site and runs `lychee` against
+      `dist/` on every push/PR to `main`; `lychee.toml` holds shared config (retries, fragment
+      checking, directory-index resolution), while `--root-dir`/`--remap` stay CLI-only in the
+      workflow since they need the runner's absolute path. **`--remap`'s the load-bearing piece**
+      (Context7-verified against `/lycheeverse/lychee`, its flag not being obvious from the README
+      alone): Layout.astro emits fully-qualified `https://umbra.dipane.fr/...` URLs for
+      canonical/og:url/hreflang, and without remapping that domain back onto the local build, lychee
+      would check those against the *live* (previous) deploy on every run — failing PRs for content
+      that only exists in the branch being tested, one deploy behind by design. Installed `lychee`
+      locally and ran it against a real build before wiring up CI, which is how the gate earned its
+      keep immediately: it caught a real, previously-invisible bug, not a hypothetical one. Astro
+      always emits the top-level `404.astro` as a flat `404.html` (Context7-verified,
+      `/withastro/docs` — the one route where actual output ignores this site's
+      `trailingSlash: 'always'` convention), but `Layout.astro` derived canonical/hreflang/lang-switch
+      links from `Astro.url.pathname` uniformly, so both the English and French 404 pages linked to
+      `/404/` — confirmed live-404ing on the actual production domain. Fixed with an explicit,
+      commented exception for that one route rather than a generic rule, since `/fr/404` is a normal
+      route and correctly keeps its directory shape. Re-verified clean (0 errors, 182 unique links)
+      after the fix, matching the gate's own pass/fail bar before it ever ran in CI.
 
-- [ ] **Step 6.12 — Optional: security headers / CSP.** Cheap on Vercel, low practical risk on a
+- [x] **Step 6.12 — Optional: security headers / CSP.** Cheap on Vercel, low practical risk on a
       static brochure site. Genuinely optional; it reads as "this developer knows what a CSP is."
+      **Done 2026-09-28.** Added a `headers` block to `vercel.json` (Context7-verified against
+      `/vercel/vercel`'s `routing-utils` source — its `headers` array is converted into the same
+      platform-level routing table as `redirects`/`rewrites`, so it applies to a fully static
+      build with no adapter, not just to dynamic responses) alongside the existing beta-domain
+      redirect: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+      `Permissions-Policy`, and `Strict-Transport-Security` (no `preload` — that's a separate,
+      harder-to-reverse submission to the browser preload list, left for the developer to decide).
+      **The CSP itself is `default-src 'none'` plus explicit allow-lists** (script/style/img/font/
+      media/manifest/connect-src), not a looser `'self'`-plus-`unsafe-inline'` default — every
+      resource type the site actually uses (self-hosted fonts, videos, images, the two PostHog
+      hosts, the Download page's `api.github.com` fetch) was enumerated by reading the live source,
+      not assumed.
+      **Real refactor this step required, not just a header:** the site had five `is:inline`
+      inline `<script>` blocks in `Layout.astro`/`Home.astro`/`Download.astro`. A hash-based CSP
+      for these was rejected as fragile — `Download.astro`'s script embeds translated strings via
+      `define:vars`, so its content (and hash) differs per locale and would silently break every
+      time that copy changes, with no build-time check to catch it. Moved all five to external
+      files under `public/scripts/` (`lang-redirect.js`, `posthog-init.js`, `site-interactions.js`,
+      `home-interactions.js`, `download.js`), referenced via `<script is:inline src="/scripts/...">`
+      — confirmed via Context7 (`/withastro/docs`) that `is:inline` on a `src`-only tag pointing at
+      a `public/` file only stops Astro from bundling it, it does not inline the file's content
+      into the HTML. `Download.astro`'s translated strings moved to a `<script type="application/
+      json">` data island the external script reads via `JSON.parse` — same `<`-escaping
+      discipline as the existing JSON-LD scripts, since translator-edited copy is exactly the kind
+      of string this codebase already treats as a potential `</script>`-injection vector elsewhere.
+      Net result: `script-src 'self' https://eu-assets.i.posthog.com` needs zero hashes and never
+      goes stale as copy changes.
+      **Two behaviors verified live rather than assumed, since getting either wrong would silently
+      break a real feature with no visible error:** MDN (fetched live) confirms `style-src` does
+      **not** restrict JS setting `element.style.property = value` (only `style="..."` attributes,
+      `setAttribute('style', ...)`, and `.cssText` — none of which the Home page's tile-search-
+      filter script uses), so `style-src 'self'` needed no `unsafe-inline`; and confirmed
+      `<script type="application/ld+json">` (already used site-wide for structured data) and
+      `type="application/json"` (the new data island) are both inert to a browser's HTML/JS
+      classification and therefore exempt from `script-src` entirely, needing no hash of their own
+      despite their per-page-varying content.
+      **Not verified live, and flagged rather than silently assumed:** the actual deployed response
+      headers, since this environment's Bash tool and its Chrome browser-automation tool don't
+      share a network namespace — a local Node server bound to `localhost` from Bash isn't
+      reachable from the browser tool (confirmed: the browser resolved `localhost:4321` to an
+      unrelated stale process, and `WebFetch` explicitly refuses bare `localhost` URLs). Verified
+      everything else that could be checked without a live deploy instead: rebuilt the site (`astro
+      build`, 46 pages), grepped every built page for inline `<script>` tags to confirm zero
+      executable ones remain (only external `src` tags and the two inert data-block types), and
+      re-ran Step 6.11's `lychee` gate against the fresh build (0 errors, 181 unique links,
+      unchanged from before this step). **Pre-launch action item:** after the next deploy, open
+      DevTools' Network tab on the live site and confirm no CSP violations are logged in the
+      console while clicking through the mobile nav, the tool search filter, and the Download
+      page's platform detection/GitHub-unsigned-build modal — the one check this session's tooling
+      genuinely couldn't do.
 
-- [ ] **Step 6.13 — `llms.txt` and `llms-full.txt`.** A markdown index at `/llms.txt` giving an AI
+- [x] **Step 6.13 — `llms.txt` and `llms-full.txt`.** A markdown index at `/llms.txt` giving an AI
       agent a curated map of the site, plus a full-content variant. **Do this for the coding-agent
       reason, not the citation reason** — the evidence as of August 2026 separates the two sharply.
       IDE agents (Cursor, Claude Code, Copilot, Cline, Aider) fetch these routinely when pointed at a
@@ -1416,8 +1516,39 @@ content rather than lorem ipsum.
       opposite. **Why here:** trivial to generate from Step 2.5's content model, so it costs almost
       nothing once that exists. **Tool:** generate from the content model at build time rather than
       hand-maintaining a file that will drift. Re-verify the spec's status before implementing.
+      **Done 2026-09-28.** Re-verified the spec live (WebFetch, llmstxt.org) before writing anything:
+      only the H1 is actually mandatory; `llms-full.txt` isn't part of the spec at all — it's a
+      convention Mintlify introduced and other doc platforms copied, confirmed by a second live check
+      rather than assumed from this step's own title. Implemented both as Astro API-route endpoints
+      (`src/pages/llms.txt.ts`, `src/pages/llms-full.txt.ts`), the same static-file pattern
+      `robots.txt.ts` already uses — English-only, at the site root, matching that file's and
+      `sitemap-index.xml`'s existing locale-agnostic convention rather than adding a second
+      `/fr/llms.txt`. `llms.txt` is a short index — one line per page, every tool/comparison
+      description pulled straight from that entry's own already-ledger-checked `seoDescription`
+      field (Step 2.5's content model), not new copy invented for this file. `llms-full.txt` inlines
+      full content only for what's already in a shared content model or data file — all 9 tool pages
+      (`directAnswer` + `body` + per-tool FAQs), all 4 comparison pages (intro, full row table,
+      verdict), the changelog (Added/Changed/Fixed), and the site FAQ (`src/data/faq.ts`, directly
+      importable since it's a plain `.ts` module, unlike the other marketing pages). **Deliberately
+      does not inline Home/Download/About/Privacy/Legal/EULA's full prose** — that copy lives as
+      hardcoded per-locale objects inside their own `.astro` components, not in a shared module, so
+      duplicating it here would recreate exactly the second-source-of-truth drift problem
+      `landing-ia.md` §5 already ruled out for the tool list; those six pages get a link and their
+      existing `seoDescription` only, with the scope choice and reasoning documented directly in the
+      endpoint file's own comments. Two FAQ entries (`comparison-to-named-competitors`,
+      `free-online-tools`) render their real answer dynamically in `Faq.astro` from data this file
+      doesn't have access to; rather than reimplementing that logic or answering with `null`,
+      `llms-full.txt` gives them an honest pointer to the Tools/Comparisons sections above. Caught one
+      real bug while drafting: the PDF tool's one FAQ answer embeds a raw `<a href="...">` tag (safe
+      in its real home, rendered via `set:html`) that would otherwise show up as literal HTML in a
+      plain-text file — grepped every content file and data file for stray HTML tags first (found
+      exactly this one), then added a small Markdown-link conversion rather than leaving it. Verified
+      by rebuilding (`astro build`, still 46 pages) and re-running Step 6.11's `lychee` gate against
+      the fresh build with the same `--root-dir`/`--remap` flags CI uses: 0 errors, 183 unique links
+      (up from 181, both new files' own links included and resolving correctly, root-relative links
+      inside the recovered PDF-FAQ Markdown link included).
 
-- [ ] **Step 6.14 — AI-crawler policy in `robots.txt`.** 🔸 `src/pages/robots.txt.ts` currently emits
+- [x] **Step 6.14 — AI-crawler policy in `robots.txt`.** 🔸 `src/pages/robots.txt.ts` currently emits
       a bare `User-agent: * / Allow: /`, which already permits everything — so this step changes
       posture from *default* to *deliberate*, not from closed to open. **Note that the standard 2026
       advice does not apply to you.** The common recommendation — block training crawlers (GPTBot,
@@ -1430,6 +1561,20 @@ content rather than lorem ipsum.
       site's privacy copy should not blur the two — INV-1/INV-2 govern the app, this governs a public
       brochure. **Tool:** edit `robots.txt.ts`; re-verify the current user-agent list before writing
       it, since the roster changes often.
+      **Done 2026-09-29.** Re-verified the roster live against each vendor's own docs rather than this
+      step's own illustrative list or third-party GEO-agency roundups (Rule 8): OpenAI's
+      `developers.openai.com/api/docs/bots` added a fourth bot since the roadmap was written,
+      `OAI-AdsBot` (ad-safety fetches); Anthropic's support article confirmed a `Claude-User`
+      user-triggered fetcher alongside `ClaudeBot`/`Claude-SearchBot`; Perplexity's own docs likewise
+      added `Perplexity-User`. Also verified `Google-Extended` is a robots.txt-only control token (no
+      HTTP user-agent of its own) via Google's crawling-infrastructure docs. Extended past the four
+      training-crawler examples this step names to cover the other major training crawlers actually
+      relevant to "presence in the training substrate" — `Meta-ExternalAgent`, `Applebot-Extended`,
+      `Amazonbot` — each confirmed against its own vendor page. Kept the existing wildcard
+      `User-agent: * / Allow: /` block and added 14 explicit named groups (7 training, 7 retrieval/
+      answer) each with their own `Allow: /`, plus a `#`-comment block in the emitted file itself (not
+      just the source) recording the decision and its date, per this step's own instruction. Verified
+      by rebuilding (`astro build`, still 46 pages) and reading the generated `dist/robots.txt`.
 
 ---
 
@@ -1605,11 +1750,14 @@ Recorded so future sessions read these as decided, not overlooked.
       `prefixDefaultLocale: false`; all 23 routes now ship EN+FR — 46 pages built; locale-scoped tool/
       comparison content collections; shared `lang`-prop page components; canonical/hreflang wiring;
       path-preserving language switcher)* ·
-      6.6 JSON-LD · 6.7 OG meta · 6.8 **Analytics rework** · [x] **6.9 Accessibility pass** *(4 real
-      structural bugs fixed: aria-hidden-but-focusable nav toggle, invisible-but-tabbable collapsed
-      mobile links, missing skip link, 2 contrast regressions beyond DESIGN.md's accepted exceptions;
-      VoiceOver pass still needs the developer)* · 6.10 Perf budget ·
-      6.11 Build gates · 6.12 CSP *(optional)* · 6.13 `llms.txt` · 6.14 AI-crawler policy
+      [x] 6.6 JSON-LD · [x] 6.7 OG meta · [x] **6.8 Analytics rework** · [x] **6.9 Accessibility pass**
+      *(4 real structural bugs fixed: aria-hidden-but-focusable nav toggle, invisible-but-tabbable
+      collapsed mobile links, missing skip link, 2 contrast regressions beyond DESIGN.md's accepted
+      exceptions; VoiceOver pass still needs the developer)* · [x] **6.10 Perf budget** *(Lighthouse CI,
+      5 templates budgeted, real fetchpriority fix found: home's Lighthouse score 0.83 → 0.94)* ·
+      [x] 6.11 Build gates · [x] 6.12 CSP *(optional, done)* · [x] 6.13 `llms.txt` · [x] **6.14
+      AI-crawler policy** *(14 named crawler groups added alongside the wildcard block, 7 training + 7
+      retrieval, roster re-verified live against each vendor's own docs)* — **Phase 6 complete**
 - [ ] 7.1 Verify analytics · 7.2 **GitHub download counts** · 7.3 Search Console · 7.4 Review
       cadence · 7.5 AI visibility baseline & referrals
 - [ ] 8.1 Pre-launch checklist · 8.2 Code review
