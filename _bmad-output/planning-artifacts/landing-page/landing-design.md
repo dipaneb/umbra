@@ -811,17 +811,20 @@ does, not more.
 
 ### Asset
 
-`umbra-web/public/og-image.png` — 1200×630px PNG, ~161KB. **Staged, not committed** — a new file
-sits in the working tree, but committing it is a separate authorization this session didn't ask
-for, per this project's own standing rule. Wiring it into `<head>` (`og:image`, `twitter:image`,
-and the `og:image:alt` text above, on every page) is Step 6.7's job, per the roadmap's existing
-split between producing design output and wiring it into the build.
+`umbra-web/public/og-image.png` — 1200×630px PNG, ~161KB. Committed in Phase 5's own imagery commit
+(no longer "staged, not committed" as first written here). **Step 6.7 (2026-09-27) wired it into
+`<head>`** — `og:image`/`og:image:width`/`og:image:height`/`og:image:alt` and the equivalent
+`twitter:image`/`twitter:image:alt` (plus `twitter:card: summary_large_image`, `twitter:title`,
+`twitter:description`) — sitewide via `Layout.astro`, using this section's alt string and image
+verbatim, on every page in both locales, matching the "one universal card" decision below.
 
 ### Feeds directly into
 
 - **Step 5.5/5.6** — once the mark exists, this card gets a mark-bearing revision (flagged above).
-- **Step 6.1** — once the domain is live, revisit whether a URL belongs on the card.
-- **Step 6.7** — wires `og-image.png` and its `og:image:alt` text into every page's `<head>`.
+  Still open — Step 6.7 wired the card as-is, it didn't redesign it.
+- **Step 6.1** — done, domain is live; revisiting whether a URL belongs on the card is still open,
+  same status as above — not attempted by Step 6.7.
+- **Step 6.7** — done; wired `og-image.png` and its `og:image:alt` text into every page's `<head>`.
 
 ---
 

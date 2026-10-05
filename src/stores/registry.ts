@@ -75,7 +75,10 @@ export function assertUniqueToolIds(entries: ToolRegistryEntry[]): void {
 //
 // Adding an entry also means updating docs/release-checklist.md's exercise
 // list (Story 5.3, NFR1) — that checklist's "every tool exercised" guarantee
-// is only as good as this list staying in sync with it.
+// is only as good as this list staying in sync with it. It also means adding
+// a matching entry to umbra-web's src/content/tools/*.json — a separate repo
+// with no automated sync to this one, so that has to stay a manual step too
+// (landing-page/README.md Step 6.4).
 const TOOLS: ToolRegistryEntry[] = [
   {
     id: "json",

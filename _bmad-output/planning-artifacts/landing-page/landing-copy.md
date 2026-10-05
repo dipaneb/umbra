@@ -2,7 +2,7 @@
 title: "Umbra — Landing Page Copy"
 status: draft
 created: 2026-09-19
-updated: 2026-09-20 (Step 3.8 done — capability-differentiation pass, §9)
+updated: 2026-09-27 (Step 6.6 done — structured data / JSON-LD, §10)
 ---
 
 # Umbra — Landing Page Copy
@@ -2309,3 +2309,68 @@ manufactured differentiator." Both pages ship exactly as §4b left them.
   each (except UUID, Cron, and — net two, not one, for JWT).
 - **Step 8.1** (pre-launch checklist) — the "not decided here" re-verification gaps above join the
   existing unowned competitor-fact list from §4b, not a new category of risk.
+
+---
+
+## §10 — Structured data / JSON-LD (Step 6.6)
+
+**Method:** implementation session in `umbra-web`, plus a live check of Google's current
+structured-data requirements before writing anything — this roadmap's Rule 8 ("treat GEO/AI-search
+sources with suspicion... re-verify before executing") applied here to this step's own stated premise,
+not just to GEO research proper.
+
+### Correction found before implementing: this step's own "highest effort-to-payoff" framing is stale
+
+The README's Step 6.6 entry (a Story 5.4 deferred item, unchanged since) states structured data is the
+"highest effort-to-payoff ratio in the whole SEO block — Google renders FAQ markup as expandable
+results." Checked live against Google Search Central's own docs before writing any JSON-LD:
+
+- **FAQPage rich results no longer exist in Google Search, for any site.** Google restricted the
+  feature to "well-known, authoritative government and health websites" in August 2023, then removed
+  its documentation entirely in June 2025 ("The FAQ rich result feature is no longer shown in Google
+  Search results"). No `FAQPage` markup, however correctly implemented, produces an expandable snippet
+  in Google today — this isn't a gap in this site's implementation, the feature itself is gone.
+- **`SoftwareApplication` rich results require `aggregateRating` or `review` — Umbra has neither, on
+  purpose.** Google's docs list this as a hard eligibility requirement, not a nice-to-have. Step 3.5
+  already found and rejected fabricating a rating ("a small true number can read worse than no number
+  at launch") — that finding governs here too: inventing one now to unlock a visual rich result would
+  be exactly the overclaim this project's whole ledger discipline exists to prevent, and risks a manual
+  action for deceptive structured data on top of it.
+
+**What this changes:** both schemas below still ship — they're valid, cost nothing, and are the same
+machine-readable facts Step 1.6/3.7's GEO work already wants surfaced (an LLM or another engine's
+crawler reads JSON-LD the same way regardless of what Google's rich-result UI currently does with it).
+But the realistic payoff is GEO/semantic-extraction and non-Google engines, not a Google SERP visual —
+recorded here so a future session doesn't re-promise the expandable-FAQ result this step's original
+wording implied.
+
+### What shipped
+
+- **`FAQPage`** on `/faq` (both locales, `Faq.astro`) — all eight Q&A pairs (Step 3.7 added FAQ #8),
+  built from the exact same `answerHtml` value the page renders, not re-derived separately from
+  `faqsEn`/`faqsFr` — the two dynamically-linked answers (`comparison-to-named-competitors`,
+  `free-online-tools`) would otherwise diverge from their JSON-LD text, which is exactly the risk
+  §7's crawlability finding #2 flagged for this step ("the visible page content [must] actually match
+  the marked-up Q&A pairs").
+- **`FAQPage`** on each of the 9 `/tools/*` pages (both locales, `ToolPage.astro`) — the tool's own
+  content-collection `faqs` array (Steps 3.4b/3.8), reusing `item.a` verbatim including its inline
+  `<a>` tags where present (e.g. PDF's cross-link to the OCR tool) — same match-the-DOM discipline.
+- **`SoftwareApplication`** on Home (both locales, `Home.astro`) — `name`, `url`, `description` (the
+  already-ledger-checked §7 SEO description, not new prose), `inLanguage`, `applicationCategory:
+  "DeveloperApplication"`, `operatingSystem: "macOS, Windows, Linux"` (matches the page's own existing
+  "Available for macOS, Windows, and Linux" line — not a new claim), `offers` (price `0`, `EUR`),
+  `sameAs` (the GitHub repo), and `license` (the `/eula` page).
+- **Deliberately omitted:** `softwareVersion`/`datePublished` — ledger row 10 (`landing-strategy.md`
+  §5) forbids hardcoding a version anywhere in site copy or build config; `downloadUrl` instead points
+  at the same never-versioned `github.com/dipaneb/umbra/releases/latest` URL `Download.astro`'s own
+  buttons already use. Also omitted: `aggregateRating`/`review` (see above), and `author` — Step 4.2
+  (`landing-legal.md` §2) already decided the site ships fully anonymous, host-only, no name or
+  handle; naming a Person or Organization here would contradict that decision for no functional gain.
+
+### Feeds directly into
+
+- **Step 6.7** (OG/Twitter meta) — could add an `image`/`screenshot` property to the
+  `SoftwareApplication` block once that step wires a confirmed image; not added now since guessing
+  ahead of 6.7's own asset decision isn't this step's job.
+- **Step 8.1** (pre-launch checklist) — worth a Google Rich Results Test / Schema.org validator pass
+  on the live deployed URLs, the same "verify live" discipline every ledger claim already gets.

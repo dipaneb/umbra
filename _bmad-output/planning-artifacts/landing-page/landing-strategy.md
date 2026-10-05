@@ -841,3 +841,122 @@ are recorded as blocked rather than answered, per instructions not to loop on a 
   cadence; the developer's own manual baseline check (above) is what that step compares against.
 - **Step 9.2/9.4** (distribution plan, GitHub repo as agent surface) — per the sober framing above,
   these questions should be answerable from the README and third-party mentions, not only the site.
+
+## §8 — Review cadence (Step 7.4)
+
+**Method:** drafted 2026-10-05 from what already exists — §4's success definition and event list,
+Step 7.2's "Umbra downloads" dashboard, and Step 7.5's manual AI-visibility check. No new
+instrumentation is proposed. **The cadence and thresholds below are proposed defaults for the
+developer to accept or change; they are not yet a commitment.**
+
+### What gets read, and where
+
+| Question | Source | Read as |
+|---|---|---|
+| Is the page being visited? | PostHog `$pageview`, by `$pathname` and `$referring_domain` | weekly count, trend only |
+| Is there intent to download? | PostHog `download_clicked`, by `platform` | weekly count, side by side with pageviews — **never a ratio** (§4) |
+| Did files actually leave GitHub? | "Umbra downloads" dashboard (`github_release_downloads`) | **max per day, never summed across days** (7.2) |
+| Does the Windows disclosure cost us? | `windows_unsigned_modal_shown` vs `_proceeded` | counts, monthly |
+| Is the site still indexed? | Search Console + Bing (Step 7.3) | monthly, or on any alert email |
+| Do AI assistants name Umbra, and correctly? | Step 7.5 referrers + manual re-ask of §7's list | quarterly |
+
+### Cadence
+
+- **Monthly (30 min, first Monday).** Read the first four rows above plus indexing. Write three lines
+  in a running log: the numbers, one observation, and the decision (including "no change").
+- **Quarterly.** Re-run the §7 question set across the four engines and record against the
+  2026-09-18 baseline; check the *wrongly described* failure mode (privacy overstated, "open source,"
+  invented Windows build) as its own line.
+- **Event-driven, not calendar.** Look the same week after: a stable release, any distribution post
+  (Step 9.2), or a Search Console alert.
+
+Weekly is deliberately not proposed: at "modest" volumes (PRD §6) weekly numbers are noise, and a
+cadence that is too frequent is the one that gets abandoned.
+
+### What would change something
+
+Decisions are tied to a *pattern over two consecutive reviews*, not a single reading:
+
+| Signal | Action |
+|---|---|
+| Pageviews flat/non-zero but `download_clicked` ≈ 0 | Revisit hero and CTA copy (Steps 3.2/3.4) before anything else |
+| `download_clicked` up but GitHub max-per-day flat | Look for download friction (release asset links, Releases redirect — Step 8.1's checks) |
+| `windows_unsigned_modal_proceeded` far below `_shown` | The unsigned-build disclosure is the drop-off; reread §3b before softening it — the claim stays honest regardless |
+| Most traffic from one referrer | Treat that channel as the distribution plan's working one (Step 9.2) |
+| Indexed page count drops or pages "Discovered, not indexed" | Treat as a possible migration/regression bug, not an SEO tactic |
+| Umbra described wrongly by an assistant | Fix on-page clarity (3.7) and sources (9.2/9.4); no takedown request |
+
+**Standing rule (from PRD §6):** vanity numbers gate nothing. A number that moves no row above is
+not tracked. Adding an event requires naming the question it answers here first.
+
+### Not decided here
+
+- **Who reviews if the developer doesn't:** this is a solo project; the log is the only enforcement.
+  If two consecutive monthly entries are skipped, that is itself the signal to cut the cadence to
+  quarterly rather than keep a ritual that isn't happening.
+- **Where the log lives:** proposed as `landing-review-log.md` beside this file, created at the first
+  review rather than now (an empty log is the "illusion of measurement" Step 7.4 warns about).
+- **Calendar reminder:** the developer's own to set.
+
+### Feeds directly into
+
+- **Step 7.5** — supplies the quarterly cadence for the AI-visibility re-check.
+- **Step 9.2/9.3** — channel and UTM readings in the monthly review are how distribution is judged.
+- **Step 10.1** — "two skipped reviews" and "after each release" are maintenance triggers.
+
+## §9 — AI visibility check #1 (Step 7.5)
+
+**Run 2026-10-05**, first re-check against the §7 baseline (2026-09-18). Same 9 questions, four surfaces,
+one fresh chat/search each, via claude-in-chrome. **Account caveats:** ChatGPT (temporary chat) and
+Perplexity were logged out; Claude was logged into the developer's account (web search on); Google was
+anonymous. Perplexity's anonymous tier did *not* hit the login wall this time, so all 9 were answered —
+but its page text was captured ~10 s in, so several answers are truncated (Q6 almost entirely). Treat
+Perplexity as "first paragraph and top picks", not full answers.
+
+### Measured half — referrers (PostHog, last 90 days)
+
+- **AI-assistant referrals: zero.** No `$referring_domain` of `chatgpt.com`, `perplexity.ai`, `claude.ai`,
+  `gemini.google.com` or similar. Full-referrer check also clean. (`utm_source` isn't a property in the
+  project yet — ChatGPT appends `utm_source=chatgpt.com`, so confirm the property gets captured once it
+  appears; Step 9.3 will introduce UTMs anyway.)
+- Referrers present, all non-AI: `$direct` (131 pageviews / 30 visitors), `umbra.dipane.fr` (internal
+  navigation), `vercel.com` (old preview domain).
+- Latest pageview in the data is 2026-09-30; the window shows almost no organic discovery yet.
+
+### Manual half — is Umbra named?
+
+| # | Question (abbreviated) | ChatGPT | Claude | Perplexity | Google (organic; AI Overview) |
+|---|---|---|---|---|---|
+| 1 | Alternative to DevToys/DevUtils | ✗ DevTools-X, A7Box, DevToys, IT-Tools, DevUtils.sh | ✗ CyberChef, IT-Tools, Boop, DevHub | ✗ ToolCove, Digital ToolPad, Prism.Tools | ✗ (AlternativeTo, listicles) |
+| 2 | Nothing pasted gets uploaded | ✗ DevToys, LocalOnly, DevTools.tools | ✗ DevUtils, DevToys, CyberChef | ✗ DevToys + web tools | ✗ |
+| 3 | Offline JSON/JWT, macOS | ✗ DevUtils.app, JWT UI, Bellows, Webstarted | ✗ DevUtils, DevToys, Boop, CyberChef | ✗ DevUtils.app, jwt-cli, Webstarted | ✗ |
+| 4 | Local OCR, no cloud | ✗ Tesseract, OCRmyPDF, PaddleOCR, EasyOCR | ✗ Tesseract, OCRmyPDF, PaddleOCR, EasyOCR, Surya | ✗ Tesseract, OCRmyPDF, Apple Vision, EasyOCR | ✗ |
+| 5 | Windows/Linux, no telemetry | ✗ DevToys, adOmnia, A7Box | ✗ DevToys, CyberChef, IT-Tools | ✗ DevT Pro, DevTools-X, DevToys | ✗ |
+| 6 | Check if an app calls home | ✗ generic (static inspection, VM) | ✗ generic (VirusTotal, VM, Little Snitch) | ✗ (truncated) | ✗ |
+| 7 | Verifiably private dev tool | ✗ Zed, Void | ✗ Continue/Cline/Aider, TEEs | ✗ client-side web tools (truncated) | ✗ |
+| 8 | Free all-in-one, no account | ✗ DevToys, DevUtils.sh, DevBuddy | ✗ DevToys, CyberChef, IT-Tools | ✗ Toolbunny, Storkim | ✗ |
+| 9 | Free JSON/JWT/UUID, no ads | ✗ GenKitLab, ToolRivet, DevToys | ✗ IT-Tools, CyberChef, DevToys, jwt.io | ✗ Uttir, EverydayTools, DevUtil | ✗ |
+
+**Umbra named: 0 of 36** (9 questions × 4 surfaces). **Described wrongly: n/a** — it isn't mentioned, so the
+"overstated privacy / called open source / invented Windows build" failure mode can't occur yet.
+
+**Notable findings**
+
+- **Google has indexed the homepage** (`site:umbra.dipane.fr` returns it, with the right title and
+  description), so the gap is ranking/citation, not indexing. Google showed **no AI Overview on any of
+  the 9 queries** again, same as the baseline.
+- **DevToys is now the dominant answer** across ChatGPT, Claude and Perplexity (Q2, Q3, Q5, Q8, Q9),
+  followed by CyberChef/IT-Tools (Claude) and DevUtils (macOS). That's the competitive frame for 3.7.
+- **The field is crowded with new, small, privacy-claiming desktop tools** that *are* being named —
+  A7Box, DevTools-X, adOmnia, DevT Pro, Bellows, Traceptor, DevKit. They're the closest comparable
+  set: small, new, privacy-first, and cited. Worth inspecting what they have in common (own domain
+  with an explicit "no network" claim, a GitHub repo, directory listings such as AlternativeTo).
+  Note several of those cite *open source* as the credibility lever, which Umbra can't claim (ledger row 9).
+- **Q4 (OCR) and Q6 (checking apps call home)** are dominated by general-purpose answers (Tesseract,
+  VirusTotal). Q4 is the most plausible place for Umbra to appear eventually; Q6 isn't a tool-listing query.
+- Claude's answers cited AlternativeTo directly; ChatGPT leaned on vendor sites and GitHub. Both
+  reinforce Steps 9.2/9.4 (directory listings and the GitHub README) over landing-page copy.
+
+**Reading it:** a 0/36 result is the expected baseline-plus-two-weeks state for a tool with ~30 direct
+visitors and no external mentions. Nothing to react to; the next check (quarterly, per §8) is where a
+change would mean something. No action triggered under §8's signal table.

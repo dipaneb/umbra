@@ -1580,11 +1580,17 @@ content rather than lorem ipsum.
 
 ## Phase 7 — Measurement & verification
 
-- [ ] **Step 7.1 — Verify analytics end-to-end.** Confirm a pageview *and* a download-click event
+- [x] **Step 7.1 — Verify analytics end-to-end.** Confirm a pageview *and* a download-click event
       both register in PostHog from the live site. Story 5.4 proved pageviews this way; the click
       event is new and unproven. `curl` can't do this — it needs a real browser.
 
-- [ ] **Step 7.2 — GitHub download counts.** 🔸 The GitHub Releases API exposes per-asset download
+      **Done 2026-09-29.** `download_clicked` (`platform: macos`) fired from the live hero button and
+      landed in PostHog EU server-side with correct properties; site confirmed cookieless (no
+      cookies set, `distinct_id=$posthog_cookieless`). `$pageview` confirmed by the developer
+      navigating three pages in their own browser and querying PostHog (an automated Chrome
+      profile's pageviews did not appear, so that half was verified from a real browser).
+
+- [x] **Step 7.2 — GitHub download counts.** 🔸 The GitHub Releases API exposes per-asset download
       counts. PostHog can never see this — the download is a click to another domain followed by a
       file fetch — so this is the *actual* "did anyone use it" number behind the PRD's "Used"
       metric. Check it manually or with a small script, or — better — bridge it into PostHog itself
@@ -1597,15 +1603,52 @@ content rather than lorem ipsum.
       background update-check quietly inflates whichever release asset it touches, which isn't a
       human download and shouldn't be counted as one.
 
-- [ ] **Step 7.3 — Search Console + Bing Webmaster.** Free, and the only way to see whether indexing
+      **Done 2026-09-29.** Built as the bridge option: `umbra-web` PR #6 adds
+      `scripts/github-download-counts.mjs` and a daily (06:17 UTC) `github-download-counts` workflow that
+      reads the Releases API and sends one `github_release_downloads` event per installer to PostHog EU
+      (`/batch/`, project key from the `POSTHOG_PROJECT_API_KEY` repo *variable* — the key is public by
+      design). Events are **snapshots** (`cumulative_downloads`), not deltas, with a per-day `$insert_id`
+      so re-runs dedupe; chart with max-per-day, never sum across days. **Counted:** `.dmg`, `.exe`/`.msi`,
+      `.AppImage`/`.deb`/`.rpm`. **Excluded:** `latest.json`, `.sig`, `.app.tar.gz` (updater traffic —
+      `latest.json` shows 119 on v0.2.1 alone). First manual run verified: 14 events landed
+      (macos 10, linux 3, windows 1). Dashboard "Umbra downloads" (PostHog EU) holds the cumulative
+      per-platform insight. **Known caveat:** Tauri's updater fetches the Windows NSIS `.exe` and the
+      Linux AppImage/deb/rpm directly (confirmed in `latest.json`), so once a *stable* Windows/Linux
+      release ships, those counts include auto-updates; macOS `.dmg` stays clean because its updater uses
+      the excluded `.app.tar.gz`. Today the Windows 4 are likely human: the updater endpoint uses
+      `releases/latest`, which skips the v0.5.0-alpha.1 prerelease. Revisit at the first stable
+      Windows release.
+
+- [x] **Step 7.3 — Search Console + Bing Webmaster.** Free, and the only way to see whether indexing
       broke after the domain move. Submit the sitemap. **Why after 6.1:** it's per-property, so
       registering before the domain change wastes the setup.
 
-- [ ] **Step 7.4 — Review cadence.** Decide when you'll actually look at the numbers and what you'd
+      **Done 2026-10-05, Google only — Bing deliberately skipped.** Verified a **Domain** property for
+      `dipane.fr` via DNS TXT (covers every subdomain, so the developer's other projects share it;
+      per-site data is split with a Performance → Page filter on the hostname, or a URL-prefix property
+      for `https://umbra.dipane.fr/`). Submitted `https://umbra.dipane.fr/sitemap-index.xml` (full URL —
+      a Domain property rejects the relative path). First attempt showed "Unable to read the sitemap";
+      all three files returned 200 with correct types to a Googlebot UA and robots.txt doesn't block
+      them, and it cleared on its own after ~24h — a known new-property delay, no site change needed.
+      **Bing Webmaster not set up:** it requires creating a Microsoft account and the developer chose
+      not to. Cost: no Bing index reporting; Bing still discovers the site through robots.txt's
+      `Sitemap:` line, just unobserved. Revisit if Step 7.5 shows Bing-backed assistants never naming
+      Umbra. **Still to watch (Step 7.4 cadence):** Pages report should show the old
+      `umbra-web-beta.vercel.app` URLs dropping out and the new domain indexing; homepage was still
+      "wait about a day" at sign-off.
+
+- [x] **Step 7.4 — Review cadence.** Decide when you'll actually look at the numbers and what you'd
       change based on them. Analytics you never read is worse than none — it's the illusion of
       measurement.
 
-- [ ] **Step 7.5 — AI visibility baseline and referral tracking.** Two halves. *Measured:* AI
+      **Done 2026-10-05.** Recorded as `landing-strategy.md` §8: a monthly 30-minute review (quarterly
+      for the Step 7.5 AI-visibility re-check, event-driven after releases/distribution posts), a
+      what-gets-read table tied to the existing sources (PostHog events, the 7.2 dashboard, Search
+      Console), and a signal → action table keyed to two consecutive reviews. No new instrumentation.
+      Cadence and thresholds are proposed defaults pending the developer's sign-off; the review log
+      is created at the first review, not now.
+
+- [x] **Step 7.5 — AI visibility baseline and referral tracking.** Two halves. *Measured:* AI
       assistants pass a referrer, so filter PostHog for traffic from `chatgpt.com`, `perplexity.ai`,
       `claude.ai`, `gemini.google.com` and friends — this works fine under the cookieless choice,
       since referrer is captured on the pageview itself. *Manual:* re-ask Step 1.6's target questions
@@ -1617,6 +1660,14 @@ content rather than lorem ipsum.
       an assistant describing Umbra *wrongly* — overstating the privacy claim, calling it open
       source, or inventing a Windows build. That's a correctness problem on your central claim, and
       the fix is on-page clarity (3.7) plus the sources in 9.2/9.4, not a takedown request.
+
+      **Done 2026-10-05.** Recorded as `landing-strategy.md` §9. *Measured:* zero AI-assistant
+      referrals in the last 90 days (PostHog; only `$direct`, internal and the old vercel.com). *Manual:*
+      the 9 §7 questions across ChatGPT, Claude, Perplexity and Google — **Umbra named 0 of 36**, no
+      AI Overview on any Google query, no wrong descriptions (nothing to describe). Google has indexed
+      the homepage, so the gap is citation, not indexing. Caveats: Claude was logged in; Perplexity
+      answers were captured partway (several truncated). Next re-check: quarterly (§8), against this
+      snapshot as well as 2026-09-18. Bing-backed assistants are unobservable (7.3 skipped Bing).
 
 ---
 
@@ -1758,8 +1809,8 @@ Recorded so future sessions read these as decided, not overlooked.
       [x] 6.11 Build gates · [x] 6.12 CSP *(optional, done)* · [x] 6.13 `llms.txt` · [x] **6.14
       AI-crawler policy** *(14 named crawler groups added alongside the wildcard block, 7 training + 7
       retrieval, roster re-verified live against each vendor's own docs)* — **Phase 6 complete**
-- [ ] 7.1 Verify analytics · 7.2 **GitHub download counts** · 7.3 Search Console · 7.4 Review
-      cadence · 7.5 AI visibility baseline & referrals
+- [x] 7.1 Verify analytics · 7.2 **GitHub download counts** · 7.3 **Search Console** *(Google only, Bing skipped)* · **7.4 Review
+      cadence** · 7.5 AI visibility baseline & referrals
 - [ ] 8.1 Pre-launch checklist · 8.2 Code review
 - [ ] 9.1 GitHub cross-links · 9.2 Distribution plan · 9.3 UTM conventions ·
       9.4 **GitHub repo as agent surface** *(touches `Umbra`)*
